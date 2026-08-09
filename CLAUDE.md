@@ -60,18 +60,30 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 ## Build & Test
 
-_Add your build and test commands here_
-
 ```bash
-# Example:
-# npm install
-# npm test
+go test ./...
+go test -race ./...
+go list -deps ./...
+go tool golangci-lint run ./...
+git diff --check
 ```
 
 ## Architecture Overview
 
-_Add a brief overview of your project architecture_
+- Module path: `github.com/baldaworks/boyan`
+- Binary entrypoint: `./cmd/boyan`
+- Current repository state is bootstrap-only scaffold; product implementation is
+  tracked in Beads child tasks under story `boyan-vqzg`
+- Boyan must remain independent from `github.com/normahq/balda`
+- Planned external surfaces are separate HTTP ingest and MCP APIs
+- Planned storage model is single-writer canonical state plus rebuildable
+  projection
 
 ## Conventions & Patterns
 
-_Add your project-specific conventions here_
+- Mirror substantive repository instruction changes across `AGENTS.md` and
+  `CLAUDE.md`
+- Use Beads for durable task tracking
+- Do not commit or push without explicit authority
+- Keep bootstrap work limited to compileable scaffold until the active child
+  explicitly authorizes product implementation
