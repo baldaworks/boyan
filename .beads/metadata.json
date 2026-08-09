@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "boyan",
+  "project_id": "72df9f4c-bf4c-4444-95d5-048d68a10a84"
+}
