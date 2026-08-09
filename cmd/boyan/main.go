@@ -6,5 +6,8 @@ import (
 )
 
 func main() {
-	fmt.Fprintln(os.Stdout, "boyan bootstrap scaffold")
+	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }

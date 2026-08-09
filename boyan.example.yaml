@@ -1,0 +1,26 @@
+state_dir: ./.state/boyan
+
+log:
+  level: info
+
+http:
+  listen: 127.0.0.1:8686
+  request_timeout: 15s
+  shutdown_timeout: 10s
+  max_body_bytes: 1048576
+
+derivation:
+  provider: memory
+  working_dir: .
+  timeout: 30s
+  max_output_bytes: 262144
+  runtime:
+    providers:
+      memory:
+        type: codex_acp
+        codex_acp:
+          model: memory-fast
+
+maintenance:
+  value_log_gc_interval: 6h
+  discard_ratio: 0.5
