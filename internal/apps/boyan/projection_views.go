@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	. "github.com/baldaworks/boyan"
+	. "github.com/baldaworks/boyan/pkg/memory"
 )
 
 // ScopeViewBuilder reads canonical state in bounded pages. It never loads a

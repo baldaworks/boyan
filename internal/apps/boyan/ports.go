@@ -3,50 +3,50 @@ package app
 import (
 	"context"
 
-	"github.com/baldaworks/boyan"
+	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
 // TurnIngestor accepts a validated terminal turn.  The implementation owns
 // semantic extraction, evidence grounding, temporal interpretation, and the
 // idempotent canonical commit.
 type TurnIngestor interface {
-	IngestTurn(ctx context.Context, turn boyan.Turn) error
+	IngestTurn(ctx context.Context, turn memory.Turn) error
 }
 
 // BoundaryIngestor applies a validated session boundary.  Boundary synthesis
 // is kept separate from turn ingestion so hosts can grant only the capability
 // needed by a worker.
 type BoundaryIngestor interface {
-	ApplyBoundary(ctx context.Context, boundary boyan.Boundary) error
+	ApplyBoundary(ctx context.Context, boundary memory.Boundary) error
 }
 
 // SequencedTurnIngestor accepts one producer-ordered terminal turn and returns
 // the durable ordered-ingest outcome.
 type SequencedTurnIngestor interface {
-	IngestSequencedTurn(ctx context.Context, request boyan.SequencedTurn) (boyan.IngestOutcome, error)
+	IngestSequencedTurn(ctx context.Context, request memory.SequencedTurn) (memory.IngestOutcome, error)
 }
 
 // SequencedBoundaryIngestor accepts one producer-ordered boundary and returns
 // the durable ordered-ingest outcome.
 type SequencedBoundaryIngestor interface {
-	ApplySequencedBoundary(ctx context.Context, request boyan.SequencedBoundary) (boyan.IngestOutcome, error)
+	ApplySequencedBoundary(ctx context.Context, request memory.SequencedBoundary) (memory.IngestOutcome, error)
 }
 
 // RecallReader exposes bounded, exact-scope canonical recall.
 type RecallReader interface {
-	Search(ctx context.Context, request boyan.RecallRequest) (boyan.RecallResponse, error)
+	Search(ctx context.Context, request memory.RecallRequest) (memory.RecallResponse, error)
 }
 
 // TraceReader exposes bounded provenance inspection for one exact scope.
 type TraceReader interface {
-	Trace(ctx context.Context, request boyan.TraceRequest) (boyan.TraceResponse, error)
+	Trace(ctx context.Context, request memory.TraceRequest) (memory.TraceResponse, error)
 }
 
 // Forgetter is intentionally a Go application capability.  The portable MCP
 // adapter does not expose either mutating operation.
 type Forgetter interface {
-	ForgetSource(ctx context.Context, command boyan.ForgetSourceCommand) (boyan.ForgetOutcome, error)
-	ForgetScope(ctx context.Context, command boyan.ForgetScopeCommand) (boyan.ForgetOutcome, error)
+	ForgetSource(ctx context.Context, command memory.ForgetSourceCommand) (memory.ForgetOutcome, error)
+	ForgetScope(ctx context.Context, command memory.ForgetScopeCommand) (memory.ForgetOutcome, error)
 }
 
 // Lifecycle is implemented by resources that need ordered startup and
@@ -77,14 +77,14 @@ type StructuredInvoker interface {
 // may provide a processor backed by the canonical store, while the runtime
 // still owns capability composition and projection ordering.
 type BoundaryExecutor interface {
-	ProcessBoundary(ctx context.Context, boundary boyan.Boundary) (boyan.BoundaryOutcome, error)
+	ProcessBoundary(ctx context.Context, boundary memory.Boundary) (memory.BoundaryOutcome, error)
 }
 
 // ProjectionSyncer advances a rebuildable projection after a canonical commit.
 // Implementations must keep canonical state authoritative when projection
 // work fails.
 type ProjectionSyncer interface {
-	Sync(ctx context.Context, scope boyan.Scope) error
+	Sync(ctx context.Context, scope memory.Scope) error
 }
 
 // RuntimeConfig wires the portable runtime.  The first group is sufficient to
@@ -92,10 +92,10 @@ type ProjectionSyncer interface {
 // through their narrow ports or are built from the corresponding canonical
 // ports when all dependencies are present.
 type RuntimeConfig struct {
-	CanonicalStore boyan.CanonicalStore
-	Extractor      boyan.CanonicalSemanticExtractor
-	Policy         boyan.PolicyRegistry
-	Derivation     boyan.DerivationRef
+	CanonicalStore memory.CanonicalStore
+	Extractor      memory.CanonicalSemanticExtractor
+	Policy         memory.PolicyRegistry
+	Derivation     memory.DerivationRef
 
 	// StructuredInvoker is used to construct the portable Deriver when
 	// Extractor is nil.  It is never inspected for a concrete provider type.
@@ -108,19 +108,19 @@ type RuntimeConfig struct {
 	Project  ProjectionSyncer
 
 	// Canonical recall ports build RecallService when Recall is nil.
-	RecallCanonical  boyan.RecallCanonicalReader
-	RecallProjection boyan.RecallProjection
+	RecallCanonical  memory.RecallCanonicalReader
+	RecallProjection memory.RecallProjection
 
 	// Optional canonical projection wiring.  When all fields are supplied,
 	// NewRuntime builds a portable ProjectionRuntime.
-	ProjectionCheckpoints boyan.ProjectionCheckpointStore
-	ProjectionApplier     boyan.ProjectionApplier
+	ProjectionCheckpoints memory.ProjectionCheckpointStore
+	ProjectionApplier     memory.ProjectionApplier
 	ProjectionID          string
 	ProjectionBatchSize   uint32
 
 	// CanonicalDerived is used for the transport-neutral trace adapter when
 	// Trace is nil.  It is intentionally a read-only port.
-	CanonicalDerived boyan.CanonicalDerivedReader
+	CanonicalDerived memory.CanonicalDerivedReader
 
 	// Optional lifecycle dependencies are started in declaration order and
 	// closed in reverse order.  The runtime closes resources it started when a

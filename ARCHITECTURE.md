@@ -23,6 +23,17 @@ operations.
 The process is started and stopped through a small Cobra/Viper/Fx composition
 root in `cmd/boyan`.
 
+## Module layout
+
+The repository is organized as a standalone service plus an explicit public Go
+contract:
+
+- `pkg/memory` contains the reusable standalone Boyan memory contract: raw wire types, canonical records, derived records, and ordered-ingest DTOs.
+- `internal/apps/boyan` contains application orchestration.
+- `internal/httpingest` contains HTTP transport validation and handlers.
+- `internal/derivation` contains provider/runtime integration.
+- `store/badger` and `index/bleve` are storage and projection adapters.
+
 ## External surfaces
 
 ### HTTP ingest
@@ -73,21 +84,21 @@ Badger is authoritative. Bleve is never returned directly to callers without
 canonical hydration through the recall or trace path.
 
 The projection can lag and be repaired, but canonical state remains safe and
-authoritative. Readiness checks migration state and canonical maintenance
-diagnostics before accepting work.
+authoritative. Readiness checks canonical maintenance diagnostics before
+accepting work.
 
 ## Scope isolation
 
 Scope keys are opaque exact identifiers supplied by the host. Boyan does not
-parse Balda locators and does not implement inheritance, fallback, or
-cross-scope promotion.
+parse host-specific locator formats and does not implement inheritance,
+fallback, or cross-scope promotion.
 
 All ingest, search, trace, and forget paths stay within one exact scope.
 
 ## Derivation boundary
 
 Boyan owns derivation orchestration through `internal/derivation` and
-runtime/v2-backed provider configuration.
+runtime-backed provider configuration.
 
 The model runtime does not choose:
 

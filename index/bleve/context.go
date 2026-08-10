@@ -3,12 +3,12 @@ package bleve
 import (
 	"context"
 
-	"github.com/baldaworks/boyan"
+	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
 func canonicalContextError(ctx context.Context) error {
 	if ctx == nil {
-		return boyan.PermanentError(boyan.CodeInvalidDerived, "context is required", nil)
+		return memory.PermanentError(memory.CodeInvalidDerived, "context is required", nil)
 	}
 	select {
 	case <-ctx.Done():

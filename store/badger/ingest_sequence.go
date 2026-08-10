@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/baldaworks/boyan"
+	memory "github.com/baldaworks/boyan/pkg/memory"
 	"github.com/dgraph-io/badger/v4"
 )
 
@@ -14,85 +14,85 @@ func isCanonicalProducerID(value string) bool {
 	return value != "" && value == strings.TrimSpace(value) && !strings.ContainsAny(value, "\r\n\t")
 }
 
-var _ boyan.IngestSequenceStore = (*CanonicalStore)(nil)
+var _ memory.IngestSequenceStore = (*CanonicalStore)(nil)
 
-func (s *CanonicalStore) LoadLatestIngestSequence(ctx context.Context, producerID string, scope boyan.Scope) (boyan.IngestSequenceCursor, bool, error) {
+func (s *CanonicalStore) LoadLatestIngestSequence(ctx context.Context, producerID string, scope memory.Scope) (memory.IngestSequenceCursor, bool, error) {
 	if err := canonicalContextError(ctx); err != nil {
-		return boyan.IngestSequenceCursor{}, false, err
+		return memory.IngestSequenceCursor{}, false, err
 	}
 	if err := scope.Validate(); err != nil {
-		return boyan.IngestSequenceCursor{}, false, err
+		return memory.IngestSequenceCursor{}, false, err
 	}
 	if !isCanonicalProducerID(producerID) {
-		return boyan.IngestSequenceCursor{}, false, boyan.PermanentError(boyan.CodeInvalidDerived, "ingest producer id is invalid", nil)
+		return memory.IngestSequenceCursor{}, false, memory.PermanentError(memory.CodeInvalidDerived, "ingest producer id is invalid", nil)
 	}
 	if s == nil {
-		return boyan.IngestSequenceCursor{}, false, boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
+		return memory.IngestSequenceCursor{}, false, memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
 	s.maintenanceMu.RLock()
 	defer s.maintenanceMu.RUnlock()
 	if s.db == nil {
-		return boyan.IngestSequenceCursor{}, false, boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
+		return memory.IngestSequenceCursor{}, false, memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
 	key, err := badgerIngestCursorKey(scope, producerID)
 	if err != nil {
-		return boyan.IngestSequenceCursor{}, false, err
+		return memory.IngestSequenceCursor{}, false, err
 	}
-	var cursor boyan.IngestSequenceCursor
+	var cursor memory.IngestSequenceCursor
 	err = s.db.View(func(txn *badger.Txn) error {
 		return getCanonicalRecord(txn, key, badgerRecordIngestCursor, &cursor)
 	})
 	if errors.Is(err, badger.ErrKeyNotFound) {
-		return boyan.IngestSequenceCursor{}, false, nil
+		return memory.IngestSequenceCursor{}, false, nil
 	}
 	if err != nil {
-		return boyan.IngestSequenceCursor{}, false, canonicalStoreError("load ingest sequence cursor", err)
+		return memory.IngestSequenceCursor{}, false, canonicalStoreError("load ingest sequence cursor", err)
 	}
 	if err := cursor.Validate(); err != nil || cursor.ProducerID != producerID || cursor.Scope != scope {
-		return boyan.IngestSequenceCursor{}, false, boyan.PermanentError(boyan.CodeStoreFailure, "stored ingest sequence cursor is invalid", err)
+		return memory.IngestSequenceCursor{}, false, memory.PermanentError(memory.CodeStoreFailure, "stored ingest sequence cursor is invalid", err)
 	}
 	return cursor, true, nil
 }
 
-func (s *CanonicalStore) LoadIngestSequence(ctx context.Context, producerID string, scope boyan.Scope, sequence uint64) (boyan.IngestSequenceRecord, bool, error) {
+func (s *CanonicalStore) LoadIngestSequence(ctx context.Context, producerID string, scope memory.Scope, sequence uint64) (memory.IngestSequenceRecord, bool, error) {
 	if err := canonicalContextError(ctx); err != nil {
-		return boyan.IngestSequenceRecord{}, false, err
+		return memory.IngestSequenceRecord{}, false, err
 	}
 	if err := scope.Validate(); err != nil {
-		return boyan.IngestSequenceRecord{}, false, err
+		return memory.IngestSequenceRecord{}, false, err
 	}
 	if !isCanonicalProducerID(producerID) || sequence == 0 {
-		return boyan.IngestSequenceRecord{}, false, boyan.PermanentError(boyan.CodeInvalidDerived, "ingest sequence lookup is invalid", nil)
+		return memory.IngestSequenceRecord{}, false, memory.PermanentError(memory.CodeInvalidDerived, "ingest sequence lookup is invalid", nil)
 	}
 	if s == nil {
-		return boyan.IngestSequenceRecord{}, false, boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
+		return memory.IngestSequenceRecord{}, false, memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
 	s.maintenanceMu.RLock()
 	defer s.maintenanceMu.RUnlock()
 	if s.db == nil {
-		return boyan.IngestSequenceRecord{}, false, boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
+		return memory.IngestSequenceRecord{}, false, memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
 	key, err := badgerIngestSequenceKey(scope, producerID, sequence)
 	if err != nil {
-		return boyan.IngestSequenceRecord{}, false, err
+		return memory.IngestSequenceRecord{}, false, err
 	}
-	var record boyan.IngestSequenceRecord
+	var record memory.IngestSequenceRecord
 	err = s.db.View(func(txn *badger.Txn) error {
 		return getCanonicalRecord(txn, key, badgerRecordIngestSequence, &record)
 	})
 	if errors.Is(err, badger.ErrKeyNotFound) {
-		return boyan.IngestSequenceRecord{}, false, nil
+		return memory.IngestSequenceRecord{}, false, nil
 	}
 	if err != nil {
-		return boyan.IngestSequenceRecord{}, false, canonicalStoreError("load ingest sequence record", err)
+		return memory.IngestSequenceRecord{}, false, canonicalStoreError("load ingest sequence record", err)
 	}
 	if err := record.Validate(); err != nil || record.ProducerID != producerID || record.Scope != scope || record.Sequence != sequence {
-		return boyan.IngestSequenceRecord{}, false, boyan.PermanentError(boyan.CodeStoreFailure, "stored ingest sequence record is invalid", err)
+		return memory.IngestSequenceRecord{}, false, memory.PermanentError(memory.CodeStoreFailure, "stored ingest sequence record is invalid", err)
 	}
 	return record, true, nil
 }
 
-func (s *CanonicalStore) SaveIngestSequence(ctx context.Context, record boyan.IngestSequenceRecord) error {
+func (s *CanonicalStore) SaveIngestSequence(ctx context.Context, record memory.IngestSequenceRecord) error {
 	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
@@ -100,12 +100,12 @@ func (s *CanonicalStore) SaveIngestSequence(ctx context.Context, record boyan.In
 		return err
 	}
 	if s == nil {
-		return boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
+		return memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
 	s.maintenanceMu.RLock()
 	defer s.maintenanceMu.RUnlock()
 	if s.db == nil {
-		return boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
+		return memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
 	sequenceKey, err := badgerIngestSequenceKey(record.Scope, record.ProducerID, record.Sequence)
 	if err != nil {
@@ -116,14 +116,14 @@ func (s *CanonicalStore) SaveIngestSequence(ctx context.Context, record boyan.In
 		return err
 	}
 	err = s.db.Update(func(txn *badger.Txn) error {
-		var stored boyan.IngestSequenceRecord
+		var stored memory.IngestSequenceRecord
 		lookupErr := getCanonicalRecord(txn, sequenceKey, badgerRecordIngestSequence, &stored)
 		if lookupErr == nil {
 			if err := stored.Validate(); err != nil {
 				return err
 			}
 			if stored.Fingerprint != record.Fingerprint || !reflect.DeepEqual(stored.Outcome, record.Outcome) {
-				return boyan.PermanentError(boyan.CodeConflict, "ingest sequence identity was reused", nil)
+				return memory.PermanentError(memory.CodeConflict, "ingest sequence identity was reused", nil)
 			}
 			return nil
 		}
@@ -131,7 +131,7 @@ func (s *CanonicalStore) SaveIngestSequence(ctx context.Context, record boyan.In
 			return lookupErr
 		}
 
-		cursor := boyan.IngestSequenceCursor{SchemaVersion: boyan.IngestSequenceSchemaVersionV1, ProducerID: record.ProducerID, Scope: record.Scope}
+		cursor := memory.IngestSequenceCursor{SchemaVersion: memory.IngestSequenceSchemaVersionV1, ProducerID: record.ProducerID, Scope: record.Scope}
 		cursorErr := getCanonicalRecord(txn, cursorKey, badgerRecordIngestCursor, &cursor)
 		if cursorErr != nil && !errors.Is(cursorErr, badger.ErrKeyNotFound) {
 			return cursorErr
@@ -142,10 +142,10 @@ func (s *CanonicalStore) SaveIngestSequence(ctx context.Context, record boyan.In
 		switch {
 		case errors.Is(cursorErr, badger.ErrKeyNotFound):
 			if record.Sequence != 1 {
-				return boyan.PermanentError(boyan.CodeConflict, "ingest sequence is not next", nil)
+				return memory.PermanentError(memory.CodeConflict, "ingest sequence is not next", nil)
 			}
 		case record.Sequence != cursor.Latest+1:
-			return boyan.PermanentError(boyan.CodeConflict, "ingest sequence is not next", nil)
+			return memory.PermanentError(memory.CodeConflict, "ingest sequence is not next", nil)
 		}
 		cursor.Latest = record.Sequence
 		if err := putCanonicalRecord(txn, sequenceKey, badgerRecordIngestSequence, record); err != nil {

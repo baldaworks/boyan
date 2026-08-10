@@ -11,7 +11,7 @@ import (
 
 	clienthttp "github.com/baldaworks/boyan/client/http"
 	portableapp "github.com/baldaworks/boyan/internal/apps/boyan"
-	"github.com/baldaworks/boyan"
+	boyan "github.com/baldaworks/boyan/pkg/memory"
 )
 
 func TestHandlerTurnSuccessAndTypedClientRoundTrip(t *testing.T) {
@@ -27,7 +27,7 @@ func TestHandlerTurnSuccessAndTypedClientRoundTrip(t *testing.T) {
 		ScopeSequence:  1,
 		Fingerprint:    "boyan-ingest-fingerprint:1",
 		ExportID:       mustTurn(t, "http-turn").ExportID,
-		OperationIDs:   []string{"session-memory:v2:operation:turn"},
+		OperationIDs:   []string{"boyan-memory:v1:operation:turn"},
 		ScopeVersion:   1,
 		ScopeChangeSeq: 1,
 	}}
@@ -112,7 +112,7 @@ func TestHandlerRejectsUnknownFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewHandler() error = %v", err)
 	}
-	req := httptest.NewRequest(http.MethodPost, "/v1/ingest/turns", strings.NewReader(`{"schema_version":"boyan-ingest/v1","producer_id":"producer-1","scope_sequence":1,"payload":{"schema_version":"session-memory/v1","export_id":"bad","unknown":"field"}}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/ingest/turns", strings.NewReader(`{"schema_version":"boyan-ingest/v1","producer_id":"producer-1","scope_sequence":1,"payload":{"schema_version":"boyan/v1","export_id":"bad","unknown":"field"}}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -361,7 +361,7 @@ func (p *persistentTurnReplayIngestor) IngestSequencedTurn(_ context.Context, re
 			ScopeSequence:  request.ScopeSequence,
 			Fingerprint:    request.Fingerprint,
 			ExportID:       request.Turn.ExportID,
-			OperationIDs:   []string{"session-memory:v2:operation:restart"},
+			OperationIDs:   []string{"boyan-memory:v1:operation:restart"},
 			ScopeVersion:   1,
 			ScopeChangeSeq: 1,
 		}

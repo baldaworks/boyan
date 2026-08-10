@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/baldaworks/boyan"
+	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
 const (
@@ -39,21 +39,21 @@ type CanonicalMaintenance struct {
 // second database handle or changing the store's ownership boundary.
 func NewCanonicalMaintenance(store *CanonicalStore, config CanonicalMaintenanceConfig) (*CanonicalMaintenance, error) {
 	if store == nil {
-		return nil, boyan.PermanentError(boyan.CodeStoreFailure, "canonical maintenance store is required", nil)
+		return nil, memory.PermanentError(memory.CodeStoreFailure, "canonical maintenance store is required", nil)
 	}
 	interval := config.ValueLogGCInterval
 	if interval == 0 {
 		interval = defaultCanonicalGCInterval
 	}
 	if interval <= 0 {
-		return nil, boyan.PermanentError(boyan.CodeInvalidDerived, "canonical maintenance interval must be positive", nil)
+		return nil, memory.PermanentError(memory.CodeInvalidDerived, "canonical maintenance interval must be positive", nil)
 	}
 	ratio := config.DiscardRatio
 	if ratio == 0 {
 		ratio = defaultCanonicalDiscard
 	}
 	if ratio <= 0 || ratio >= 1 {
-		return nil, boyan.PermanentError(boyan.CodeInvalidDerived, "canonical maintenance discard ratio must be between zero and one", nil)
+		return nil, memory.PermanentError(memory.CodeInvalidDerived, "canonical maintenance discard ratio must be between zero and one", nil)
 	}
 	return &CanonicalMaintenance{store: store, interval: interval, ratio: ratio}, nil
 }
@@ -62,15 +62,15 @@ func NewCanonicalMaintenance(store *CanonicalStore, config CanonicalMaintenanceC
 // one canonical owner cannot accidentally schedule duplicate GC loops.
 func (m *CanonicalMaintenance) Start(ctx context.Context) error {
 	if m == nil || m.store == nil {
-		return boyan.PermanentError(boyan.CodeStoreFailure, "canonical maintenance is unavailable", nil)
+		return memory.PermanentError(memory.CodeStoreFailure, "canonical maintenance is unavailable", nil)
 	}
 	if ctx == nil {
-		return boyan.PermanentError(boyan.CodeInvalidDerived, "canonical maintenance context is required", nil)
+		return memory.PermanentError(memory.CodeInvalidDerived, "canonical maintenance context is required", nil)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.running {
-		return boyan.PermanentError(boyan.CodeConflict, "canonical maintenance is already running", nil)
+		return memory.PermanentError(memory.CodeConflict, "canonical maintenance is already running", nil)
 	}
 	workerCtx, cancel := context.WithCancel(ctx)
 	m.running = true
@@ -114,7 +114,7 @@ func (m *CanonicalMaintenance) Stop(ctx context.Context) error {
 		return nil
 	}
 	if ctx == nil {
-		return boyan.PermanentError(boyan.CodeInvalidDerived, "canonical maintenance context is required", nil)
+		return memory.PermanentError(memory.CodeInvalidDerived, "canonical maintenance context is required", nil)
 	}
 	m.mu.Lock()
 	if !m.running {
@@ -129,7 +129,7 @@ func (m *CanonicalMaintenance) Stop(ctx context.Context) error {
 	case <-done:
 		return nil
 	case <-ctx.Done():
-		return boyan.RetryableError(boyan.CodeTimeout, "canonical maintenance did not stop before context ended", ctx.Err())
+		return memory.RetryableError(memory.CodeTimeout, "canonical maintenance did not stop before context ended", ctx.Err())
 	}
 }
 

@@ -6,8 +6,8 @@ import (
 	"time"
 
 	portableapp "github.com/baldaworks/boyan/internal/apps/boyan"
-	runtimeconfig "github.com/normahq/runtime/v2/appconfig"
 	"github.com/normahq/runtime/v2/agentfactory"
+	runtimeconfig "github.com/normahq/runtime/v2/appconfig"
 	"github.com/normahq/runtime/v2/mcpregistry"
 )
 
@@ -18,7 +18,7 @@ const (
 
 // Config configures the isolated Boyan derivation runtime.
 type Config struct {
-	// Runtime is the provider and MCP registry used by runtime/v2.
+	// Runtime is the provider and MCP registry used by the derivation runtime.
 	Runtime runtimeconfig.RuntimeConfig
 	// ProviderID selects the dedicated derivation provider entry.
 	ProviderID string

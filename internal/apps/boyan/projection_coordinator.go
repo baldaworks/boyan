@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	. "github.com/baldaworks/boyan"
+	. "github.com/baldaworks/boyan/pkg/memory"
 )
 
 // ProjectionCoordinator replays canonical changes into one disposable

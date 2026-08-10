@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/baldaworks/boyan"
+	boyan "github.com/baldaworks/boyan/pkg/memory"
 )
 
 const stateTestRevisionOneID = "revision-1"

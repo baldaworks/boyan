@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/baldaworks/boyan"
+	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
 const defaultClientTimeout = 15 * time.Second
@@ -32,11 +32,11 @@ type Client struct {
 func New(cfg Config) (*Client, error) {
 	baseURL := strings.TrimSpace(cfg.BaseURL)
 	if baseURL == "" {
-		return nil, boyan.PermanentError(boyan.CodeInvalidDerived, "client base URL is required", nil)
+		return nil, memory.PermanentError(memory.CodeInvalidDerived, "client base URL is required", nil)
 	}
 	parsed, err := url.Parse(baseURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return nil, boyan.PermanentError(boyan.CodeInvalidDerived, "client base URL is invalid", err)
+		return nil, memory.PermanentError(memory.CodeInvalidDerived, "client base URL is invalid", err)
 	}
 	httpClient := cfg.Client
 	if httpClient == nil {
@@ -49,16 +49,16 @@ func New(cfg Config) (*Client, error) {
 	return &Client{base: parsed, client: httpClient}, nil
 }
 
-func (c *Client) IngestTurn(ctx context.Context, envelope boyan.IngestEnvelope[boyan.Turn]) (boyan.IngestReceipt, error) {
-	if err := envelope.Validate(func(turn boyan.Turn) error { return turn.Validate() }); err != nil {
-		return boyan.IngestReceipt{}, err
+func (c *Client) IngestTurn(ctx context.Context, envelope memory.IngestEnvelope[memory.Turn]) (memory.IngestReceipt, error) {
+	if err := envelope.Validate(func(turn memory.Turn) error { return turn.Validate() }); err != nil {
+		return memory.IngestReceipt{}, err
 	}
 	return c.do(ctx, "/v1/ingest/turns", envelope)
 }
 
-func (c *Client) IngestBoundary(ctx context.Context, envelope boyan.IngestEnvelope[boyan.Boundary]) (boyan.IngestReceipt, error) {
-	if err := envelope.Validate(func(boundary boyan.Boundary) error { return boundary.Validate() }); err != nil {
-		return boyan.IngestReceipt{}, err
+func (c *Client) IngestBoundary(ctx context.Context, envelope memory.IngestEnvelope[memory.Boundary]) (memory.IngestReceipt, error) {
+	if err := envelope.Validate(func(boundary memory.Boundary) error { return boundary.Validate() }); err != nil {
+		return memory.IngestReceipt{}, err
 	}
 	return c.do(ctx, "/v1/ingest/boundaries", envelope)
 }
@@ -71,66 +71,66 @@ func (c *Client) Ready(ctx context.Context) error {
 	return c.probe(ctx, "/readyz")
 }
 
-func (c *Client) do(ctx context.Context, path string, payload any) (boyan.IngestReceipt, error) {
+func (c *Client) do(ctx context.Context, path string, payload any) (memory.IngestReceipt, error) {
 	if c == nil || c.base == nil || c.client == nil {
-		return boyan.IngestReceipt{}, boyan.PermanentError(boyan.CodeDisabled, "http ingest client is unavailable", nil)
+		return memory.IngestReceipt{}, memory.PermanentError(memory.CodeDisabled, "http ingest client is unavailable", nil)
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return boyan.IngestReceipt{}, boyan.PermanentError(boyan.CodeInvalidDerived, "client request body is invalid", err)
+		return memory.IngestReceipt{}, memory.PermanentError(memory.CodeInvalidDerived, "client request body is invalid", err)
 	}
 	req, err := stdhttp.NewRequestWithContext(ctx, stdhttp.MethodPost, c.base.ResolveReference(&url.URL{Path: path}).String(), bytes.NewReader(body))
 	if err != nil {
-		return boyan.IngestReceipt{}, boyan.RetryableError(boyan.CodeUnavailable, "client request creation failed", err)
+		return memory.IngestReceipt{}, memory.RetryableError(memory.CodeUnavailable, "client request creation failed", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return boyan.IngestReceipt{}, boyan.RetryableError(boyan.CodeUnavailable, "client request failed", err)
+		return memory.IngestReceipt{}, memory.RetryableError(memory.CodeUnavailable, "client request failed", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == stdhttp.StatusOK {
-		var receipt boyan.IngestReceipt
+		var receipt memory.IngestReceipt
 		if err := decodeResponse(resp.Body, &receipt); err != nil {
-			return boyan.IngestReceipt{}, boyan.PermanentError(boyan.CodeInvalidDerived, "client response body is invalid", err)
+			return memory.IngestReceipt{}, memory.PermanentError(memory.CodeInvalidDerived, "client response body is invalid", err)
 		}
 		if err := receipt.Validate(); err != nil {
-			return boyan.IngestReceipt{}, err
+			return memory.IngestReceipt{}, err
 		}
 		return receipt, nil
 	}
-	failure := boyan.IngestErrorResponse{}
+	failure := memory.IngestErrorResponse{}
 	if err := decodeResponse(resp.Body, &failure); err != nil {
-		return boyan.IngestReceipt{}, classifyStatus(resp.StatusCode, "", boyan.ErrorClassPermanent)
+		return memory.IngestReceipt{}, classifyStatus(resp.StatusCode, "", memory.ErrorClassPermanent)
 	}
 	if err := failure.Validate(); err != nil {
-		return boyan.IngestReceipt{}, classifyStatus(resp.StatusCode, "", boyan.ErrorClassPermanent)
+		return memory.IngestReceipt{}, classifyStatus(resp.StatusCode, "", memory.ErrorClassPermanent)
 	}
-	return boyan.IngestReceipt{}, classifyStatus(resp.StatusCode, failure.Code, failure.Class)
+	return memory.IngestReceipt{}, classifyStatus(resp.StatusCode, failure.Code, failure.Class)
 }
 
 func (c *Client) probe(ctx context.Context, path string) error {
 	if c == nil || c.base == nil || c.client == nil {
-		return boyan.PermanentError(boyan.CodeDisabled, "http ingest client is unavailable", nil)
+		return memory.PermanentError(memory.CodeDisabled, "http ingest client is unavailable", nil)
 	}
 	req, err := stdhttp.NewRequestWithContext(ctx, stdhttp.MethodGet, c.base.ResolveReference(&url.URL{Path: path}).String(), nil)
 	if err != nil {
-		return boyan.RetryableError(boyan.CodeUnavailable, "health probe request creation failed", err)
+		return memory.RetryableError(memory.CodeUnavailable, "health probe request creation failed", err)
 	}
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return boyan.RetryableError(boyan.CodeUnavailable, "health probe failed", err)
+		return memory.RetryableError(memory.CodeUnavailable, "health probe failed", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == stdhttp.StatusOK {
 		return nil
 	}
 	body, _ := io.ReadAll(resp.Body)
-	var failure boyan.IngestErrorResponse
+	var failure memory.IngestErrorResponse
 	if err := json.Unmarshal(body, &failure); err == nil && failure.Code != "" && failure.Class != "" {
 		return classifyStatus(resp.StatusCode, failure.Code, failure.Class)
 	}
-	return classifyStatus(resp.StatusCode, "", boyan.ErrorClassPermanent)
+	return classifyStatus(resp.StatusCode, "", memory.ErrorClassPermanent)
 }
 
 func decodeResponse[T any](body io.Reader, dst *T) error {
@@ -145,25 +145,25 @@ func decodeResponse[T any](body io.Reader, dst *T) error {
 	return nil
 }
 
-func classifyStatus(status int, code boyan.ErrorCode, class boyan.ErrorClass) error {
+func classifyStatus(status int, code memory.ErrorCode, class memory.ErrorClass) error {
 	if code != "" && class != "" {
 		switch class {
-		case boyan.ErrorClassRetryable:
-			return boyan.RetryableError(code, "http ingest request failed", nil)
-		case boyan.ErrorClassPermanent:
-			return boyan.PermanentError(code, "http ingest request failed", nil)
+		case memory.ErrorClassRetryable:
+			return memory.RetryableError(code, "http ingest request failed", nil)
+		case memory.ErrorClassPermanent:
+			return memory.PermanentError(code, "http ingest request failed", nil)
 		}
 	}
 	switch status {
 	case stdhttp.StatusConflict:
-		return boyan.RetryableError(boyan.CodeConflict, "http ingest request failed", nil)
+		return memory.RetryableError(memory.CodeConflict, "http ingest request failed", nil)
 	case stdhttp.StatusTooManyRequests, stdhttp.StatusServiceUnavailable:
-		return boyan.RetryableError(boyan.CodeUnavailable, "http ingest request failed", nil)
+		return memory.RetryableError(memory.CodeUnavailable, "http ingest request failed", nil)
 	case stdhttp.StatusGatewayTimeout:
-		return boyan.RetryableError(boyan.CodeTimeout, "http ingest request failed", nil)
+		return memory.RetryableError(memory.CodeTimeout, "http ingest request failed", nil)
 	case stdhttp.StatusBadRequest:
-		return boyan.PermanentError(boyan.CodeInvalidDerived, "http ingest request failed", nil)
+		return memory.PermanentError(memory.CodeInvalidDerived, "http ingest request failed", nil)
 	default:
-		return boyan.PermanentError(boyan.CodePermanent, "http ingest request failed", nil)
+		return memory.PermanentError(memory.CodePermanent, "http ingest request failed", nil)
 	}
 }

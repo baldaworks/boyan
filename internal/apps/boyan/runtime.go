@@ -4,10 +4,10 @@ import (
 	"context"
 	"sync"
 
-	"github.com/baldaworks/boyan"
+	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
-// Runtime is the concrete portable session-memory application.  Consumers
+// Runtime is the concrete portable Boyan application.  Consumers
 // should depend on one or more of its capability interfaces, not on a type
 // assertion for optional methods.
 type Runtime struct {
@@ -32,8 +32,8 @@ type Runtime struct {
 // ports without importing a storage implementation.
 func NewRuntime(config RuntimeConfig) (*Runtime, error) {
 	derivation := config.Derivation
-	if derivation == (boyan.DerivationRef{}) {
-		derivation = boyan.LegacyDerivationRef()
+	if derivation == (memory.DerivationRef{}) {
+		derivation = memory.LegacyDerivationRef()
 	}
 	if err := derivation.Validate(); err != nil {
 		return nil, err
@@ -124,136 +124,11 @@ func NewRuntime(config RuntimeConfig) (*Runtime, error) {
 	}
 	for _, resource := range config.Lifecycle {
 		if resource == nil {
-			return nil, boyan.PermanentError(boyan.CodeInvalidDerived, "runtime lifecycle dependency is nil", nil)
+			return nil, memory.PermanentError(memory.CodeInvalidDerived, "runtime lifecycle dependency is nil", nil)
 		}
 		lifecycle = append(lifecycle, resource)
 	}
 	return &Runtime{turn: turn, boundary: boundary, recall: recall, trace: trace, forget: forget, lifecycle: lifecycle}, nil
-}
-
-// IngestTurn implements TurnIngestor.
-func (r *Runtime) IngestTurn(ctx context.Context, turn boyan.Turn) error {
-	if r == nil || r.turn == nil {
-		return boyan.PermanentError(boyan.CodeDisabled, "session-memory turn ingestion is unavailable", nil)
-	}
-	return r.turn.IngestTurn(ctx, turn)
-}
-
-// ApplyBoundary implements BoundaryIngestor.
-func (r *Runtime) ApplyBoundary(ctx context.Context, boundary boyan.Boundary) error {
-	if r == nil || r.boundary == nil {
-		return boyan.PermanentError(boyan.CodeDisabled, "session-memory boundary ingestion is unavailable", nil)
-	}
-	return r.boundary.ApplyBoundary(ctx, boundary)
-}
-
-// Search implements RecallReader.
-func (r *Runtime) Search(ctx context.Context, request boyan.RecallRequest) (boyan.RecallResponse, error) {
-	if r == nil || r.recall == nil {
-		return boyan.RecallResponse{}, boyan.PermanentError(boyan.CodeDisabled, "session-memory recall is unavailable", nil)
-	}
-	return r.recall.Search(ctx, request)
-}
-
-// Trace implements TraceReader.
-func (r *Runtime) Trace(ctx context.Context, request boyan.TraceRequest) (boyan.TraceResponse, error) {
-	if r == nil || r.trace == nil {
-		return boyan.TraceResponse{}, boyan.PermanentError(boyan.CodeDisabled, "session-memory trace is unavailable", nil)
-	}
-	return r.trace.Trace(ctx, request)
-}
-
-// ForgetSource implements Forgetter.
-func (r *Runtime) ForgetSource(ctx context.Context, command boyan.ForgetSourceCommand) (boyan.ForgetOutcome, error) {
-	if r == nil || r.forget == nil {
-		return boyan.ForgetOutcome{}, boyan.PermanentError(boyan.CodeDisabled, "session-memory forget is unavailable", nil)
-	}
-	return r.forget.ForgetSource(ctx, command)
-}
-
-// ForgetScope implements Forgetter.
-func (r *Runtime) ForgetScope(ctx context.Context, command boyan.ForgetScopeCommand) (boyan.ForgetOutcome, error) {
-	if r == nil || r.forget == nil {
-		return boyan.ForgetOutcome{}, boyan.PermanentError(boyan.CodeDisabled, "session-memory forget is unavailable", nil)
-	}
-	return r.forget.ForgetScope(ctx, command)
-}
-
-// Start starts resources in canonical-to-application order.  A failure closes
-// every resource that was started in the current attempt.
-func (r *Runtime) Start(ctx context.Context) error {
-	if r == nil {
-		return boyan.PermanentError(boyan.CodeDisabled, "session-memory runtime is unavailable", nil)
-	}
-	if ctx == nil {
-		return boyan.PermanentError(boyan.CodeInvalidDerived, "session-memory runtime start context is required", nil)
-	}
-	r.mu.Lock()
-	if r.closed {
-		r.mu.Unlock()
-		return boyan.PermanentError(boyan.CodeShuttingDown, "session-memory runtime is closed", nil)
-	}
-	if r.started == len(r.lifecycle) {
-		r.mu.Unlock()
-		return nil
-	}
-	if r.starting {
-		r.mu.Unlock()
-		return boyan.RetryableError(boyan.CodeUnavailable, "session-memory runtime is starting", nil)
-	}
-	r.starting = true
-	startAt := r.started
-	resources := append([]Lifecycle(nil), r.lifecycle...)
-	r.mu.Unlock()
-
-	for index := startAt; index < len(resources); index++ {
-		if err := resources[index].Start(ctx); err != nil {
-			for closeIndex := index; closeIndex >= startAt; closeIndex-- {
-				_ = resources[closeIndex].Close(context.Background())
-			}
-			r.mu.Lock()
-			r.starting = false
-			r.started = startAt
-			r.mu.Unlock()
-			return err
-		}
-		r.mu.Lock()
-		r.started = index + 1
-		r.mu.Unlock()
-	}
-	r.mu.Lock()
-	r.starting = false
-	r.mu.Unlock()
-	return nil
-}
-
-// Close stops resources in reverse order and is idempotent.
-func (r *Runtime) Close(ctx context.Context) error {
-	if r == nil {
-		return nil
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	r.mu.Lock()
-	if r.closed {
-		r.mu.Unlock()
-		return nil
-	}
-	r.closed = true
-	resources := append([]Lifecycle(nil), r.lifecycle...)
-	started := r.started
-	r.mu.Unlock()
-	var firstErr error
-	if started > len(resources) {
-		started = len(resources)
-	}
-	for index := started - 1; index >= 0; index-- {
-		if err := resources[index].Close(ctx); err != nil && firstErr == nil {
-			firstErr = err
-		}
-	}
-	return firstErr
 }
 
 type structuredInvokerLifecycle struct {

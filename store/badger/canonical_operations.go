@@ -4,8 +4,8 @@ import (
 	"context"
 	"io"
 
+	memory "github.com/baldaworks/boyan/pkg/memory"
 	"github.com/dgraph-io/badger/v4"
-	"github.com/baldaworks/boyan"
 )
 
 const defaultBadgerRestorePendingWrites = 128
@@ -44,12 +44,12 @@ func (s *CanonicalStore) WriteCanonicalBackup(ctx context.Context, destination i
 		return 0, err
 	}
 	if s == nil {
-		return 0, boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
+		return 0, memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
 	s.maintenanceMu.Lock()
 	defer s.maintenanceMu.Unlock()
 	if s.db == nil {
-		return 0, boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
+		return 0, memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
 	version, err := s.db.Backup(destination, since)
 	if err != nil {
@@ -66,18 +66,18 @@ func (s *CanonicalStore) RestoreCanonicalBackup(ctx context.Context, source io.R
 		return err
 	}
 	if s == nil {
-		return boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
+		return memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
 	if maxPendingWrites <= 0 {
 		maxPendingWrites = defaultBadgerRestorePendingWrites
 	}
 	if maxPendingWrites > 4096 {
-		return boyan.PermanentError(boyan.CodeLimitExceeded, "canonical restore pending-write bound is too large", nil)
+		return memory.PermanentError(memory.CodeLimitExceeded, "canonical restore pending-write bound is too large", nil)
 	}
 	s.maintenanceMu.Lock()
 	defer s.maintenanceMu.Unlock()
 	if s.db == nil {
-		return boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
+		return memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
 	if err := s.db.Load(source, maxPendingWrites); err != nil {
 		return canonicalStoreError("restore canonical backup", err)
@@ -95,12 +95,12 @@ func (s *CanonicalStore) VerifyCanonicalIntegrity(ctx context.Context) error {
 		return err
 	}
 	if s == nil {
-		return boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
+		return memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
 	s.maintenanceMu.Lock()
 	defer s.maintenanceMu.Unlock()
 	if s.db == nil {
-		return boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
+		return memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
 	err := s.db.View(func(txn *badger.Txn) error {
 		iterator := txn.NewIterator(badger.DefaultIteratorOptions)
@@ -114,14 +114,14 @@ func (s *CanonicalStore) VerifyCanonicalIntegrity(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			if _, err := boyan.UnmarshalRecordEnvelope(encoded); err != nil {
-				return boyan.PermanentError(boyan.CodeStoreFailure, "canonical record integrity check failed", err)
+			if _, err := memory.UnmarshalRecordEnvelope(encoded); err != nil {
+				return memory.PermanentError(memory.CodeStoreFailure, "canonical record integrity check failed", err)
 			}
 		}
 		return nil
 	})
 	if err != nil {
-		if _, _, ok := boyan.ClassifyError(err); ok {
+		if _, _, ok := memory.ClassifyError(err); ok {
 			return err
 		}
 		return canonicalStoreError("verify canonical integrity", err)
@@ -134,30 +134,30 @@ func validateCanonicalMaintenance(ctx context.Context, value any) error {
 		return err
 	}
 	if value == nil {
-		return boyan.PermanentError(boyan.CodeInvalidDerived, "canonical maintenance stream is required", nil)
+		return memory.PermanentError(memory.CodeInvalidDerived, "canonical maintenance stream is required", nil)
 	}
 	switch stream := value.(type) {
 	case io.Reader:
 		if stream == nil {
-			return boyan.PermanentError(boyan.CodeInvalidDerived, "canonical maintenance reader is required", nil)
+			return memory.PermanentError(memory.CodeInvalidDerived, "canonical maintenance reader is required", nil)
 		}
 	case io.Writer:
 		if stream == nil {
-			return boyan.PermanentError(boyan.CodeInvalidDerived, "canonical maintenance writer is required", nil)
+			return memory.PermanentError(memory.CodeInvalidDerived, "canonical maintenance writer is required", nil)
 		}
 	default:
-		return boyan.PermanentError(boyan.CodeInvalidDerived, "canonical maintenance stream is invalid", nil)
+		return memory.PermanentError(memory.CodeInvalidDerived, "canonical maintenance stream is invalid", nil)
 	}
 	return nil
 }
 
 func checkCanonicalMaintenanceContext(ctx context.Context) error {
 	if ctx == nil {
-		return boyan.PermanentError(boyan.CodeInvalidDerived, "canonical maintenance context is required", nil)
+		return memory.PermanentError(memory.CodeInvalidDerived, "canonical maintenance context is required", nil)
 	}
 	select {
 	case <-ctx.Done():
-		return boyan.RetryableError(boyan.CodeTimeout, "canonical maintenance context ended", ctx.Err())
+		return memory.RetryableError(memory.CodeTimeout, "canonical maintenance context ended", ctx.Err())
 	default:
 		return nil
 	}

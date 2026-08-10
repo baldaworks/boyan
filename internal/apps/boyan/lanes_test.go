@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/baldaworks/boyan"
+	boyan "github.com/baldaworks/boyan/pkg/memory"
 )
 
 func TestScopeLaneExecutorSameScopeFIFO(t *testing.T) {

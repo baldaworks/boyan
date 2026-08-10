@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/baldaworks/boyan"
+	boyan "github.com/baldaworks/boyan/pkg/memory"
 )
 
 func TestClientIngestTurnSuccess(t *testing.T) {
@@ -26,8 +26,8 @@ func TestClientIngestTurnSuccess(t *testing.T) {
 			ExportID:       mustTurn(t, "client-turn").ExportID,
 			Disposition:    boyan.IngestDispositionDuplicate,
 			Projection:     boyan.ProjectionStatusLagging,
-			OperationID:    "session-memory:v2:operation:client",
-			OperationIDs:   []string{"session-memory:v2:operation:client"},
+			OperationID:    "boyan-memory:v1:operation:client",
+			OperationIDs:   []string{"boyan-memory:v1:operation:client"},
 			ScopeVersion:   3,
 			ScopeChangeSeq: 4,
 		})
@@ -56,11 +56,11 @@ func TestClientClassifiesErrorResponses(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		status     int
-		body       boyan.IngestErrorResponse
-		wantCode   boyan.ErrorCode
-		wantClass  boyan.ErrorClass
+		name      string
+		status    int
+		body      boyan.IngestErrorResponse
+		wantCode  boyan.ErrorCode
+		wantClass boyan.ErrorClass
 	}{
 		{name: "conflict", status: http.StatusConflict, body: boyan.IngestErrorResponse{Code: boyan.CodeConflict, Class: boyan.ErrorClassRetryable, Message: "conflict"}, wantCode: boyan.CodeConflict, wantClass: boyan.ErrorClassRetryable},
 		{name: "bad request", status: http.StatusBadRequest, body: boyan.IngestErrorResponse{Code: boyan.CodeInvalidDerived, Class: boyan.ErrorClassPermanent, Message: "invalid"}, wantCode: boyan.CodeInvalidDerived, wantClass: boyan.ErrorClassPermanent},

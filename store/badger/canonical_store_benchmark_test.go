@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/baldaworks/boyan"
+	boyan "github.com/baldaworks/boyan/pkg/memory"
 )
 
-// BenchmarkCanonicalStoreApplyCanonicalMutation100k records the
-// fixed 100k-turn, one-scope longevity shape from the v2 acceptance contract.
+// BenchmarkCanonicalStoreApplyCanonicalMutation100k records the fixed
+// 100k-turn, one-scope longevity shape from the canonical acceptance contract.
 // Run it with -benchtime=1x so every sample contains exactly 100,000 commits.
 func BenchmarkCanonicalStoreApplyCanonicalMutation100k(b *testing.B) {
 	const commits = 100_000

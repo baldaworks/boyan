@@ -7,6 +7,18 @@ on:
     branches: [master, main]
 
 jobs:
+  arch:
+    name: arch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+          cache: false
+      - name: go-arch-lint
+        run: go tool go-arch-lint check --project-path .
+
   golangci:
     name: lint
     runs-on: ubuntu-latest

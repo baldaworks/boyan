@@ -8,7 +8,7 @@ It owns:
 - a rebuildable Bleve search projection
 - HTTP/JSON ingest for completed turns and explicit boundaries
 - Streamable HTTP MCP tools for search, trace, and controlled forgetting
-- an isolated runtime/v2-backed derivation worker
+- an isolated runtime-backed derivation worker
 
 Boyan is local-first. The default service binds loopback only and stores all
 state under one explicit state root.
@@ -16,6 +16,7 @@ state under one explicit state root.
 ## Current scope
 
 - Module: `github.com/baldaworks/boyan`
+- Public Go contract: `github.com/baldaworks/boyan/pkg/memory`
 - Binary: `boyan`
 - Deployment model: one local process, one local state root
 - Ingest API: `/v1/ingest/turns`, `/v1/ingest/boundaries`
@@ -96,6 +97,11 @@ Boyan exposes two external surfaces with separate responsibilities:
 - MCP for memory operations
 
 See [docs/API.md](docs/API.md).
+
+## Go packages
+
+- `pkg/memory` is the standalone public Boyan memory contract: raw wire types, canonical records, derived records, and ordered-ingest DTOs.
+- `internal/` contains service-only orchestration and transport code.
 
 ## Repository guides
 

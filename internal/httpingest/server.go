@@ -12,7 +12,7 @@ import (
 	"time"
 
 	portableapp "github.com/baldaworks/boyan/internal/apps/boyan"
-	"github.com/baldaworks/boyan"
+	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
 const (
@@ -37,7 +37,7 @@ type Config struct {
 // NewHandler constructs the strict versioned Boyan HTTP ingest surface.
 func NewHandler(cfg Config) (stdhttp.Handler, error) {
 	if cfg.Turns == nil || cfg.Boundaries == nil {
-		return nil, boyan.PermanentError(boyan.CodeDisabled, "http ingest capabilities are required", nil)
+		return nil, memory.PermanentError(memory.CodeDisabled, "http ingest capabilities are required", nil)
 	}
 	if cfg.MaxBodyBytes <= 0 {
 		cfg.MaxBodyBytes = defaultMaxBodyBytes
@@ -48,7 +48,7 @@ func NewHandler(cfg Config) (stdhttp.Handler, error) {
 	mux := stdhttp.NewServeMux()
 	mux.HandleFunc("/livez", func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		if r.Method != stdhttp.MethodGet {
-			writeSafeError(w, r, stdhttp.StatusMethodNotAllowed, boyan.PermanentError(boyan.CodePermanent, "method not allowed", nil), nil)
+			writeSafeError(w, r, stdhttp.StatusMethodNotAllowed, memory.PermanentError(memory.CodePermanent, "method not allowed", nil), nil)
 			return
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -57,7 +57,7 @@ func NewHandler(cfg Config) (stdhttp.Handler, error) {
 	})
 	mux.HandleFunc("/readyz", func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		if r.Method != stdhttp.MethodGet {
-			writeSafeError(w, r, stdhttp.StatusMethodNotAllowed, boyan.PermanentError(boyan.CodePermanent, "method not allowed", nil), nil)
+			writeSafeError(w, r, stdhttp.StatusMethodNotAllowed, memory.PermanentError(memory.CodePermanent, "method not allowed", nil), nil)
 			return
 		}
 		if cfg.Ready != nil {
@@ -73,53 +73,53 @@ func NewHandler(cfg Config) (stdhttp.Handler, error) {
 		_, _ = io.WriteString(w, "ok\n")
 	})
 	mux.HandleFunc("/v1/ingest/turns", func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-		serveJSON(w, r, cfg.RequestTimeout, cfg.MaxBodyBytes, func(ctx context.Context, body []byte) (boyan.IngestReceipt, error) {
-			var envelope boyan.IngestEnvelope[boyan.Turn]
+		serveJSON(w, r, cfg.RequestTimeout, cfg.MaxBodyBytes, func(ctx context.Context, body []byte) (memory.IngestReceipt, error) {
+			var envelope memory.IngestEnvelope[memory.Turn]
 			if err := decodeEnvelope(body, &envelope); err != nil {
-				return boyan.IngestReceipt{}, err
+				return memory.IngestReceipt{}, err
 			}
-			if err := envelope.Validate(func(turn boyan.Turn) error { return turn.Validate() }); err != nil {
-				return boyan.IngestReceipt{}, err
+			if err := envelope.Validate(func(turn memory.Turn) error { return turn.Validate() }); err != nil {
+				return memory.IngestReceipt{}, err
 			}
-			fingerprint, err := boyan.TurnIngestFingerprint(envelope)
+			fingerprint, err := memory.TurnIngestFingerprint(envelope)
 			if err != nil {
-				return boyan.IngestReceipt{}, err
+				return memory.IngestReceipt{}, err
 			}
-			outcome, err := cfg.Turns.IngestSequencedTurn(ctx, boyan.SequencedTurn{
+			outcome, err := cfg.Turns.IngestSequencedTurn(ctx, memory.SequencedTurn{
 				ProducerID:    envelope.ProducerID,
 				ScopeSequence: envelope.ScopeSequence,
 				Fingerprint:   fingerprint,
 				Turn:          envelope.Payload,
 			})
 			if err != nil {
-				return boyan.IngestReceipt{}, err
+				return memory.IngestReceipt{}, err
 			}
-			return boyan.IngestReceiptFromOutcome(outcome)
+			return memory.IngestReceiptFromOutcome(outcome)
 		})
 	})
 	mux.HandleFunc("/v1/ingest/boundaries", func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-		serveJSON(w, r, cfg.RequestTimeout, cfg.MaxBodyBytes, func(ctx context.Context, body []byte) (boyan.IngestReceipt, error) {
-			var envelope boyan.IngestEnvelope[boyan.Boundary]
+		serveJSON(w, r, cfg.RequestTimeout, cfg.MaxBodyBytes, func(ctx context.Context, body []byte) (memory.IngestReceipt, error) {
+			var envelope memory.IngestEnvelope[memory.Boundary]
 			if err := decodeEnvelope(body, &envelope); err != nil {
-				return boyan.IngestReceipt{}, err
+				return memory.IngestReceipt{}, err
 			}
-			if err := envelope.Validate(func(boundary boyan.Boundary) error { return boundary.Validate() }); err != nil {
-				return boyan.IngestReceipt{}, err
+			if err := envelope.Validate(func(boundary memory.Boundary) error { return boundary.Validate() }); err != nil {
+				return memory.IngestReceipt{}, err
 			}
-			fingerprint, err := boyan.BoundaryIngestFingerprint(envelope)
+			fingerprint, err := memory.BoundaryIngestFingerprint(envelope)
 			if err != nil {
-				return boyan.IngestReceipt{}, err
+				return memory.IngestReceipt{}, err
 			}
-			outcome, err := cfg.Boundaries.ApplySequencedBoundary(ctx, boyan.SequencedBoundary{
+			outcome, err := cfg.Boundaries.ApplySequencedBoundary(ctx, memory.SequencedBoundary{
 				ProducerID:    envelope.ProducerID,
 				ScopeSequence: envelope.ScopeSequence,
 				Fingerprint:   fingerprint,
 				Boundary:      envelope.Payload,
 			})
 			if err != nil {
-				return boyan.IngestReceipt{}, err
+				return memory.IngestReceipt{}, err
 			}
-			return boyan.IngestReceiptFromOutcome(outcome)
+			return memory.IngestReceiptFromOutcome(outcome)
 		})
 	})
 	return mux, nil
@@ -129,40 +129,40 @@ func NewHandler(cfg Config) (stdhttp.Handler, error) {
 func ValidateLoopbackAddress(addr string) error {
 	addr = strings.TrimSpace(addr)
 	if addr == "" {
-		return boyan.PermanentError(boyan.CodeInvalidDerived, "listener address is required", nil)
+		return memory.PermanentError(memory.CodeInvalidDerived, "listener address is required", nil)
 	}
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
-		return boyan.PermanentError(boyan.CodeInvalidDerived, "listener address is invalid", err)
+		return memory.PermanentError(memory.CodeInvalidDerived, "listener address is invalid", err)
 	}
 	host = strings.Trim(host, "[]")
 	switch strings.ToLower(host) {
 	case "localhost":
 		return nil
 	case "":
-		return boyan.PermanentError(boyan.CodeInvalidDerived, "listener address must bind loopback only", nil)
+		return memory.PermanentError(memory.CodeInvalidDerived, "listener address must bind loopback only", nil)
 	}
 	ip := net.ParseIP(host)
 	if ip == nil || !ip.IsLoopback() {
-		return boyan.PermanentError(boyan.CodeInvalidDerived, "listener address must bind loopback only", nil)
+		return memory.PermanentError(memory.CodeInvalidDerived, "listener address must bind loopback only", nil)
 	}
 	return nil
 }
 
-func serveJSON(w stdhttp.ResponseWriter, r *stdhttp.Request, timeout time.Duration, maxBodyBytes int64, handle func(context.Context, []byte) (boyan.IngestReceipt, error)) {
+func serveJSON(w stdhttp.ResponseWriter, r *stdhttp.Request, timeout time.Duration, maxBodyBytes int64, handle func(context.Context, []byte) (memory.IngestReceipt, error)) {
 	if r.Method != stdhttp.MethodPost {
-		writeSafeError(w, r, stdhttp.StatusMethodNotAllowed, boyan.PermanentError(boyan.CodePermanent, "method not allowed", nil), nil)
+		writeSafeError(w, r, stdhttp.StatusMethodNotAllowed, memory.PermanentError(memory.CodePermanent, "method not allowed", nil), nil)
 		return
 	}
 	if !isJSONContentType(r.Header.Get("Content-Type")) {
-		writeSafeError(w, r, stdhttp.StatusBadRequest, boyan.PermanentError(boyan.CodeInvalidDerived, "content type must be application/json", nil), nil)
+		writeSafeError(w, r, stdhttp.StatusBadRequest, memory.PermanentError(memory.CodeInvalidDerived, "content type must be application/json", nil), nil)
 		return
 	}
 	limited := stdhttp.MaxBytesReader(w, r.Body, maxBodyBytes)
 	defer limited.Close()
 	body, err := io.ReadAll(limited)
 	if err != nil {
-		writeSafeError(w, r, statusFromError(boyan.PermanentError(boyan.CodeLimitExceeded, "request body exceeds limit", err)), boyan.PermanentError(boyan.CodeLimitExceeded, "request body exceeds limit", err), nil)
+		writeSafeError(w, r, statusFromError(memory.PermanentError(memory.CodeLimitExceeded, "request body exceeds limit", err)), memory.PermanentError(memory.CodeLimitExceeded, "request body exceeds limit", err), nil)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
@@ -179,15 +179,15 @@ func serveJSON(w stdhttp.ResponseWriter, r *stdhttp.Request, timeout time.Durati
 
 func decodeEnvelope[T any](body []byte, dst *T) error {
 	if len(body) == 0 {
-		return boyan.PermanentError(boyan.CodeInvalidDerived, "request body is required", nil)
+		return memory.PermanentError(memory.CodeInvalidDerived, "request body is required", nil)
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(body)))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(dst); err != nil {
-		return boyan.PermanentError(boyan.CodeInvalidDerived, "request body is invalid", err)
+		return memory.PermanentError(memory.CodeInvalidDerived, "request body is invalid", err)
 	}
 	if err := decoder.Decode(new(struct{})); !errors.Is(err, io.EOF) {
-		return boyan.PermanentError(boyan.CodeInvalidDerived, "request body must contain exactly one JSON object", err)
+		return memory.PermanentError(memory.CodeInvalidDerived, "request body must contain exactly one JSON object", err)
 	}
 	return nil
 }
@@ -198,12 +198,12 @@ func isJSONContentType(value string) bool {
 }
 
 func writeSafeError(w stdhttp.ResponseWriter, _ *stdhttp.Request, status int, err error, retryAfter *time.Duration) {
-	code, class, ok := boyan.ClassifyError(err)
+	code, class, ok := memory.ClassifyError(err)
 	if !ok {
-		code = boyan.CodePermanent
-		class = boyan.ErrorClassPermanent
+		code = memory.CodePermanent
+		class = memory.ErrorClassPermanent
 	}
-	body := boyan.IngestErrorResponse{
+	body := memory.IngestErrorResponse{
 		Code:    code,
 		Class:   class,
 		Message: safeErrorMessage(code, status),
@@ -218,30 +218,30 @@ func writeSafeError(w stdhttp.ResponseWriter, _ *stdhttp.Request, status int, er
 }
 
 func statusFromError(err error) int {
-	code, class, ok := boyan.ClassifyError(err)
+	code, class, ok := memory.ClassifyError(err)
 	if !ok {
 		return stdhttp.StatusInternalServerError
 	}
 	switch code {
-	case boyan.CodeInvalidScope, boyan.CodeUnsupportedScope, boyan.CodeInvalidSession, boyan.CodeInvalidQuery, boyan.CodeInvalidDerived:
+	case memory.CodeInvalidScope, memory.CodeUnsupportedScope, memory.CodeInvalidSession, memory.CodeInvalidQuery, memory.CodeInvalidDerived:
 		return stdhttp.StatusBadRequest
-	case boyan.CodeConflict:
+	case memory.CodeConflict:
 		return stdhttp.StatusConflict
-	case boyan.CodeLimitExceeded:
-		if class == boyan.ErrorClassRetryable {
+	case memory.CodeLimitExceeded:
+		if class == memory.ErrorClassRetryable {
 			return stdhttp.StatusTooManyRequests
 		}
 		return stdhttp.StatusBadRequest
-	case boyan.CodeTimeout:
+	case memory.CodeTimeout:
 		return stdhttp.StatusGatewayTimeout
-	case boyan.CodeUnavailable, boyan.CodePermanent, boyan.CodeShuttingDown, boyan.CodeStoreFailure, boyan.CodeModelFailure, boyan.CodeDisabled:
+	case memory.CodeUnavailable, memory.CodePermanent, memory.CodeShuttingDown, memory.CodeStoreFailure, memory.CodeModelFailure, memory.CodeDisabled:
 		return stdhttp.StatusServiceUnavailable
 	default:
 		return stdhttp.StatusInternalServerError
 	}
 }
 
-func safeErrorMessage(code boyan.ErrorCode, status int) string {
+func safeErrorMessage(code memory.ErrorCode, status int) string {
 	switch status {
 	case stdhttp.StatusBadRequest:
 		return "ingest request is invalid"
@@ -250,7 +250,7 @@ func safeErrorMessage(code boyan.ErrorCode, status int) string {
 	case stdhttp.StatusTooManyRequests:
 		return "ingest service is temporarily at capacity"
 	case stdhttp.StatusServiceUnavailable:
-		if code == boyan.CodeShuttingDown {
+		if code == memory.CodeShuttingDown {
 			return "ingest service is shutting down"
 		}
 		return "ingest service is temporarily unavailable"

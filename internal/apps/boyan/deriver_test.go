@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/baldaworks/boyan"
+	boyan "github.com/baldaworks/boyan/pkg/memory"
 )
 
 type scriptedInvoker struct {
@@ -48,7 +48,7 @@ func TestDeriverExtractCanonicalSemanticsUsesNeutralStructuredBoundary(t *testin
 	if len(items) != 1 || items[0].Memory.Statement != "Ada lives in Bishkek" {
 		t.Fatalf("canonical semantics = %#v", items)
 	}
-	if invoker.last.Stage != "canonical_semantics" || !strings.Contains(invoker.last.Instruction, "session-memory") {
+	if invoker.last.Stage != "canonical_semantics" || !strings.Contains(invoker.last.Instruction, "Boyan derivation worker") {
 		t.Fatalf("structured invocation = %#v", invoker.last)
 	}
 }

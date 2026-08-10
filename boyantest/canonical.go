@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/baldaworks/boyan"
+	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
 // CanonicalStoreFactory creates an empty canonical store for one contract
 // subtest. Implementations should register cleanup on t before returning it.
-type CanonicalStoreFactory func(t *testing.T) boyan.CanonicalStore
+type CanonicalStoreFactory func(t *testing.T) memory.CanonicalStore
 
 // RunCanonicalStoreContract applies the storage-neutral v2 canonical-store
 // contract. Backend-specific tests retain ownership of reopen, fault, and
@@ -42,7 +42,7 @@ func RunCanonicalStoreContract(t *testing.T, factory CanonicalStoreFactory) {
 	})
 }
 
-func runCanonicalMutationContract(t *testing.T, store boyan.CanonicalStore) {
+func runCanonicalMutationContract(t *testing.T, store memory.CanonicalStore) {
 	t.Helper()
 	scope := canonicalScope("contract:canonical-mutation")
 	mutation := canonicalMutation(scope, 0, "operation-1", "revision-1", "item-1")
@@ -73,11 +73,11 @@ func runCanonicalMutationContract(t *testing.T, store boyan.CanonicalStore) {
 	if _, err := store.ApplyCanonicalMutation(context.Background(), collision); err == nil {
 		t.Fatal("operation fingerprint collision succeeded")
 	} else {
-		requireCanonicalCode(t, err, boyan.CodeConflict)
+		requireCanonicalCode(t, err, memory.CodeConflict)
 	}
 }
 
-func runCanonicalScopeContract(t *testing.T, store boyan.CanonicalStore) {
+func runCanonicalScopeContract(t *testing.T, store memory.CanonicalStore) {
 	t.Helper()
 	scopeA := canonicalScope("contract:canonical-scope-a")
 	scopeB := canonicalScope("contract:canonical-scope-b")
@@ -87,7 +87,7 @@ func runCanonicalScopeContract(t *testing.T, store boyan.CanonicalStore) {
 	if _, err := store.ApplyCanonicalMutation(context.Background(), canonicalMutation(scopeA, 0, "operation-2", "revision-2", "item-2")); err == nil {
 		t.Fatal("stale CAS mutation succeeded")
 	} else {
-		requireCanonicalCode(t, err, boyan.CodeConflict)
+		requireCanonicalCode(t, err, memory.CodeConflict)
 	}
 	if _, err := store.ApplyCanonicalMutation(context.Background(), canonicalMutation(scopeB, 0, "operation-1", "revision-1", "item-1")); err != nil {
 		t.Fatalf("same IDs in an independent scope error = %v", err)
@@ -102,7 +102,7 @@ func runCanonicalScopeContract(t *testing.T, store boyan.CanonicalStore) {
 	}
 }
 
-func runCanonicalInvalidMutationContract(t *testing.T, store boyan.CanonicalStore) {
+func runCanonicalInvalidMutationContract(t *testing.T, store memory.CanonicalStore) {
 	t.Helper()
 	scope := canonicalScope("contract:canonical-invalid")
 	mutation := canonicalMutation(scope, 0, "operation-1", "revision-1", "item-1")
@@ -116,16 +116,16 @@ func runCanonicalInvalidMutationContract(t *testing.T, store boyan.CanonicalStor
 	}
 }
 
-func runCanonicalCycleContract(t *testing.T, store boyan.CanonicalStore) {
+func runCanonicalCycleContract(t *testing.T, store memory.CanonicalStore) {
 	t.Helper()
 	scope := canonicalScope("contract:canonical-cycle")
 	mutation := canonicalMutation(scope, 0, "operation-1", "revision-1", "item-1")
 	second := canonicalRevision("revision-2", "item-2", mutation.Operation.CommittedAt)
-	mutation.Items = append(mutation.Items, boyan.MemoryItem{ItemID: second.ItemID, Scope: scope, Kind: boyan.MemoryKindEvent})
+	mutation.Items = append(mutation.Items, memory.MemoryItem{ItemID: second.ItemID, Scope: scope, Kind: memory.MemoryKindEvent})
 	mutation.Revisions[0].Parents = []string{second.RevisionID}
 	second.Parents = []string{mutation.Revisions[0].RevisionID}
 	mutation.Revisions = append(mutation.Revisions, second)
-	mutation.Heads = append(mutation.Heads, boyan.ItemHead{ItemID: second.ItemID, RevisionID: second.RevisionID})
+	mutation.Heads = append(mutation.Heads, memory.ItemHead{ItemID: second.ItemID, RevisionID: second.RevisionID})
 	if _, err := store.ApplyCanonicalMutation(context.Background(), mutation); err == nil {
 		t.Fatal("cyclic provenance mutation succeeded")
 	}
@@ -135,7 +135,7 @@ func runCanonicalCycleContract(t *testing.T, store boyan.CanonicalStore) {
 	}
 }
 
-func runCanonicalConcurrentScopesContract(t *testing.T, store boyan.CanonicalStore) {
+func runCanonicalConcurrentScopesContract(t *testing.T, store memory.CanonicalStore) {
 	t.Helper()
 	keys := []string{"contract:canonical-concurrent-a", "contract:canonical-concurrent-b"}
 	errs := make(chan error, len(keys))
@@ -164,30 +164,30 @@ func runCanonicalConcurrentScopesContract(t *testing.T, store boyan.CanonicalSto
 	}
 }
 
-func runCanonicalDeliveryContract(t *testing.T, store boyan.CanonicalStore) {
+func runCanonicalDeliveryContract(t *testing.T, store memory.CanonicalStore) {
 	t.Helper()
 	scope := canonicalScope("contract:canonical-delivery")
 	now := time.Date(2026, time.August, 5, 12, 0, 0, 0, time.UTC)
 	mutation := canonicalMutation(scope, 0, "operation-1", "revision-1", "item-1")
-	mutation.Delivery = []boyan.DeliveryOutboxRecord{{
+	mutation.Delivery = []memory.DeliveryOutboxRecord{{
 		DeliveryID: "delivery-1", OperationID: mutation.Operation.OperationID, CreatedAt: now,
-		PayloadRef: boyan.PayloadRef{ID: "payload-1", Digest: "digest-1", ByteSize: 1},
+		PayloadRef: memory.PayloadRef{ID: "payload-1", Digest: "digest-1", ByteSize: 1},
 	}}
 	if _, err := store.ApplyCanonicalMutation(context.Background(), mutation); err != nil {
 		t.Fatalf("ApplyCanonicalMutation() error = %v", err)
 	}
-	claim := boyan.DeliveryClaimRequest{Scope: scope, LeaseOwner: "worker-1", Now: now, LeaseUntil: now.Add(time.Minute), Limit: 1}
+	claim := memory.DeliveryClaimRequest{Scope: scope, LeaseOwner: "worker-1", Now: now, LeaseUntil: now.Add(time.Minute), Limit: 1}
 	claimed, err := store.ClaimDeliveryOutbox(context.Background(), claim)
 	if err != nil || len(claimed) != 1 || claimed[0].Claim.Attempts != 1 {
 		t.Fatalf("ClaimDeliveryOutbox() = %#v, error = %v", claimed, err)
 	}
-	if err := store.SettleDeliveryOutbox(context.Background(), boyan.DeliverySettlementRequest{
-		Scope: scope, DeliveryID: "delivery-1", LeaseOwner: "worker-2", Status: boyan.DeliveryStatusDelivered, CompletedAt: now,
+	if err := store.SettleDeliveryOutbox(context.Background(), memory.DeliverySettlementRequest{
+		Scope: scope, DeliveryID: "delivery-1", LeaseOwner: "worker-2", Status: memory.DeliveryStatusDelivered, CompletedAt: now,
 	}); err == nil {
 		t.Fatal("foreign worker settled an active lease")
 	}
-	if err := store.SettleDeliveryOutbox(context.Background(), boyan.DeliverySettlementRequest{
-		Scope: scope, DeliveryID: "delivery-1", LeaseOwner: "worker-1", Status: boyan.DeliveryStatusDelivered, CompletedAt: now,
+	if err := store.SettleDeliveryOutbox(context.Background(), memory.DeliverySettlementRequest{
+		Scope: scope, DeliveryID: "delivery-1", LeaseOwner: "worker-1", Status: memory.DeliveryStatusDelivered, CompletedAt: now,
 	}); err != nil {
 		t.Fatalf("SettleDeliveryOutbox() error = %v", err)
 	}
@@ -195,9 +195,9 @@ func runCanonicalDeliveryContract(t *testing.T, store boyan.CanonicalStore) {
 		t.Fatalf("settled delivery claim = %#v, error = %v", claimed, err)
 	}
 	second := canonicalMutation(scope, 1, "operation-2", "revision-2", "item-2")
-	second.Delivery = []boyan.DeliveryOutboxRecord{{
+	second.Delivery = []memory.DeliveryOutboxRecord{{
 		DeliveryID: "delivery-2", OperationID: second.Operation.OperationID, CreatedAt: now,
-		PayloadRef: boyan.PayloadRef{ID: "payload-2", Digest: "digest-2", ByteSize: 1},
+		PayloadRef: memory.PayloadRef{ID: "payload-2", Digest: "digest-2", ByteSize: 1},
 	}}
 	if _, err := store.ApplyCanonicalMutation(context.Background(), second); err != nil {
 		t.Fatalf("second ApplyCanonicalMutation() error = %v", err)
@@ -214,36 +214,36 @@ func runCanonicalDeliveryContract(t *testing.T, store boyan.CanonicalStore) {
 	}
 }
 
-func canonicalScope(key string) boyan.Scope {
-	return boyan.Scope{Key: key, Kind: boyan.ScopeKindPersonal}
+func canonicalScope(key string) memory.Scope {
+	return memory.Scope{Key: key, Kind: memory.ScopeKindPersonal}
 }
 
-func canonicalMutation(scope boyan.Scope, expectedVersion uint64, operationID, revisionID, itemID string) boyan.CanonicalMutation {
+func canonicalMutation(scope memory.Scope, expectedVersion uint64, operationID, revisionID, itemID string) memory.CanonicalMutation {
 	committedAt := time.Date(2026, time.August, 5, 12, 0, int(expectedVersion), 0, time.UTC)
-	return boyan.CanonicalMutation{
-		SchemaVersion:        boyan.CanonicalSchemaVersionV1,
+	return memory.CanonicalMutation{
+		SchemaVersion:        memory.CanonicalSchemaVersionV1,
 		Scope:                scope,
 		ExpectedScopeVersion: expectedVersion,
-		Operation:            boyan.OperationRecord{OperationID: operationID, Fingerprint: operationID + "-fingerprint", CommittedAt: committedAt},
-		Items:                []boyan.MemoryItem{{ItemID: itemID, Scope: scope, Kind: boyan.MemoryKindEvent}},
-		Revisions:            []boyan.MemoryRevision{canonicalRevision(revisionID, itemID, committedAt)},
-		Heads:                []boyan.ItemHead{{ItemID: itemID, RevisionID: revisionID}},
+		Operation:            memory.OperationRecord{OperationID: operationID, Fingerprint: operationID + "-fingerprint", CommittedAt: committedAt},
+		Items:                []memory.MemoryItem{{ItemID: itemID, Scope: scope, Kind: memory.MemoryKindEvent}},
+		Revisions:            []memory.MemoryRevision{canonicalRevision(revisionID, itemID, committedAt)},
+		Heads:                []memory.ItemHead{{ItemID: itemID, RevisionID: revisionID}},
 	}
 }
 
-func canonicalRevision(revisionID, itemID string, observedAt time.Time) boyan.MemoryRevision {
-	return boyan.MemoryRevision{
-		SchemaVersion: boyan.MemorySchemaVersionV2, RevisionID: revisionID, ItemID: itemID, Revision: 1,
-		Temporal:    boyan.Temporal{ObservedAt: observedAt},
-		Evidence:    []boyan.EvidenceRef{{SourceID: "source-1", MessageID: "message-1", Role: boyan.MessageRoleUser, StartByte: 1, EndByte: 2, AssertionMode: boyan.AssertionModeUser}},
-		Sensitivity: boyan.SensitivityStandard, Retention: boyan.RetentionClassStandard,
-		Payload: boyan.PayloadRef{ID: "payload-1", Digest: "digest-1", ByteSize: 1},
+func canonicalRevision(revisionID, itemID string, observedAt time.Time) memory.MemoryRevision {
+	return memory.MemoryRevision{
+		SchemaVersion: memory.MemorySchemaVersion, RevisionID: revisionID, ItemID: itemID, Revision: 1,
+		Temporal:    memory.Temporal{ObservedAt: observedAt},
+		Evidence:    []memory.EvidenceRef{{SourceID: "source-1", MessageID: "message-1", Role: memory.MessageRoleUser, StartByte: 1, EndByte: 2, AssertionMode: memory.AssertionModeUser}},
+		Sensitivity: memory.SensitivityStandard, Retention: memory.RetentionClassStandard,
+		Payload: memory.PayloadRef{ID: "payload-1", Digest: "digest-1", ByteSize: 1},
 	}
 }
 
-func requireCanonicalCode(t *testing.T, err error, want boyan.ErrorCode) {
+func requireCanonicalCode(t *testing.T, err error, want memory.ErrorCode) {
 	t.Helper()
-	var memoryErr *boyan.Error
+	var memoryErr *memory.Error
 	if !errors.As(err, &memoryErr) || memoryErr.Code != want {
 		t.Fatalf("error = %v, want sessionmemory code %q", err, want)
 	}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/baldaworks/boyan"
+	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
 const (
@@ -30,7 +30,7 @@ func (c ScopeLaneConfig) normalized() (ScopeLaneConfig, error) {
 		out.MaxQueuedPerScope = defaultMaxQueuedPerScopeLane
 	}
 	if out.MaxConcurrentScopes > maxConcurrentScopeLanes || out.MaxQueuedPerScope > maxQueuedPerScopeLane {
-		return ScopeLaneConfig{}, boyan.PermanentError(boyan.CodeLimitExceeded, "scope lane limits exceed safe bounds", nil)
+		return ScopeLaneConfig{}, memory.PermanentError(memory.CodeLimitExceeded, "scope lane limits exceed safe bounds", nil)
 	}
 	return out, nil
 }
@@ -73,12 +73,12 @@ func newScopeLaneExecutor(config ScopeLaneConfig) (*scopeLaneExecutor, error) {
 
 func (e *scopeLaneExecutor) Start(context.Context) error {
 	if e == nil {
-		return boyan.PermanentError(boyan.CodeDisabled, "scope lane executor is unavailable", nil)
+		return memory.PermanentError(memory.CodeDisabled, "scope lane executor is unavailable", nil)
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.closed {
-		return boyan.PermanentError(boyan.CodeShuttingDown, "scope lane executor is closed", nil)
+		return memory.PermanentError(memory.CodeShuttingDown, "scope lane executor is closed", nil)
 	}
 	if e.started {
 		return nil
@@ -87,21 +87,21 @@ func (e *scopeLaneExecutor) Start(context.Context) error {
 	return nil
 }
 
-func (e *scopeLaneExecutor) Execute(ctx context.Context, scope boyan.Scope, run func(context.Context) error) error {
+func (e *scopeLaneExecutor) Execute(ctx context.Context, scope memory.Scope, run func(context.Context) error) error {
 	if e == nil {
-		return boyan.PermanentError(boyan.CodeDisabled, "scope lane executor is unavailable", nil)
+		return memory.PermanentError(memory.CodeDisabled, "scope lane executor is unavailable", nil)
 	}
 	if ctx == nil {
-		return boyan.PermanentError(boyan.CodeInvalidDerived, "scope lane context is required", nil)
+		return memory.PermanentError(memory.CodeInvalidDerived, "scope lane context is required", nil)
 	}
 	if err := ctx.Err(); err != nil {
-		return boyan.RetryableError(boyan.CodeTimeout, "scope lane context ended", err)
+		return memory.RetryableError(memory.CodeTimeout, "scope lane context ended", err)
 	}
 	if err := scope.Validate(); err != nil {
 		return err
 	}
 	if run == nil {
-		return boyan.PermanentError(boyan.CodeInvalidDerived, "scope lane work is required", nil)
+		return memory.PermanentError(memory.CodeInvalidDerived, "scope lane work is required", nil)
 	}
 	key := string(scope.Kind) + "\x00" + scope.Key
 	work := scopeLaneWork{ctx: ctx, run: run, done: make(chan error, 1)}
@@ -109,11 +109,11 @@ func (e *scopeLaneExecutor) Execute(ctx context.Context, scope boyan.Scope, run 
 		e.mu.Lock()
 		if !e.started {
 			e.mu.Unlock()
-			return boyan.PermanentError(boyan.CodeDisabled, "scope lane executor is not started", nil)
+			return memory.PermanentError(memory.CodeDisabled, "scope lane executor is not started", nil)
 		}
 		if e.closed {
 			e.mu.Unlock()
-			return boyan.PermanentError(boyan.CodeShuttingDown, "scope lane executor is closing", nil)
+			return memory.PermanentError(memory.CodeShuttingDown, "scope lane executor is closing", nil)
 		}
 		lane := e.lanes[key]
 		if lane == nil {
@@ -135,10 +135,10 @@ func (e *scopeLaneExecutor) Execute(ctx context.Context, scope boyan.Scope, run 
 		e.mu.Unlock()
 		select {
 		case <-ctx.Done():
-			return boyan.RetryableError(boyan.CodeTimeout, "scope lane context ended", ctx.Err())
+			return memory.RetryableError(memory.CodeTimeout, "scope lane context ended", ctx.Err())
 		case <-changed:
 		default:
-			return boyan.RetryableError(boyan.CodeLimitExceeded, "scope lane queue is full", nil)
+			return memory.RetryableError(memory.CodeLimitExceeded, "scope lane queue is full", nil)
 		}
 	}
 }
@@ -168,7 +168,7 @@ func (e *scopeLaneExecutor) Close(ctx context.Context) error {
 	case <-done:
 		return nil
 	case <-ctx.Done():
-		return boyan.RetryableError(boyan.CodeTimeout, "scope lane executor close timed out", ctx.Err())
+		return memory.RetryableError(memory.CodeTimeout, "scope lane executor close timed out", ctx.Err())
 	}
 }
 
@@ -198,7 +198,7 @@ func (e *scopeLaneExecutor) runLane(key string, lane *scopeLane) {
 			work.done <- err
 			close(work.done)
 		case <-work.ctx.Done():
-			work.done <- boyan.RetryableError(boyan.CodeTimeout, "scope lane context ended", work.ctx.Err())
+			work.done <- memory.RetryableError(memory.CodeTimeout, "scope lane context ended", work.ctx.Err())
 			close(work.done)
 		}
 	}

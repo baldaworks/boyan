@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/baldaworks/boyan"
+	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
 const defaultProjectionBatchSize = 128
@@ -16,7 +16,7 @@ const defaultProjectionBatchSize = 128
 // ProjectionRebuildStarter is an optional adapter hook used by projections
 // that must create a disposable generation before replay begins.
 type ProjectionRebuildStarter interface {
-	BeginProjectionRebuild(ctx context.Context, scope boyan.Scope, generationID string) error
+	BeginProjectionRebuild(ctx context.Context, scope memory.Scope, generationID string) error
 }
 
 // ProjectionRuntime coordinates rebuildable projection generations after
@@ -35,19 +35,19 @@ type ProjectionRuntime struct {
 
 // NewProjectionRuntime constructs a projection coordinator over portable
 // canonical and projection ports.
-func NewProjectionRuntime(canonical boyan.CanonicalStore, checkpoints boyan.ProjectionCheckpointStore, applier boyan.ProjectionApplier, projectionID string, batchSize uint32) (*ProjectionRuntime, error) {
+func NewProjectionRuntime(canonical memory.CanonicalStore, checkpoints memory.ProjectionCheckpointStore, applier memory.ProjectionApplier, projectionID string, batchSize uint32) (*ProjectionRuntime, error) {
 	if canonical == nil || checkpoints == nil || applier == nil {
-		return nil, boyan.PermanentError(boyan.CodeStoreFailure, "projection runtime dependencies are required", nil)
+		return nil, memory.PermanentError(memory.CodeStoreFailure, "projection runtime dependencies are required", nil)
 	}
 	if projectionID == "" {
-		return nil, boyan.PermanentError(boyan.CodeInvalidDerived, "projection runtime identity is required", nil)
+		return nil, memory.PermanentError(memory.CodeInvalidDerived, "projection runtime identity is required", nil)
 	}
 	if batchSize == 0 {
 		batchSize = defaultProjectionBatchSize
 	}
 	coordinator, err := NewProjectionCoordinator(canonical, checkpoints, applier, batchSize)
 	if err != nil {
-		return nil, boyan.PermanentError(boyan.CodeStoreFailure, "create projection coordinator", err)
+		return nil, memory.PermanentError(memory.CodeStoreFailure, "create projection coordinator", err)
 	}
 	runtime := &ProjectionRuntime{coordinator: coordinator, projection: projectionID}
 	if starter, ok := applier.(ProjectionRebuildStarter); ok {
@@ -61,12 +61,12 @@ func NewProjectionRuntime(canonical boyan.CanonicalStore, checkpoints boyan.Proj
 func (*ProjectionRuntime) Start(context.Context) error { return nil }
 
 // Sync advances one exact-scope generation.
-func (r *ProjectionRuntime) Sync(ctx context.Context, scope boyan.Scope) error {
+func (r *ProjectionRuntime) Sync(ctx context.Context, scope memory.Scope) error {
 	if r == nil || r.coordinator == nil {
-		return boyan.PermanentError(boyan.CodeDisabled, "projection runtime is unavailable", nil)
+		return memory.PermanentError(memory.CodeDisabled, "projection runtime is unavailable", nil)
 	}
 	if ctx == nil {
-		return boyan.PermanentError(boyan.CodeInvalidDerived, "projection runtime context is required", nil)
+		return memory.PermanentError(memory.CodeInvalidDerived, "projection runtime context is required", nil)
 	}
 	if err := scope.Validate(); err != nil {
 		return err
@@ -74,7 +74,7 @@ func (r *ProjectionRuntime) Sync(ctx context.Context, scope boyan.Scope) error {
 	r.mu.Lock()
 	if r.closing {
 		r.mu.Unlock()
-		return boyan.PermanentError(boyan.CodeDisabled, "projection runtime is closing", nil)
+		return memory.PermanentError(memory.CodeDisabled, "projection runtime is closing", nil)
 	}
 	r.serial++
 	serial := r.serial
@@ -103,9 +103,9 @@ func (r *ProjectionRuntime) Close(context.Context) error {
 	return nil
 }
 
-func projectionGenerationID(projectionID string, scope boyan.Scope, serial uint64, now time.Time) string {
+func projectionGenerationID(projectionID string, scope memory.Scope, serial uint64, now time.Time) string {
 	hash := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%d\x00%d", projectionID, scope.Key, scope.Kind, serial, now.UnixNano())))
-	return "session-memory:v2:projection:" + hex.EncodeToString(hash[:])
+	return "boyan-memory:v1:projection:" + hex.EncodeToString(hash[:])
 }
 
 var _ ProjectionSyncer = (*ProjectionRuntime)(nil)

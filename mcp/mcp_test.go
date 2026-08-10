@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/baldaworks/boyan"
+	boyan "github.com/baldaworks/boyan/pkg/memory"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

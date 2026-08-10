@@ -34,7 +34,7 @@ Accepts a strict JSON envelope:
   "producer_id": "producer-1",
   "scope_sequence": 1,
   "payload": {
-    "schema_version": "session-memory/v1"
+    "schema_version": "boyan/v1"
   }
 }
 ```

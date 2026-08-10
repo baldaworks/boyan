@@ -48,7 +48,7 @@ export BOYAN_LOG_LEVEL=debug
 export BOYAN_DERIVATION_PROVIDER=memory
 ```
 
-Nested runtime/v2 provider configuration is usually easiest to manage in YAML.
+Nested runtime provider configuration is usually easiest to manage in YAML.
 
 ## Health and readiness
 

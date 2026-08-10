@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/baldaworks/boyan"
+	boyan "github.com/baldaworks/boyan/pkg/memory"
 )
 
 func TestProviderRecordsCallsAndUsesCallbacks(t *testing.T) {

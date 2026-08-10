@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/baldaworks/boyan"
+	. "github.com/baldaworks/boyan/pkg/memory"
 )
 
 func TestScopeViewBuilderKeepsActiveRecentAndChangedReadsBounded(t *testing.T) {
@@ -294,7 +294,7 @@ func projectionViewItem(scope Scope, itemID string) MemoryItem {
 
 func projectionViewRevision(revisionID, itemID string, revision uint64) MemoryRevision {
 	return MemoryRevision{
-		SchemaVersion: MemorySchemaVersionV2,
+		SchemaVersion: MemorySchemaVersion,
 		RevisionID:    revisionID,
 		ItemID:        itemID,
 		Revision:      revision,

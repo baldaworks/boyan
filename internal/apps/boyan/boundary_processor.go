@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	. "github.com/baldaworks/boyan"
+	. "github.com/baldaworks/boyan/pkg/memory"
 )
 
 // BoundaryStore is the narrow persistence port required by boundary

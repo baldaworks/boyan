@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/baldaworks/boyan"
 	portableapp "github.com/baldaworks/boyan/internal/apps/boyan"
+	boyan "github.com/baldaworks/boyan/pkg/memory"
 	"github.com/normahq/runtime/v2/agentconfig"
 	"github.com/normahq/runtime/v2/agentfactory"
 	runtimeconfig "github.com/normahq/runtime/v2/appconfig"

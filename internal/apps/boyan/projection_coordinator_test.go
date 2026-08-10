@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/baldaworks/boyan"
+	. "github.com/baldaworks/boyan/pkg/memory"
 )
 
 func TestProjectionManifestValidation(t *testing.T) {

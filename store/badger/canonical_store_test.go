@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dgraph-io/badger/v4"
-	"github.com/baldaworks/boyan"
 	"github.com/baldaworks/boyan/boyantest"
+	boyan "github.com/baldaworks/boyan/pkg/memory"
+	"github.com/dgraph-io/badger/v4"
 )
 
 const stateTestRevisionOneID = "revision-1"
@@ -160,7 +160,7 @@ func TestCanonicalStoreAppliesCanonicalMutation(t *testing.T) {
 		Scope:         scope,
 		Operation: boyan.OperationRecord{
 			OperationID: "operation-1",
-			Fingerprint: "derivation-v2-sha256",
+			Fingerprint: "derivation-current-sha256",
 			CommittedAt: time.Date(2026, time.August, 5, 12, 0, 0, 0, time.UTC),
 		},
 		Heads: []boyan.ItemHead{{ItemID: "item-1", RevisionID: "revision-1"}},
@@ -474,7 +474,7 @@ func TestCanonicalStoreLogicalExportImportRoundTrip(t *testing.T) {
 	if err := source.ExportCanonicalLogical(ctx, &encoded); err != nil {
 		t.Fatalf("ExportCanonicalLogical() error = %v", err)
 	}
-	if encoded.Len() == 0 || !bytes.Contains(encoded.Bytes(), []byte("session-memory-logical-export/v1")) {
+	if encoded.Len() == 0 || !bytes.Contains(encoded.Bytes(), []byte("boyan-logical-export/v1")) {
 		t.Fatalf("logical export = %q", encoded.String())
 	}
 	if err := source.Close(); err != nil {
@@ -829,7 +829,7 @@ func canonicalItem(scope boyan.Scope, itemID string) boyan.MemoryItem {
 
 func canonicalRevision(revisionID, itemID string) boyan.MemoryRevision {
 	return boyan.MemoryRevision{
-		SchemaVersion: boyan.MemorySchemaVersionV2,
+		SchemaVersion: boyan.MemorySchemaVersion,
 		RevisionID:    revisionID,
 		ItemID:        itemID,
 		Revision:      1,

@@ -3,15 +3,15 @@ package badger
 import (
 	"context"
 
-	"github.com/baldaworks/boyan"
+	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
 func canonicalContextError(ctx context.Context) error {
 	if ctx == nil {
-		return boyan.PermanentError(boyan.CodeInvalidDerived, "context is required", nil)
+		return memory.PermanentError(memory.CodeInvalidDerived, "context is required", nil)
 	}
 	if err := ctx.Err(); err != nil {
-		return boyan.RetryableError(boyan.CodeTimeout, "canonical store operation canceled", err)
+		return memory.RetryableError(memory.CodeTimeout, "canonical store operation canceled", err)
 	}
 	return nil
 }

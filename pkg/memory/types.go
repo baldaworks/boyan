@@ -1,0 +1,257 @@
+package memory
+
+import (
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
+	"fmt"
+	"strings"
+	"time"
+)
+
+const (
+	// SchemaVersionV1 identifies the first portable Boyan export schema.
+	SchemaVersionV1 = "boyan/v1"
+
+	// DefaultSearchLimit is used when a search request omits its limit.
+	DefaultSearchLimit = 10
+	// MaxSearchLimit bounds the number of results requested from a provider.
+	MaxSearchLimit = 100
+	// MaxSearchQueryBytes bounds a UTF-8 search query at the provider boundary.
+	MaxSearchQueryBytes = 4096
+	maxTurnToolMessages = 16
+)
+
+// ScopeKind classifies a locator without changing its isolation boundary.
+type ScopeKind string
+
+const (
+	// ScopeKindPersonal is a direct or private conversation scope.
+	ScopeKindPersonal ScopeKind = "personal"
+	// ScopeKindGroup is a shared group, channel, or stream scope. A topic or
+	// thread may still have this kind when its parent audience is shared.
+	ScopeKindGroup ScopeKind = "group"
+)
+
+// Scope identifies the exact locator partition used for export and recall.
+type Scope struct {
+	Key  string    `json:"key"`
+	Kind ScopeKind `json:"kind"`
+}
+
+// SessionRef identifies the standalone session and its runtime lineage.
+type SessionRef struct {
+	SessionID         string `json:"session_id"`
+	AgentSessionID    string `json:"agent_session_id"`
+	LineageID         string `json:"lineage_id,omitempty"`
+	PreviousSessionID string `json:"previous_session_id,omitempty"`
+}
+
+// MessageRole identifies one eligible conversational message role.
+type MessageRole string
+
+const (
+	// MessageRoleUser identifies normalized user-visible input.
+	MessageRoleUser MessageRole = "user"
+	// MessageRoleAssistant identifies final visible assistant output.
+	MessageRoleAssistant MessageRole = "assistant"
+	// MessageRoleTool identifies allowlisted typed tool evidence.
+	MessageRoleTool MessageRole = "tool"
+)
+
+// TurnTerminalStatus identifies how the provider turn ended. Empty is
+// accepted only for legacy successful exports and normalizes to success.
+type TurnTerminalStatus string
+
+const (
+	TurnTerminalStatusSuccess     TurnTerminalStatus = "success"
+	TurnTerminalStatusFailed      TurnTerminalStatus = "failed"
+	TurnTerminalStatusInterrupted TurnTerminalStatus = "interrupted"
+)
+
+// Message is one text-only conversational message in a completed turn.
+type Message struct {
+	MessageID  string      `json:"message_id,omitempty"`
+	Role       MessageRole `json:"role"`
+	Text       string      `json:"text"`
+	ToolName   string      `json:"tool_name,omitempty"`
+	ToolCallID string      `json:"tool_call_id,omitempty"`
+}
+
+// Turn is an idempotent terminal-turn export. It always contains normalized
+// user input and may omit assistant text when the provider terminally fails or
+// is interrupted before producing a visible response.
+type Turn struct {
+	SchemaVersion  string             `json:"schema_version"`
+	ExportID       string             `json:"export_id"`
+	Scope          Scope              `json:"scope"`
+	Session        SessionRef         `json:"session"`
+	SourceTurnID   string             `json:"source_turn_id"`
+	SourceID       string             `json:"source_id,omitempty"`
+	CompletedAt    time.Time          `json:"completed_at"`
+	TerminalStatus TurnTerminalStatus `json:"terminal_status,omitempty"`
+	Messages       []Message          `json:"messages"`
+}
+
+// BoundaryReason identifies a session lifecycle transition.
+type BoundaryReason string
+
+const (
+	// BoundaryReasonReset marks a history reset within an existing locator.
+	BoundaryReasonReset BoundaryReason = "reset"
+	// BoundaryReasonClose marks an explicitly closed session.
+	BoundaryReasonClose BoundaryReason = "close"
+	// BoundaryReasonRotation marks replacement by a new session lineage.
+	BoundaryReasonRotation BoundaryReason = "rotation"
+	// BoundaryReasonShutdown marks bounded application shutdown extraction.
+	BoundaryReasonShutdown BoundaryReason = "shutdown"
+)
+
+// Boundary is an idempotent session lifecycle export.
+type Boundary struct {
+	SchemaVersion string         `json:"schema_version"`
+	ExportID      string         `json:"export_id"`
+	Scope         Scope          `json:"scope"`
+	Session       SessionRef     `json:"session"`
+	TransitionID  string         `json:"transition_id"`
+	Reason        BoundaryReason `json:"reason"`
+	OccurredAt    time.Time      `json:"occurred_at"`
+}
+
+// NewTurn builds and validates an idempotent completed-turn export.
+func NewTurn(scope Scope, session SessionRef, sourceTurnID string, completedAt time.Time, userText, assistantText string) (Turn, error) {
+	return NewTerminalTurn(scope, session, sourceTurnID, completedAt, userText, assistantText, TurnTerminalStatusSuccess)
+}
+
+// NewTerminalTurn builds one idempotent terminal export. A user-only export is
+// valid solely for a failed or interrupted provider turn.
+func NewTerminalTurn(scope Scope, session SessionRef, sourceTurnID string, completedAt time.Time, userText, assistantText string, terminalStatus TurnTerminalStatus) (Turn, error) {
+	return NewTerminalTurnWithTools(scope, session, sourceTurnID, completedAt, userText, assistantText, nil, terminalStatus)
+}
+
+// NewTerminalTurnWithTools builds a terminal export with already allowlisted,
+// typed tool evidence. Tool identities are application-derived; callers cannot
+// supply durable message IDs.
+func NewTerminalTurnWithTools(scope Scope, session SessionRef, sourceTurnID string, completedAt time.Time, userText, assistantText string, tools []Message, terminalStatus TurnTerminalStatus) (Turn, error) {
+	exportID, err := TurnExportID(scope, session, sourceTurnID)
+	if err != nil {
+		return Turn{}, err
+	}
+	messages := []Message{{MessageID: TurnMessageID(exportID, MessageRoleUser), Role: MessageRoleUser, Text: strings.TrimSpace(userText)}}
+	if assistantText = strings.TrimSpace(assistantText); assistantText != "" {
+		messages = append(messages, Message{MessageID: TurnMessageID(exportID, MessageRoleAssistant), Role: MessageRoleAssistant, Text: assistantText})
+	}
+	for _, tool := range tools {
+		tool.Role = MessageRoleTool
+		tool.MessageID = TurnToolMessageID(exportID, tool.ToolName, tool.ToolCallID)
+		tool.Text = strings.TrimSpace(tool.Text)
+		tool.ToolName = strings.TrimSpace(tool.ToolName)
+		tool.ToolCallID = strings.TrimSpace(tool.ToolCallID)
+		messages = append(messages, tool)
+	}
+	turn := Turn{
+		SchemaVersion:  SchemaVersionV1,
+		ExportID:       exportID,
+		Scope:          scope,
+		Session:        session,
+		SourceTurnID:   strings.TrimSpace(sourceTurnID),
+		SourceID:       TurnSourceID(exportID),
+		CompletedAt:    completedAt,
+		TerminalStatus: terminalStatus,
+		Messages:       messages,
+	}
+	if err := turn.Validate(); err != nil {
+		return Turn{}, err
+	}
+	return turn, nil
+}
+
+// TurnSourceID derives the stable content-free source identifier for one turn
+// export. It is safe to persist beside the source metadata.
+func TurnSourceID(exportID string) string {
+	return stableExportID("source", strings.TrimSpace(exportID))
+}
+
+// TurnMessageID derives the stable content-free message identifier for one
+// role in a turn export. A turn has at most one message for each allowed role.
+func TurnMessageID(exportID string, role MessageRole) string {
+	return stableExportID("message", strings.TrimSpace(exportID), string(role))
+}
+
+// TurnToolMessageID derives a stable content-free identity for one typed tool
+// response within a terminal turn.
+func TurnToolMessageID(exportID, toolName, toolCallID string) string {
+	return stableExportID("tool-message", strings.TrimSpace(exportID), strings.TrimSpace(toolName), strings.TrimSpace(toolCallID))
+}
+
+// NewBoundary builds and validates an idempotent lifecycle export.
+func NewBoundary(scope Scope, session SessionRef, transitionID string, reason BoundaryReason, occurredAt time.Time) (Boundary, error) {
+	exportID, err := BoundaryExportID(scope, session, transitionID)
+	if err != nil {
+		return Boundary{}, err
+	}
+	boundary := Boundary{
+		SchemaVersion: SchemaVersionV1,
+		ExportID:      exportID,
+		Scope:         scope,
+		Session:       session,
+		TransitionID:  strings.TrimSpace(transitionID),
+		Reason:        reason,
+		OccurredAt:    occurredAt,
+	}
+	if err := boundary.Validate(); err != nil {
+		return Boundary{}, err
+	}
+	return boundary, nil
+}
+
+// TurnExportID derives a stable idempotency key for one source turn.
+func TurnExportID(scope Scope, session SessionRef, sourceTurnID string) (string, error) {
+	if err := scope.Validate(); err != nil {
+		return "", err
+	}
+	if err := session.Validate(); err != nil {
+		return "", err
+	}
+	sourceTurnID = strings.TrimSpace(sourceTurnID)
+	if sourceTurnID == "" {
+		return "", PermanentError(CodeInvalidSession, "source turn id is required", nil)
+	}
+	return stableExportID("turn", scope.Key, session.SessionID, sourceTurnID), nil
+}
+
+// BoundaryExportID derives a stable idempotency key for one lifecycle transition.
+func BoundaryExportID(scope Scope, session SessionRef, transitionID string) (string, error) {
+	if err := scope.Validate(); err != nil {
+		return "", err
+	}
+	if err := session.Validate(); err != nil {
+		return "", err
+	}
+	transitionID = strings.TrimSpace(transitionID)
+	if transitionID == "" {
+		return "", PermanentError(CodeInvalidSession, "transition id is required", nil)
+	}
+	return stableExportID("boundary", scope.Key, session.SessionID, transitionID), nil
+}
+
+func stableExportID(kind string, parts ...string) string {
+	hash := sha256.New()
+	_, _ = hash.Write([]byte(SchemaVersionV1))
+	writeHashPart(hash, kind)
+	for _, part := range parts {
+		writeHashPart(hash, part)
+	}
+	return fmt.Sprintf("boyan:v1:%s:%s", kind, hex.EncodeToString(hash.Sum(nil)))
+}
+
+type hashWriter interface {
+	Write(data []byte) (int, error)
+}
+
+func writeHashPart(dst hashWriter, value string) {
+	var size [8]byte
+	binary.BigEndian.PutUint64(size[:], uint64(len(value)))
+	_, _ = dst.Write(size[:])
+	_, _ = dst.Write([]byte(value))
+}

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/baldaworks/boyan"
+	boyan "github.com/baldaworks/boyan/pkg/memory"
 )
 
 func TestCanonicalReaderHydratesRecallAndBoundedTrace(t *testing.T) {
@@ -34,12 +34,12 @@ func TestCanonicalReaderHydratesRecallAndBoundedTrace(t *testing.T) {
 		t.Fatalf("NewEvidenceRef() error = %v", err)
 	}
 	item := boyan.MemoryItem{ItemID: "item-reader", Scope: scope, Kind: boyan.MemoryKindState, MemoryKey: "reader-key"}
-	revision := boyan.MemoryRevision{SchemaVersion: boyan.MemorySchemaVersionV2, RevisionID: "revision-reader", ItemID: item.ItemID, Revision: 1, Temporal: boyan.Temporal{ObservedAt: completedAt}, Evidence: []boyan.EvidenceRef{evidence}, Sensitivity: boyan.SensitivityStandard, Retention: boyan.RetentionClassStandard}
+	revision := boyan.MemoryRevision{SchemaVersion: boyan.MemorySchemaVersion, RevisionID: "revision-reader", ItemID: item.ItemID, Revision: 1, Temporal: boyan.Temporal{ObservedAt: completedAt}, Evidence: []boyan.EvidenceRef{evidence}, Sensitivity: boyan.SensitivityStandard, Retention: boyan.RetentionClassStandard}
 	mutation := boyan.CanonicalMutation{
 		SchemaVersion: boyan.CanonicalSchemaVersionV1,
 		Scope:         scope,
 		Operation:     boyan.OperationRecord{OperationID: "operation-reader", Fingerprint: "fingerprint-reader", CommittedAt: completedAt},
-		Sources:       []boyan.SourceRecordV2{{SourceID: turn.SourceID, Scope: scope, Sensitivity: boyan.SensitivityStandard, Retention: boyan.RetentionClassStandard}},
+		Sources:       []boyan.CanonicalSourceRecord{{SourceID: turn.SourceID, Scope: scope, Sensitivity: boyan.SensitivityStandard, Retention: boyan.RetentionClassStandard}},
 		Messages: []boyan.MessageRecord{
 			{MessageID: turn.Messages[0].MessageID, SourceID: turn.SourceID, Role: boyan.MessageRoleUser},
 			{MessageID: turn.Messages[1].MessageID, SourceID: turn.SourceID, Role: boyan.MessageRoleAssistant},
@@ -74,7 +74,7 @@ func TestCanonicalReaderHydratesRecallAndBoundedTrace(t *testing.T) {
 		t.Fatalf("SearchDerived() = %#v, error = %v", search, err)
 	}
 	if _, err := reader.Trace(context.Background(), boyan.TraceRequest{Scope: scope, Root: boyan.RevisionRef{ItemID: item.ItemID, RevisionID: revision.RevisionID}, MaxNodes: 10}); err == nil {
-		t.Fatal("Trace() unexpectedly accepted a v2 item without a representable legacy identity")
+		t.Fatal("Trace() unexpectedly accepted a canonical item without a representable legacy identity")
 	}
 }
 

@@ -1,0 +1,118 @@
+version: 3
+workdir: .
+
+allow:
+  depOnAnyVendor: false
+  deepScan: false
+
+excludeFiles:
+  - "^.*_test\\.go$"
+
+components:
+  public_memory:
+    in:
+      - pkg/memory
+
+  public_client:
+    in:
+      - client/http
+
+  public_testkit:
+    in:
+      - boyantest
+
+  app:
+    in:
+      - internal/apps/boyan
+
+  derivation:
+    in:
+      - internal/derivation
+
+  http_ingest:
+    in:
+      - internal/httpingest
+
+  projection:
+    in:
+      - index/bleve
+
+  store:
+    in:
+      - store/badger
+
+  mcp:
+    in:
+      - mcp
+
+  cmd:
+    in:
+      - cmd/boyan
+
+deps:
+  public_memory:
+    mayDependOn:
+      - public_memory
+    anyVendorDeps: false
+
+  public_client:
+    mayDependOn:
+      - public_memory
+      - public_client
+    anyVendorDeps: false
+
+  public_testkit:
+    mayDependOn:
+      - public_memory
+      - public_testkit
+    anyVendorDeps: false
+
+  app:
+    mayDependOn:
+      - public_memory
+      - app
+    anyVendorDeps: false
+
+  derivation:
+    mayDependOn:
+      - public_memory
+      - app
+      - derivation
+    anyVendorDeps: true
+
+  http_ingest:
+    mayDependOn:
+      - public_memory
+      - app
+      - http_ingest
+    anyVendorDeps: false
+
+  projection:
+    mayDependOn:
+      - public_memory
+      - projection
+    anyVendorDeps: true
+
+  store:
+    mayDependOn:
+      - public_memory
+      - store
+    anyVendorDeps: true
+
+  mcp:
+    mayDependOn:
+      - public_memory
+      - mcp
+    anyVendorDeps: true
+
+  cmd:
+    mayDependOn:
+      - public_memory
+      - app
+      - derivation
+      - http_ingest
+      - projection
+      - store
+      - mcp
+      - cmd
+    anyVendorDeps: true

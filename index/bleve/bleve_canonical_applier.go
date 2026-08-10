@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/baldaworks/boyan"
+	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
 // BleveCanonicalApplier adapts bounded canonical revisions to disposable
@@ -12,15 +12,15 @@ import (
 // revision is hydrated through the canonical reader before indexing.
 type BleveCanonicalApplier struct {
 	projection *BleveRecallProjection
-	reader     boyan.RecallCanonicalReader
+	reader     memory.RecallCanonicalReader
 
 	mu          sync.Mutex
 	generations map[string]*BleveGeneration
 }
 
-func NewBleveCanonicalApplier(projection *BleveRecallProjection, reader boyan.RecallCanonicalReader) (*BleveCanonicalApplier, error) {
+func NewBleveCanonicalApplier(projection *BleveRecallProjection, reader memory.RecallCanonicalReader) (*BleveCanonicalApplier, error) {
 	if projection == nil || reader == nil {
-		return nil, boyan.PermanentError(boyan.CodeStoreFailure, "bleve canonical applier dependencies are required", nil)
+		return nil, memory.PermanentError(memory.CodeStoreFailure, "bleve canonical applier dependencies are required", nil)
 	}
 	return &BleveCanonicalApplier{projection: projection, reader: reader, generations: make(map[string]*BleveGeneration)}, nil
 }
@@ -29,16 +29,16 @@ func NewBleveCanonicalApplier(projection *BleveRecallProjection, reader boyan.Re
 // the canonical deny/CAS decision has committed.  Recall remains correct if
 // this best-effort maintenance hook is interrupted because every candidate is
 // revalidated against canonical denial state.
-func (a *BleveCanonicalApplier) ScrubCanonicalForget(ctx context.Context, scope boyan.Scope, sourceIDs, revisionIDs []string) error {
+func (a *BleveCanonicalApplier) ScrubCanonicalForget(ctx context.Context, scope memory.Scope, sourceIDs, revisionIDs []string) error {
 	if a == nil || a.projection == nil {
-		return boyan.PermanentError(boyan.CodeDisabled, "bleve canonical applier is unavailable", nil)
+		return memory.PermanentError(memory.CodeDisabled, "bleve canonical applier is unavailable", nil)
 	}
 	return a.projection.ScrubCanonicalForget(ctx, scope, sourceIDs, revisionIDs)
 }
 
-var _ boyan.ProjectionApplier = (*BleveCanonicalApplier)(nil)
-var _ boyan.ProjectionBatchRebuildApplier = (*BleveCanonicalApplier)(nil)
-var _ boyan.ProjectionGenerationActivator = (*BleveCanonicalApplier)(nil)
+var _ memory.ProjectionApplier = (*BleveCanonicalApplier)(nil)
+var _ memory.ProjectionBatchRebuildApplier = (*BleveCanonicalApplier)(nil)
+var _ memory.ProjectionGenerationActivator = (*BleveCanonicalApplier)(nil)
 
 func (a *BleveCanonicalApplier) generation(ctx context.Context, id string) (*BleveGeneration, error) {
 	a.mu.Lock()
@@ -54,7 +54,7 @@ func (a *BleveCanonicalApplier) generation(ctx context.Context, id string) (*Ble
 	return generation, nil
 }
 
-func (a *BleveCanonicalApplier) Apply(ctx context.Context, scope boyan.Scope, generationID string, _ []boyan.ScopeChange, revisions []boyan.MemoryRevision) error {
+func (a *BleveCanonicalApplier) Apply(ctx context.Context, scope memory.Scope, generationID string, _ []memory.ScopeChange, revisions []memory.MemoryRevision) error {
 	if err := scope.Validate(); err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func (a *BleveCanonicalApplier) Apply(ctx context.Context, scope boyan.Scope, ge
 	if err != nil {
 		return err
 	}
-	byID := make(map[string]boyan.RecallRecord, len(records))
+	byID := make(map[string]memory.RecallRecord, len(records))
 	for _, record := range records {
 		byID[record.RevisionID] = record
 	}
@@ -86,7 +86,7 @@ func (a *BleveCanonicalApplier) Apply(ctx context.Context, scope boyan.Scope, ge
 			continue
 		}
 		category := record.Category
-		document := boyan.RecallProjectionDocument{
+		document := memory.RecallProjectionDocument{
 			Scope: record.Scope, ItemID: record.ItemID, RevisionID: record.RevisionID,
 			Revision: record.Revision, Kind: record.Kind, Category: category,
 			MemoryKey: record.MemoryKey, Text: record.Text, CreatedAt: record.CreatedAt,
@@ -101,23 +101,23 @@ func (a *BleveCanonicalApplier) Apply(ctx context.Context, scope boyan.Scope, ge
 	return nil
 }
 
-func (a *BleveCanonicalApplier) Commit(ctx context.Context, _ boyan.Scope, generationID string) error {
+func (a *BleveCanonicalApplier) Commit(ctx context.Context, _ memory.Scope, generationID string) error {
 	a.mu.Lock()
 	generation := a.generations[generationID]
 	a.mu.Unlock()
 	if generation == nil {
-		return boyan.PermanentError(boyan.CodeStoreFailure, "bleve generation is not initialized", nil)
+		return memory.PermanentError(memory.CodeStoreFailure, "bleve generation is not initialized", nil)
 	}
 	return generation.Commit(ctx)
 }
 
-func (a *BleveCanonicalApplier) Activate(ctx context.Context, scope boyan.Scope, generationID string) error {
+func (a *BleveCanonicalApplier) Activate(ctx context.Context, scope memory.Scope, generationID string) error {
 	a.mu.Lock()
 	generation := a.generations[generationID]
 	delete(a.generations, generationID)
 	a.mu.Unlock()
 	if generation == nil {
-		return boyan.PermanentError(boyan.CodeStoreFailure, "bleve generation is not initialized", nil)
+		return memory.PermanentError(memory.CodeStoreFailure, "bleve generation is not initialized", nil)
 	}
 	if err := generation.Close(); err != nil {
 		return err
@@ -125,23 +125,23 @@ func (a *BleveCanonicalApplier) Activate(ctx context.Context, scope boyan.Scope,
 	return a.projection.ActivateGenerationForScope(ctx, scope, generationID)
 }
 
-func (a *BleveCanonicalApplier) BeginProjectionRebuild(ctx context.Context, _ boyan.Scope, generationID string) error {
+func (a *BleveCanonicalApplier) BeginProjectionRebuild(ctx context.Context, _ memory.Scope, generationID string) error {
 	_, err := a.generation(ctx, generationID)
 	return err
 }
 
-func (a *BleveCanonicalApplier) ApplyProjectionRebuildBatch(ctx context.Context, scope boyan.Scope, generationID string, view boyan.BoundedProjectionView) error {
+func (a *BleveCanonicalApplier) ApplyProjectionRebuildBatch(ctx context.Context, scope memory.Scope, generationID string, view memory.BoundedProjectionView) error {
 	if err := view.Validate(); err != nil {
 		return err
 	}
-	revisions := make([]boyan.MemoryRevision, 0, len(view.Active))
+	revisions := make([]memory.MemoryRevision, 0, len(view.Active))
 	for _, active := range view.Active {
 		revisions = append(revisions, active.Revision)
 	}
 	return a.Apply(ctx, scope, generationID, nil, revisions)
 }
 
-func (a *BleveCanonicalApplier) EndProjectionRebuild(context.Context, boyan.Scope, string) error {
+func (a *BleveCanonicalApplier) EndProjectionRebuild(context.Context, memory.Scope, string) error {
 	return nil
 }
 

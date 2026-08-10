@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/baldaworks/boyan"
+	. "github.com/baldaworks/boyan/pkg/memory"
 )
 
 func TestNewCanonicalTurnProcessorRequiresAllCutoverPorts(t *testing.T) {
