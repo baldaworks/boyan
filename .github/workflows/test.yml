@@ -14,5 +14,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: "go.mod"
+      - name: Guard Boyan independence
+        run: |
+          if go list -deps ./... | grep -Fx 'github.com/normahq/balda'; then
+            echo "unexpected github.com/normahq/balda dependency detected" >&2
+            exit 1
+          fi
       - name: Test
         run: go test -v -race ./...

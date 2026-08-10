@@ -1,10 +1,7 @@
 # Releasing
 
-Boyan already supports local builds and local distribution. Remote publication,
-clean-clone recovery, and the first externally resolvable module revision are
-tracked separately by `boyan-vqzg.12`.
-
-This file covers the current local release shape only.
+Boyan already supports local builds and local distribution. This document
+describes the current standalone release shape only.
 
 ## Local release outputs
 
@@ -37,6 +34,9 @@ git diff --check
 
 Recommended additional checks:
 
+`golangci-lint` is pinned as a Go tool dependency in `go.mod`, so the local
+lint path stays versioned with the repository.
+
 ```bash
 go list -deps ./...
 go tool golangci-lint run ./...
@@ -58,9 +58,10 @@ Current unsupported claims:
 - container images
 - hosted deployment metadata
 
-Do not document or advertise those until `boyan-vqzg.12` is complete.
+Do not document or advertise those until the repository actually supports
+them.
 
-## Release checklist for task 8
+## Release checklist
 
 1. CLI help is coherent for `boyan`, `boyan serve`, and `boyan migrate balda`.
 2. `boyan.example.yaml` matches the actual loader keys.

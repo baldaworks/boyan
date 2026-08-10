@@ -1,7 +1,6 @@
 # Contributing
 
-This repository uses Beads for durable task tracking and is currently being
-advanced through the Prism story in `boyan-vqzg`.
+This repository uses Beads for durable task tracking.
 
 ## Prerequisites
 
@@ -53,7 +52,11 @@ go run ./cmd/boyan migrate balda --help
 go list -deps ./...
 ```
 
-If `golangci-lint` is available in your environment, run it before handoff:
+Run the local lint command before handoff:
+
+The repository pins `golangci-lint` as a Go tool dependency in `go.mod`. On a
+fresh module-aware checkout, the `go` command will download the pinned tool on
+first use.
 
 ```bash
 go tool golangci-lint run ./...

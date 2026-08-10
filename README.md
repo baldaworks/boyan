@@ -22,8 +22,8 @@ state under one explicit state root.
 - Health API: `/livez`, `/readyz`
 - MCP endpoint: `/mcp`
 
-Remote publication and clean-clone recovery are tracked separately by
-`boyan-vqzg.12`. This repository already builds and runs locally.
+This repository already builds and runs locally. Remote publication and any
+downstream integration work are outside this standalone quick-start scope.
 
 ## Install and build
 

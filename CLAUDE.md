@@ -60,6 +60,9 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 ## Build & Test
 
+`golangci-lint` is pinned in `go.mod` as a Go tool dependency. A normal
+module-aware checkout can run it through `go tool`.
+
 ```bash
 go test ./...
 go test -race ./...
