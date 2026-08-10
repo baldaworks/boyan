@@ -1,9 +1,11 @@
-package boyan
+package app
 
 import (
 	"context"
 	"testing"
 	"time"
+
+	. "github.com/baldaworks/boyan"
 )
 
 func TestNewCanonicalTurnProcessorRequiresAllCutoverPorts(t *testing.T) {

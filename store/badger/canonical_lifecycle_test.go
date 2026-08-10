@@ -7,9 +7,9 @@ import (
 )
 
 func TestCanonicalMaintenanceOwnsStartStopLifecycle(t *testing.T) {
-	store, err := OpenBadgerSessionMemoryStore(t.TempDir() + "/memory.badger")
+	store, err := OpenCanonicalStore(t.TempDir() + "/memory.badger")
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	maintenance, err := NewCanonicalMaintenance(store, CanonicalMaintenanceConfig{ValueLogGCInterval: time.Millisecond})
 	if err != nil {
@@ -39,9 +39,9 @@ func TestCanonicalMaintenanceOwnsStartStopLifecycle(t *testing.T) {
 }
 
 func TestNewCanonicalMaintenanceValidatesOperationalBounds(t *testing.T) {
-	store, err := OpenBadgerSessionMemoryStore(t.TempDir() + "/memory.badger")
+	store, err := OpenCanonicalStore(t.TempDir() + "/memory.badger")
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	if _, err := NewCanonicalMaintenance(store, CanonicalMaintenanceConfig{ValueLogGCInterval: -time.Second}); err == nil {

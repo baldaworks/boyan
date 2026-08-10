@@ -13,9 +13,9 @@ import (
 )
 
 func TestCanonicalReaderHydratesRecallAndBoundedTrace(t *testing.T) {
-	store, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "canonical.badger"))
+	store, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "canonical.badger"))
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 

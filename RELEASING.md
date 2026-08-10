@@ -18,7 +18,6 @@ Validate the command surface:
 ```bash
 ./dist/boyan --help
 ./dist/boyan serve --help
-./dist/boyan migrate balda --help
 ```
 
 ## Required local gates
@@ -63,8 +62,8 @@ them.
 
 ## Release checklist
 
-1. CLI help is coherent for `boyan`, `boyan serve`, and `boyan migrate balda`.
+1. CLI help is coherent for `boyan` and `boyan serve`.
 2. `boyan.example.yaml` matches the actual loader keys.
-3. README, API, migration, and operations docs match the current binary.
+3. README, API, architecture, and operations docs match the current binary.
 4. Local verification passes.
 5. No Balda dependency is introduced.

@@ -48,7 +48,6 @@ Useful focused checks:
 go test ./cmd/boyan
 go run ./cmd/boyan --help
 go run ./cmd/boyan serve --help
-go run ./cmd/boyan migrate balda --help
 go list -deps ./...
 ```
 
@@ -71,7 +70,6 @@ change:
 - `ARCHITECTURE.md`
 - `RELEASING.md`
 - `docs/API.md`
-- `docs/MIGRATION.md`
 - `docs/OPERATIONS.md`
 - `boyan.example.yaml`
 

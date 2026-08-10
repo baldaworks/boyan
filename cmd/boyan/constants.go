@@ -15,11 +15,7 @@ const (
 )
 
 const (
-	baldaMigrationReceiptSchema = "boyan-migrate-balda/v1"
-	baldaMigrationDirName       = "migration"
-	baldaMigrationExportName    = "balda-logical-export.jsonl"
-	baldaMigrationReceiptName   = "balda-receipt.json"
-	boyanCanonicalDirName       = "badger"
-	boyanProjectionDirName      = "bleve"
-	boyanProjectionID           = "bleve"
+	boyanCanonicalDirName  = "badger"
+	boyanProjectionDirName = "bleve"
+	boyanProjectionID      = "bleve"
 )

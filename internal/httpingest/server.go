@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	portableapp "github.com/baldaworks/boyan/app"
+	portableapp "github.com/baldaworks/boyan/internal/apps/boyan"
 	"github.com/baldaworks/boyan"
 )
 

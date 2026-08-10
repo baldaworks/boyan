@@ -1,4 +1,4 @@
-package boyan
+package app
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+
+	. "github.com/baldaworks/boyan"
 )
 
 // CanonicalTurnProcessor owns the v2 turn-processing dependencies. Its

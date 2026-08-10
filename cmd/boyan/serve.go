@@ -18,7 +18,7 @@ import (
 	"go.uber.org/fx"
 
 	"github.com/baldaworks/boyan"
-	boyanapp "github.com/baldaworks/boyan/app"
+	boyanapp "github.com/baldaworks/boyan/internal/apps/boyan"
 	"github.com/baldaworks/boyan/index/bleve"
 	"github.com/baldaworks/boyan/internal/derivation"
 	"github.com/baldaworks/boyan/internal/httpingest"
@@ -30,14 +30,13 @@ type stateLayout struct {
 	Root          string
 	CanonicalDir  string
 	ProjectionDir string
-	MigrationDir  string
 }
 
 type standaloneService struct {
 	cfg         applicationConfig
 	logger      zerolog.Logger
 	state       stateLayout
-	store       *badger.BadgerSessionMemoryStore
+	store       *badger.CanonicalStore
 	maintenance *badger.CanonicalMaintenance
 	reader      *badger.CanonicalReader
 	applier     *bleve.BleveCanonicalApplier
@@ -139,16 +138,13 @@ func newStandaloneService(cfg applicationConfig, logger zerolog.Logger) (*standa
 	if err := os.MkdirAll(layout.Root, 0o700); err != nil {
 		return nil, fmt.Errorf("create Boyan state root: %w", err)
 	}
-	for _, directory := range []string{layout.CanonicalDir, layout.ProjectionDir, layout.MigrationDir} {
+	for _, directory := range []string{layout.CanonicalDir, layout.ProjectionDir} {
 		if err := os.MkdirAll(directory, 0o700); err != nil {
 			return nil, fmt.Errorf("create Boyan state directory %s: %w", directory, err)
 		}
 	}
-	if err := validateServeMigrationState(layout); err != nil {
-		return nil, err
-	}
 
-	store, err := badger.OpenBadgerSessionMemoryStore(layout.CanonicalDir)
+	store, err := badger.OpenCanonicalStore(layout.CanonicalDir)
 	if err != nil {
 		return nil, fmt.Errorf("open Boyan canonical store: %w", err)
 	}
@@ -216,7 +212,7 @@ func newStandaloneService(cfg applicationConfig, logger zerolog.Logger) (*standa
 		_ = store.Close()
 		return nil, err
 	}
-	boundaryProcessor, err := boyan.NewBoundaryProcessor(boundaryStore, deriver, deriver, boyan.LegacyDerivationRef())
+	boundaryProcessor, err := boyanapp.NewBoundaryProcessor(boundaryStore, deriver, deriver, boyan.LegacyDerivationRef())
 	if err != nil {
 		_ = invoker.Close(context.Background())
 		_ = applier.Close()
@@ -268,7 +264,7 @@ func newStandaloneService(cfg applicationConfig, logger zerolog.Logger) (*standa
 	ingestHandler, err := httpingest.NewHandler(httpingest.Config{
 		Turns:          sequencedRuntime,
 		Boundaries:     sequencedRuntime,
-		Ready:          readyCheckerFunc(func(ctx context.Context) error { return checkServeReadiness(ctx, maintenance, layout) }),
+		Ready:          readyCheckerFunc(func(ctx context.Context) error { return checkServeReadiness(ctx, maintenance) }),
 		MaxBodyBytes:   cfg.HTTP.MaxBodyBytes,
 		RequestTimeout: cfg.HTTP.RequestTimeout,
 	})
@@ -414,33 +410,12 @@ func buildStateLayout(root string) (stateLayout, error) {
 		Root:          clean,
 		CanonicalDir:  filepath.Join(clean, boyanCanonicalDirName),
 		ProjectionDir: filepath.Join(clean, boyanProjectionDirName),
-		MigrationDir:  filepath.Join(clean, baldaMigrationDirName),
 	}, nil
 }
 
-func validateServeMigrationState(layout stateLayout) error {
-	receipt, err := loadBaldaMigrationReceipt(filepath.Join(layout.MigrationDir, baldaMigrationReceiptName))
-	if err != nil {
-		return fmt.Errorf("load migration receipt: %w", err)
-	}
-	if receipt == nil {
-		if entries, readErr := os.ReadDir(layout.MigrationDir); readErr == nil && len(entries) != 0 {
-			return fmt.Errorf("Boyan migration state is incomplete; run `boyan migrate balda` to completion or clear %s", layout.MigrationDir)
-		}
-		return nil
-	}
-	if receipt.Phase != migrationPhaseComplete {
-		return fmt.Errorf("Boyan migration receipt phase %q is incomplete; rerun `boyan migrate balda` before serving", receipt.Phase)
-	}
-	return nil
-}
-
-func checkServeReadiness(ctx context.Context, maintenance *badger.CanonicalMaintenance, layout stateLayout) error {
+func checkServeReadiness(ctx context.Context, maintenance *badger.CanonicalMaintenance) error {
 	if ctx == nil {
 		return fmt.Errorf("readiness context is required")
-	}
-	if err := validateServeMigrationState(layout); err != nil {
-		return err
 	}
 	if maintenance != nil {
 		if err := maintenance.LastError(); err != nil {

@@ -31,15 +31,15 @@ type CanonicalIntegrityVerifier interface {
 	VerifyCanonicalIntegrity(ctx context.Context) error
 }
 
-var _ CanonicalBackupWriter = (*BadgerSessionMemoryStore)(nil)
-var _ CanonicalBackupReader = (*BadgerSessionMemoryStore)(nil)
-var _ CanonicalIntegrityVerifier = (*BadgerSessionMemoryStore)(nil)
+var _ CanonicalBackupWriter = (*CanonicalStore)(nil)
+var _ CanonicalBackupReader = (*CanonicalStore)(nil)
+var _ CanonicalIntegrityVerifier = (*CanonicalStore)(nil)
 
 // WriteCanonicalBackup writes a full or incremental Badger backup. The store
 // lock serializes backup/restore operations with each other; application
 // lifecycle code must quiesce mutation workers before restore as required by
 // Badger's DB.Load contract.
-func (s *BadgerSessionMemoryStore) WriteCanonicalBackup(ctx context.Context, destination io.Writer, since uint64) (uint64, error) {
+func (s *CanonicalStore) WriteCanonicalBackup(ctx context.Context, destination io.Writer, since uint64) (uint64, error) {
 	if err := validateCanonicalMaintenance(ctx, destination); err != nil {
 		return 0, err
 	}
@@ -53,7 +53,7 @@ func (s *BadgerSessionMemoryStore) WriteCanonicalBackup(ctx context.Context, des
 	}
 	version, err := s.db.Backup(destination, since)
 	if err != nil {
-		return 0, badgerSessionMemoryError("write canonical backup", err)
+		return 0, canonicalStoreError("write canonical backup", err)
 	}
 	return version, nil
 }
@@ -61,7 +61,7 @@ func (s *BadgerSessionMemoryStore) WriteCanonicalBackup(ctx context.Context, des
 // RestoreCanonicalBackup loads a Badger backup into the current store. A
 // caller must stop canonical writers before invoking this method and should
 // run VerifyCanonicalIntegrity before making the restored store available.
-func (s *BadgerSessionMemoryStore) RestoreCanonicalBackup(ctx context.Context, source io.Reader, maxPendingWrites int) error {
+func (s *CanonicalStore) RestoreCanonicalBackup(ctx context.Context, source io.Reader, maxPendingWrites int) error {
 	if err := validateCanonicalMaintenance(ctx, source); err != nil {
 		return err
 	}
@@ -80,7 +80,7 @@ func (s *BadgerSessionMemoryStore) RestoreCanonicalBackup(ctx context.Context, s
 		return boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
 	if err := s.db.Load(source, maxPendingWrites); err != nil {
-		return badgerSessionMemoryError("restore canonical backup", err)
+		return canonicalStoreError("restore canonical backup", err)
 	}
 	if err := checkCanonicalMaintenanceContext(ctx); err != nil {
 		return err
@@ -90,7 +90,7 @@ func (s *BadgerSessionMemoryStore) RestoreCanonicalBackup(ctx context.Context, s
 
 // VerifyCanonicalIntegrity checks all application-owned record envelopes and
 // their checksums. It does not attempt destructive repair or decrypt payloads.
-func (s *BadgerSessionMemoryStore) VerifyCanonicalIntegrity(ctx context.Context) error {
+func (s *CanonicalStore) VerifyCanonicalIntegrity(ctx context.Context) error {
 	if err := checkCanonicalMaintenanceContext(ctx); err != nil {
 		return err
 	}
@@ -124,7 +124,7 @@ func (s *BadgerSessionMemoryStore) VerifyCanonicalIntegrity(ctx context.Context)
 		if _, _, ok := boyan.ClassifyError(err); ok {
 			return err
 		}
-		return badgerSessionMemoryError("verify canonical integrity", err)
+		return canonicalStoreError("verify canonical integrity", err)
 	}
 	return nil
 }

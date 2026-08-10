@@ -98,7 +98,7 @@ func TestRunContextHelpListsStandaloneCommands(t *testing.T) {
 		t.Fatalf("runContext(--help) error = %v", err)
 	}
 	output := stdout.String()
-	for _, needle := range []string{"serve", "migrate", "standalone local service"} {
+	for _, needle := range []string{"serve", "standalone local service"} {
 		if !strings.Contains(output, needle) {
 			t.Fatalf("help output missing %q:\n%s", needle, output)
 		}

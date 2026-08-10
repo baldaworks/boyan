@@ -14,10 +14,10 @@ func isCanonicalProducerID(value string) bool {
 	return value != "" && value == strings.TrimSpace(value) && !strings.ContainsAny(value, "\r\n\t")
 }
 
-var _ boyan.IngestSequenceStore = (*BadgerSessionMemoryStore)(nil)
+var _ boyan.IngestSequenceStore = (*CanonicalStore)(nil)
 
-func (s *BadgerSessionMemoryStore) LoadLatestIngestSequence(ctx context.Context, producerID string, scope boyan.Scope) (boyan.IngestSequenceCursor, bool, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) LoadLatestIngestSequence(ctx context.Context, producerID string, scope boyan.Scope) (boyan.IngestSequenceCursor, bool, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return boyan.IngestSequenceCursor{}, false, err
 	}
 	if err := scope.Validate(); err != nil {
@@ -40,13 +40,13 @@ func (s *BadgerSessionMemoryStore) LoadLatestIngestSequence(ctx context.Context,
 	}
 	var cursor boyan.IngestSequenceCursor
 	err = s.db.View(func(txn *badger.Txn) error {
-		return getBadgerSessionMemoryRecord(txn, key, badgerRecordIngestCursor, &cursor)
+		return getCanonicalRecord(txn, key, badgerRecordIngestCursor, &cursor)
 	})
 	if errors.Is(err, badger.ErrKeyNotFound) {
 		return boyan.IngestSequenceCursor{}, false, nil
 	}
 	if err != nil {
-		return boyan.IngestSequenceCursor{}, false, badgerSessionMemoryError("load ingest sequence cursor", err)
+		return boyan.IngestSequenceCursor{}, false, canonicalStoreError("load ingest sequence cursor", err)
 	}
 	if err := cursor.Validate(); err != nil || cursor.ProducerID != producerID || cursor.Scope != scope {
 		return boyan.IngestSequenceCursor{}, false, boyan.PermanentError(boyan.CodeStoreFailure, "stored ingest sequence cursor is invalid", err)
@@ -54,8 +54,8 @@ func (s *BadgerSessionMemoryStore) LoadLatestIngestSequence(ctx context.Context,
 	return cursor, true, nil
 }
 
-func (s *BadgerSessionMemoryStore) LoadIngestSequence(ctx context.Context, producerID string, scope boyan.Scope, sequence uint64) (boyan.IngestSequenceRecord, bool, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) LoadIngestSequence(ctx context.Context, producerID string, scope boyan.Scope, sequence uint64) (boyan.IngestSequenceRecord, bool, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return boyan.IngestSequenceRecord{}, false, err
 	}
 	if err := scope.Validate(); err != nil {
@@ -78,13 +78,13 @@ func (s *BadgerSessionMemoryStore) LoadIngestSequence(ctx context.Context, produ
 	}
 	var record boyan.IngestSequenceRecord
 	err = s.db.View(func(txn *badger.Txn) error {
-		return getBadgerSessionMemoryRecord(txn, key, badgerRecordIngestSequence, &record)
+		return getCanonicalRecord(txn, key, badgerRecordIngestSequence, &record)
 	})
 	if errors.Is(err, badger.ErrKeyNotFound) {
 		return boyan.IngestSequenceRecord{}, false, nil
 	}
 	if err != nil {
-		return boyan.IngestSequenceRecord{}, false, badgerSessionMemoryError("load ingest sequence record", err)
+		return boyan.IngestSequenceRecord{}, false, canonicalStoreError("load ingest sequence record", err)
 	}
 	if err := record.Validate(); err != nil || record.ProducerID != producerID || record.Scope != scope || record.Sequence != sequence {
 		return boyan.IngestSequenceRecord{}, false, boyan.PermanentError(boyan.CodeStoreFailure, "stored ingest sequence record is invalid", err)
@@ -92,8 +92,8 @@ func (s *BadgerSessionMemoryStore) LoadIngestSequence(ctx context.Context, produ
 	return record, true, nil
 }
 
-func (s *BadgerSessionMemoryStore) SaveIngestSequence(ctx context.Context, record boyan.IngestSequenceRecord) error {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) SaveIngestSequence(ctx context.Context, record boyan.IngestSequenceRecord) error {
+	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
 	if err := record.Validate(); err != nil {
@@ -117,7 +117,7 @@ func (s *BadgerSessionMemoryStore) SaveIngestSequence(ctx context.Context, recor
 	}
 	err = s.db.Update(func(txn *badger.Txn) error {
 		var stored boyan.IngestSequenceRecord
-		lookupErr := getBadgerSessionMemoryRecord(txn, sequenceKey, badgerRecordIngestSequence, &stored)
+		lookupErr := getCanonicalRecord(txn, sequenceKey, badgerRecordIngestSequence, &stored)
 		if lookupErr == nil {
 			if err := stored.Validate(); err != nil {
 				return err
@@ -132,7 +132,7 @@ func (s *BadgerSessionMemoryStore) SaveIngestSequence(ctx context.Context, recor
 		}
 
 		cursor := boyan.IngestSequenceCursor{SchemaVersion: boyan.IngestSequenceSchemaVersionV1, ProducerID: record.ProducerID, Scope: record.Scope}
-		cursorErr := getBadgerSessionMemoryRecord(txn, cursorKey, badgerRecordIngestCursor, &cursor)
+		cursorErr := getCanonicalRecord(txn, cursorKey, badgerRecordIngestCursor, &cursor)
 		if cursorErr != nil && !errors.Is(cursorErr, badger.ErrKeyNotFound) {
 			return cursorErr
 		}
@@ -148,13 +148,13 @@ func (s *BadgerSessionMemoryStore) SaveIngestSequence(ctx context.Context, recor
 			return boyan.PermanentError(boyan.CodeConflict, "ingest sequence is not next", nil)
 		}
 		cursor.Latest = record.Sequence
-		if err := putBadgerSessionMemoryRecord(txn, sequenceKey, badgerRecordIngestSequence, record); err != nil {
+		if err := putCanonicalRecord(txn, sequenceKey, badgerRecordIngestSequence, record); err != nil {
 			return err
 		}
-		return putBadgerSessionMemoryRecord(txn, cursorKey, badgerRecordIngestCursor, cursor)
+		return putCanonicalRecord(txn, cursorKey, badgerRecordIngestCursor, cursor)
 	})
 	if err != nil {
-		return badgerSessionMemoryError("save ingest sequence record", err)
+		return canonicalStoreError("save ingest sequence record", err)
 	}
 	return nil
 }

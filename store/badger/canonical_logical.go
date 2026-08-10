@@ -76,7 +76,7 @@ type CanonicalLogicalImportProgress struct {
 // ExportCanonicalLogical writes a deterministic, backend-neutral JSONL
 // export. It excludes disposable projection-generation records and includes
 // payload blobs as opaque validated envelopes.
-func (s *BadgerSessionMemoryStore) ExportCanonicalLogical(ctx context.Context, destination io.Writer) error {
+func (s *CanonicalStore) ExportCanonicalLogical(ctx context.Context, destination io.Writer) error {
 	if err := validateCanonicalMaintenance(ctx, destination); err != nil {
 		return err
 	}
@@ -131,7 +131,7 @@ func (s *BadgerSessionMemoryStore) ExportCanonicalLogical(ctx context.Context, d
 		return nil
 	})
 	if err != nil {
-		return badgerSessionMemoryError("export canonical logical records", err)
+		return canonicalStoreError("export canonical logical records", err)
 	}
 	footer := CanonicalLogicalExportFooter{SchemaVersion: canonicalLogicalExportSchema, Kind: canonicalLogicalFooterKind, RecordCount: count, SHA256: hex.EncodeToString(hash.Sum(nil))}
 	if err := writeCanonicalLogicalJSON(writer, footer); err != nil {
@@ -143,14 +143,14 @@ func (s *BadgerSessionMemoryStore) ExportCanonicalLogical(ctx context.Context, d
 // ImportCanonicalLogical validates a logical export stream while applying it
 // in bounded, idempotent transactions. A malformed footer still fails closed;
 // callers that need restart-safe resume should persist external progress.
-func (s *BadgerSessionMemoryStore) ImportCanonicalLogical(ctx context.Context, source io.Reader) error {
+func (s *CanonicalStore) ImportCanonicalLogical(ctx context.Context, source io.Reader) error {
 	_, err := s.ImportCanonicalLogicalWithOptions(ctx, source, CanonicalLogicalImportOptions{})
 	return err
 }
 
 // ImportCanonicalLogicalWithOptions applies a validated logical export through
 // bounded transactions and reports the validated stream summary.
-func (s *BadgerSessionMemoryStore) ImportCanonicalLogicalWithOptions(ctx context.Context, source io.Reader, options CanonicalLogicalImportOptions) (CanonicalLogicalExportSummary, error) {
+func (s *CanonicalStore) ImportCanonicalLogicalWithOptions(ctx context.Context, source io.Reader, options CanonicalLogicalImportOptions) (CanonicalLogicalExportSummary, error) {
 	if err := validateCanonicalMaintenance(ctx, source); err != nil {
 		return CanonicalLogicalExportSummary{}, err
 	}
@@ -175,7 +175,7 @@ func (s *BadgerSessionMemoryStore) ImportCanonicalLogicalWithOptions(ctx context
 			return applyCanonicalLogicalImportBatch(txn, records)
 		})
 		if err != nil {
-			return badgerSessionMemoryError("import canonical logical records", err)
+			return canonicalStoreError("import canonical logical records", err)
 		}
 		imported += uint64(len(records))
 		if options.Progress != nil {
@@ -401,7 +401,7 @@ func isExportableCanonicalRecordType(recordType string) bool {
 }
 
 func decodeCanonicalLogicalKey(key []byte) ([]string, []byte, error) {
-	if len(key) < 2 || key[0] != badgerSessionMemoryNamespace || key[1] != badgerSessionMemoryVersion {
+	if len(key) < 2 || key[0] != canonicalNamespace || key[1] != canonicalVersion {
 		return nil, nil, boyan.PermanentError(boyan.CodeStoreFailure, "canonical key namespace is invalid", nil)
 	}
 	components, offset, err := decodeCanonicalTupleComponents(key[2:])
@@ -465,7 +465,7 @@ func encodeCanonicalLogicalKey(components []string, suffix []byte) ([]byte, erro
 	if len(components) != want || (hasSuffix && len(suffix) != 8) || (!hasSuffix && len(suffix) != 0) {
 		return nil, boyan.PermanentError(boyan.CodeInvalidDerived, "canonical logical key components are invalid", nil)
 	}
-	key, err := boyan.TupleKey(badgerSessionMemoryNamespace, badgerSessionMemoryVersion, components...)
+	key, err := boyan.TupleKey(canonicalNamespace, canonicalVersion, components...)
 	if err != nil {
 		return nil, err
 	}

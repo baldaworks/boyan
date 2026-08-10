@@ -1,7 +1,7 @@
 package badger
 
 // Config contains only backend durability knobs. The host supplies the
-// filesystem path to Open; no Balda configuration or locator policy is
+// filesystem path to Open; no external configuration or locator policy is
 // imported by this adapter.
 type Config struct {
 	SyncWrites        bool
@@ -10,10 +10,10 @@ type Config struct {
 }
 
 // Store is the public name for the canonical Badger owner.
-type Store = BadgerSessionMemoryStore
+type Store = CanonicalStore
 
-// DefaultConfig returns the canonical durability defaults used by Balda's
-// existing store format.
+// DefaultConfig returns the canonical durability defaults used by the current
+// store format.
 func DefaultConfig() Config {
 	return Config{SyncWrites: true, DetectConflicts: true, NumVersionsToKeep: 1}
 }

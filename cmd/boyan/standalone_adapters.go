@@ -19,11 +19,11 @@ const (
 )
 
 type canonicalBoundaryStore struct {
-	store  *badger.BadgerSessionMemoryStore
+	store  *badger.CanonicalStore
 	reader *badger.CanonicalReader
 }
 
-func newCanonicalBoundaryStore(store *badger.BadgerSessionMemoryStore, reader *badger.CanonicalReader) (*canonicalBoundaryStore, error) {
+func newCanonicalBoundaryStore(store *badger.CanonicalStore, reader *badger.CanonicalReader) (*canonicalBoundaryStore, error) {
 	if store == nil || reader == nil {
 		return nil, fmt.Errorf("canonical boundary store dependencies are required")
 	}
@@ -329,10 +329,10 @@ func (s *canonicalBoundaryStore) lookupOperationRevisions(ctx context.Context, s
 }
 
 type canonicalForgetAdapter struct {
-	store *badger.BadgerSessionMemoryStore
+	store *badger.CanonicalStore
 }
 
-func newCanonicalForgetAdapter(store *badger.BadgerSessionMemoryStore) (*canonicalForgetAdapter, error) {
+func newCanonicalForgetAdapter(store *badger.CanonicalStore) (*canonicalForgetAdapter, error) {
 	if store == nil {
 		return nil, fmt.Errorf("canonical forget store is required")
 	}
@@ -476,7 +476,7 @@ func (a *canonicalForgetAdapter) scrubForgetOutcome(ctx context.Context, scope b
 	return nil
 }
 
-func listCanonicalSources(ctx context.Context, store *badger.BadgerSessionMemoryStore, scope boyan.Scope) ([]boyan.SourceRef, []string, error) {
+func listCanonicalSources(ctx context.Context, store *badger.CanonicalStore, scope boyan.Scope) ([]boyan.SourceRef, []string, error) {
 	sources := make([]boyan.SourceRef, 0)
 	sourceIDs := make([]string, 0)
 	cursor := ""
@@ -500,7 +500,7 @@ func listCanonicalSources(ctx context.Context, store *badger.BadgerSessionMemory
 	}
 }
 
-func listCanonicalRevisions(ctx context.Context, store *badger.BadgerSessionMemoryStore, scope boyan.Scope) ([]boyan.RevisionRef, []string, error) {
+func listCanonicalRevisions(ctx context.Context, store *badger.CanonicalStore, scope boyan.Scope) ([]boyan.RevisionRef, []string, error) {
 	revisions := make([]boyan.RevisionRef, 0)
 	revisionIDs := make([]string, 0)
 	cursor := ""
@@ -520,7 +520,7 @@ func listCanonicalRevisions(ctx context.Context, store *badger.BadgerSessionMemo
 	}
 }
 
-func canonicalRevisionRefs(ctx context.Context, store *badger.BadgerSessionMemoryStore, scope boyan.Scope, revisionIDs []string) ([]boyan.RevisionRef, error) {
+func canonicalRevisionRefs(ctx context.Context, store *badger.CanonicalStore, scope boyan.Scope, revisionIDs []string) ([]boyan.RevisionRef, error) {
 	needed := make(map[string]boyan.RevisionRef, len(revisionIDs))
 	for _, revisionID := range revisionIDs {
 		needed[revisionID] = boyan.RevisionRef{RevisionID: revisionID}
@@ -540,7 +540,7 @@ func canonicalRevisionRefs(ctx context.Context, store *badger.BadgerSessionMemor
 	return refs, nil
 }
 
-func loadCanonicalRevisionsByID(ctx context.Context, store *badger.BadgerSessionMemoryStore, scope boyan.Scope, needed map[string]boyan.RevisionRef) (map[string]boyan.MemoryRevision, error) {
+func loadCanonicalRevisionsByID(ctx context.Context, store *badger.CanonicalStore, scope boyan.Scope, needed map[string]boyan.RevisionRef) (map[string]boyan.MemoryRevision, error) {
 	if len(needed) == 0 {
 		return map[string]boyan.MemoryRevision{}, nil
 	}

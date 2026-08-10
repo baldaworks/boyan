@@ -23,7 +23,7 @@ type ProjectionRebuildStarter interface {
 // canonical commits.  It does not own canonical truth and never serves index
 // records directly.
 type ProjectionRuntime struct {
-	coordinator *boyan.ProjectionCoordinator
+	coordinator *ProjectionCoordinator
 	starter     ProjectionRebuildStarter
 	projection  string
 
@@ -45,7 +45,7 @@ func NewProjectionRuntime(canonical boyan.CanonicalStore, checkpoints boyan.Proj
 	if batchSize == 0 {
 		batchSize = defaultProjectionBatchSize
 	}
-	coordinator, err := boyan.NewProjectionCoordinator(canonical, checkpoints, applier, batchSize)
+	coordinator, err := NewProjectionCoordinator(canonical, checkpoints, applier, batchSize)
 	if err != nil {
 		return nil, boyan.PermanentError(boyan.CodeStoreFailure, "create projection coordinator", err)
 	}

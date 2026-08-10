@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	portableapp "github.com/baldaworks/boyan/app"
+	portableapp "github.com/baldaworks/boyan/internal/apps/boyan"
 	runtimeconfig "github.com/normahq/runtime/v2/appconfig"
 	"github.com/normahq/runtime/v2/agentfactory"
 	"github.com/normahq/runtime/v2/mcpregistry"
@@ -79,4 +79,3 @@ func (c Config) timeout() time.Duration {
 func newAgentFactory(cfg runtimeconfig.RuntimeConfig) *agentfactory.Factory {
 	return agentfactory.New(cfg.Providers, mcpregistry.New(cfg.MCPServers))
 }
-

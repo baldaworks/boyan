@@ -1,6 +1,8 @@
-package boyan
+package app
 
 import "context"
+
+import . "github.com/baldaworks/boyan"
 
 // ProcessBoundary synthesizes scenarios and then the exact-scope profile as
 // two independently idempotent stages.

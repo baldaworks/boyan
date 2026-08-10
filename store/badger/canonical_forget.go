@@ -16,12 +16,12 @@ type badgerCanonicalForgetOutcome struct {
 	Outcome     boyan.ForgetOutcome `json:"outcome"`
 }
 
-var _ boyan.CanonicalForgetEnumerator = (*BadgerSessionMemoryStore)(nil)
-var _ boyan.CanonicalSourceIdentityResolver = (*BadgerSessionMemoryStore)(nil)
-var _ boyan.CanonicalForgetOutcomeStore = (*BadgerSessionMemoryStore)(nil)
+var _ boyan.CanonicalForgetEnumerator = (*CanonicalStore)(nil)
+var _ boyan.CanonicalSourceIdentityResolver = (*CanonicalStore)(nil)
+var _ boyan.CanonicalForgetOutcomeStore = (*CanonicalStore)(nil)
 
-func (s *BadgerSessionMemoryStore) ListCanonicalSourceRefs(ctx context.Context, scope boyan.Scope, afterSourceID string, limit uint32) ([]boyan.SourceRef, string, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) ListCanonicalSourceRefs(ctx context.Context, scope boyan.Scope, afterSourceID string, limit uint32) ([]boyan.SourceRef, string, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return nil, "", err
 	}
 	if err := scope.Validate(); err != nil {
@@ -38,7 +38,7 @@ func (s *BadgerSessionMemoryStore) ListCanonicalSourceRefs(ctx context.Context, 
 	if s.db == nil {
 		return nil, "", boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
-	prefix, err := badgerSessionMemoryPrefix(scope, badgerRecordSource)
+	prefix, err := canonicalPrefix(scope, badgerRecordSource)
 	if err != nil {
 		return nil, "", err
 	}
@@ -49,28 +49,28 @@ func (s *BadgerSessionMemoryStore) ListCanonicalSourceRefs(ctx context.Context, 
 		defer iterator.Close()
 		for iterator.Seek(prefix); iterator.ValidForPrefix(prefix) && uint32(len(refs)) < limit; iterator.Next() {
 			var source boyan.SourceRecordV2
-			if err := getBadgerSessionMemoryRecord(txn, iterator.Item().Key(), badgerRecordSource, &source); err != nil {
+			if err := getCanonicalRecord(txn, iterator.Item().Key(), badgerRecordSource, &source); err != nil {
 				return err
 			}
 			if source.SourceID <= afterSourceID {
 				continue
 			}
-			deniedKey, keyErr := badgerSessionMemoryKey(scope, badgerRecordDeniedSource, source.SourceID)
+			deniedKey, keyErr := canonicalKey(scope, badgerRecordDeniedSource, source.SourceID)
 			if keyErr != nil {
 				return keyErr
 			}
 			var denied badgerDeniedSource
-			if deniedErr := getBadgerSessionMemoryRecord(txn, deniedKey, badgerRecordDeniedSource, &denied); deniedErr == nil {
+			if deniedErr := getCanonicalRecord(txn, deniedKey, badgerRecordDeniedSource, &denied); deniedErr == nil {
 				continue
 			} else if !errors.Is(deniedErr, badger.ErrKeyNotFound) {
 				return deniedErr
 			}
-			payloadKey, keyErr := badgerSessionMemoryKey(payloadScope(), badgerRecordPayload, source.Payload.ID)
+			payloadKey, keyErr := canonicalKey(payloadScope(), badgerRecordPayload, source.Payload.ID)
 			if keyErr != nil {
 				return keyErr
 			}
 			var payload []byte
-			if err := getBadgerSessionMemoryRecord(txn, payloadKey, badgerRecordPayload, &payload); err != nil {
+			if err := getCanonicalRecord(txn, payloadKey, badgerRecordPayload, &payload); err != nil {
 				return err
 			}
 			if !isBadgerPayloadValid(payload, source.Payload) {
@@ -86,7 +86,7 @@ func (s *BadgerSessionMemoryStore) ListCanonicalSourceRefs(ctx context.Context, 
 		return nil
 	})
 	if err != nil {
-		return nil, "", badgerSessionMemoryError("list canonical source refs", err)
+		return nil, "", canonicalStoreError("list canonical source refs", err)
 	}
 	if len(refs) < int(limit) {
 		next = ""
@@ -94,8 +94,8 @@ func (s *BadgerSessionMemoryStore) ListCanonicalSourceRefs(ctx context.Context, 
 	return refs, next, nil
 }
 
-func (s *BadgerSessionMemoryStore) ListCanonicalRevisionRefs(ctx context.Context, scope boyan.Scope, afterRevisionID string, limit uint32) ([]boyan.RevisionRef, string, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) ListCanonicalRevisionRefs(ctx context.Context, scope boyan.Scope, afterRevisionID string, limit uint32) ([]boyan.RevisionRef, string, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return nil, "", err
 	}
 	if err := scope.Validate(); err != nil {
@@ -112,7 +112,7 @@ func (s *BadgerSessionMemoryStore) ListCanonicalRevisionRefs(ctx context.Context
 	if s.db == nil {
 		return nil, "", boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
-	prefix, err := badgerSessionMemoryPrefix(scope, badgerRecordRevision)
+	prefix, err := canonicalPrefix(scope, badgerRecordRevision)
 	if err != nil {
 		return nil, "", err
 	}
@@ -123,18 +123,18 @@ func (s *BadgerSessionMemoryStore) ListCanonicalRevisionRefs(ctx context.Context
 		defer iterator.Close()
 		for iterator.Seek(prefix); iterator.ValidForPrefix(prefix) && uint32(len(refs)) < limit; iterator.Next() {
 			var revision boyan.MemoryRevision
-			if err := getBadgerSessionMemoryRecord(txn, iterator.Item().Key(), badgerRecordRevision, &revision); err != nil {
+			if err := getCanonicalRecord(txn, iterator.Item().Key(), badgerRecordRevision, &revision); err != nil {
 				return err
 			}
 			if revision.RevisionID <= afterRevisionID {
 				continue
 			}
-			deniedKey, keyErr := badgerSessionMemoryKey(scope, badgerRecordDeniedRevision, revision.RevisionID)
+			deniedKey, keyErr := canonicalKey(scope, badgerRecordDeniedRevision, revision.RevisionID)
 			if keyErr != nil {
 				return keyErr
 			}
 			var denied badgerDeniedRevision
-			if deniedErr := getBadgerSessionMemoryRecord(txn, deniedKey, badgerRecordDeniedRevision, &denied); deniedErr == nil {
+			if deniedErr := getCanonicalRecord(txn, deniedKey, badgerRecordDeniedRevision, &denied); deniedErr == nil {
 				continue
 			} else if !errors.Is(deniedErr, badger.ErrKeyNotFound) {
 				return deniedErr
@@ -145,7 +145,7 @@ func (s *BadgerSessionMemoryStore) ListCanonicalRevisionRefs(ctx context.Context
 		return nil
 	})
 	if err != nil {
-		return nil, "", badgerSessionMemoryError("list canonical revision refs", err)
+		return nil, "", canonicalStoreError("list canonical revision refs", err)
 	}
 	if len(refs) < int(limit) {
 		next = ""
@@ -153,7 +153,7 @@ func (s *BadgerSessionMemoryStore) ListCanonicalRevisionRefs(ctx context.Context
 	return refs, next, nil
 }
 
-func (s *BadgerSessionMemoryStore) CanonicalSourceID(ctx context.Context, scope boyan.Scope, source boyan.SourceRef) (string, error) {
+func (s *CanonicalStore) CanonicalSourceID(ctx context.Context, scope boyan.Scope, source boyan.SourceRef) (string, error) {
 	if err := source.Validate(); err != nil {
 		return "", err
 	}
@@ -171,19 +171,19 @@ func (s *BadgerSessionMemoryStore) CanonicalSourceID(ctx context.Context, scope 
 	// Native turn sources have a deterministic identity. Check it first to
 	// avoid scanning payload records in the common path.
 	nativeID := boyan.TurnSourceID(source.ExportID)
-	key, err := badgerSessionMemoryKey(scope, badgerRecordSource, nativeID)
+	key, err := canonicalKey(scope, badgerRecordSource, nativeID)
 	if err != nil {
 		return "", err
 	}
 	var native boyan.SourceRecordV2
 	if readErr := s.db.View(func(txn *badger.Txn) error {
-		return getBadgerSessionMemoryRecord(txn, key, badgerRecordSource, &native)
+		return getCanonicalRecord(txn, key, badgerRecordSource, &native)
 	}); readErr == nil {
 		return nativeID, nil
 	} else if !errors.Is(readErr, badger.ErrKeyNotFound) {
-		return "", badgerSessionMemoryError("resolve canonical source identity", readErr)
+		return "", canonicalStoreError("resolve canonical source identity", readErr)
 	}
-	prefix, err := badgerSessionMemoryPrefix(scope, badgerRecordSource)
+	prefix, err := canonicalPrefix(scope, badgerRecordSource)
 	if err != nil {
 		return "", err
 	}
@@ -193,15 +193,15 @@ func (s *BadgerSessionMemoryStore) CanonicalSourceID(ctx context.Context, scope 
 		defer iterator.Close()
 		for iterator.Seek(prefix); iterator.ValidForPrefix(prefix); iterator.Next() {
 			var record boyan.SourceRecordV2
-			if err := getBadgerSessionMemoryRecord(txn, iterator.Item().Key(), badgerRecordSource, &record); err != nil {
+			if err := getCanonicalRecord(txn, iterator.Item().Key(), badgerRecordSource, &record); err != nil {
 				return err
 			}
-			payloadKey, keyErr := badgerSessionMemoryKey(payloadScope(), badgerRecordPayload, record.Payload.ID)
+			payloadKey, keyErr := canonicalKey(payloadScope(), badgerRecordPayload, record.Payload.ID)
 			if keyErr != nil {
 				return keyErr
 			}
 			var payload []byte
-			if err := getBadgerSessionMemoryRecord(txn, payloadKey, badgerRecordPayload, &payload); err != nil {
+			if err := getCanonicalRecord(txn, payloadKey, badgerRecordPayload, &payload); err != nil {
 				return err
 			}
 			candidate, _, ok := canonicalSourceRef(payload, scope, record.SourceID)
@@ -212,7 +212,7 @@ func (s *BadgerSessionMemoryStore) CanonicalSourceID(ctx context.Context, scope 
 		}
 		return nil
 	}); scanErr != nil {
-		return "", badgerSessionMemoryError("resolve canonical source identity", scanErr)
+		return "", canonicalStoreError("resolve canonical source identity", scanErr)
 	}
 	if resolved != "" {
 		return resolved, nil
@@ -220,8 +220,8 @@ func (s *BadgerSessionMemoryStore) CanonicalSourceID(ctx context.Context, scope 
 	return "", boyan.PermanentError(boyan.CodeNotFound, "canonical source does not exist", nil)
 }
 
-func (s *BadgerSessionMemoryStore) LoadCanonicalForgetOutcome(ctx context.Context, scope boyan.Scope, operationID string, kind boyan.ForgetKind) (boyan.ForgetOutcome, bool, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) LoadCanonicalForgetOutcome(ctx context.Context, scope boyan.Scope, operationID string, kind boyan.ForgetKind) (boyan.ForgetOutcome, bool, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return boyan.ForgetOutcome{}, false, err
 	}
 	if err := scope.Validate(); err != nil {
@@ -244,13 +244,13 @@ func (s *BadgerSessionMemoryStore) LoadCanonicalForgetOutcome(ctx context.Contex
 	}
 	var stored badgerCanonicalForgetOutcome
 	err = s.db.View(func(txn *badger.Txn) error {
-		return getBadgerSessionMemoryRecord(txn, key, badgerRecordForgetOutcome, &stored)
+		return getCanonicalRecord(txn, key, badgerRecordForgetOutcome, &stored)
 	})
 	if errors.Is(err, badger.ErrKeyNotFound) {
 		return boyan.ForgetOutcome{}, false, nil
 	}
 	if err != nil {
-		return boyan.ForgetOutcome{}, false, badgerSessionMemoryError("load canonical forget outcome", err)
+		return boyan.ForgetOutcome{}, false, canonicalStoreError("load canonical forget outcome", err)
 	}
 	if err := stored.Outcome.Validate(); err != nil || stored.Outcome.Scope != scope || stored.Outcome.OperationID != operationID || stored.Outcome.Kind != kind {
 		return boyan.ForgetOutcome{}, false, boyan.PermanentError(boyan.CodeStoreFailure, "stored canonical forget outcome is invalid", err)
@@ -258,8 +258,8 @@ func (s *BadgerSessionMemoryStore) LoadCanonicalForgetOutcome(ctx context.Contex
 	return stored.Outcome, true, nil
 }
 
-func (s *BadgerSessionMemoryStore) CommitCanonicalForget(ctx context.Context, request boyan.CanonicalForgetCommitRequest) (boyan.ForgetOutcome, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) CommitCanonicalForget(ctx context.Context, request boyan.CanonicalForgetCommitRequest) (boyan.ForgetOutcome, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return boyan.ForgetOutcome{}, err
 	}
 	if err := request.Validate(); err != nil {
@@ -284,7 +284,7 @@ func (s *BadgerSessionMemoryStore) CommitCanonicalForget(ctx context.Context, re
 	var outcome boyan.ForgetOutcome
 	err = s.db.Update(func(txn *badger.Txn) error {
 		var existing badgerCanonicalForgetOutcome
-		readErr := getBadgerSessionMemoryRecord(txn, key, badgerRecordForgetOutcome, &existing)
+		readErr := getCanonicalRecord(txn, key, badgerRecordForgetOutcome, &existing)
 		if readErr == nil {
 			if existing.Fingerprint != request.Fingerprint {
 				return boyan.PermanentError(boyan.CodeConflict, "canonical forget operation identity was reused", nil)
@@ -299,7 +299,7 @@ func (s *BadgerSessionMemoryStore) CommitCanonicalForget(ctx context.Context, re
 			return readErr
 		}
 		state := boyan.ScopeState{SchemaVersion: boyan.CanonicalSchemaVersionV1, Scope: request.Scope}
-		stateErr := getBadgerSessionMemoryRecord(txn, scopeKey, badgerRecordScope, &state)
+		stateErr := getCanonicalRecord(txn, scopeKey, badgerRecordScope, &state)
 		if stateErr != nil && !errors.Is(stateErr, badger.ErrKeyNotFound) {
 			return stateErr
 		}
@@ -323,13 +323,13 @@ func (s *BadgerSessionMemoryStore) CommitCanonicalForget(ctx context.Context, re
 		for _, revision := range request.Revisions {
 			change.RevisionIDs = append(change.RevisionIDs, revision.RevisionID)
 		}
-		if err := putBadgerSessionMemoryRecord(txn, changeKey, badgerRecordChange, change); err != nil {
+		if err := putCanonicalRecord(txn, changeKey, badgerRecordChange, change); err != nil {
 			return err
 		}
-		if err := putBadgerSessionMemoryRecord(txn, scopeKey, badgerRecordScope, state); err != nil {
+		if err := putCanonicalRecord(txn, scopeKey, badgerRecordScope, state); err != nil {
 			return err
 		}
-		if err := putBadgerSessionMemoryRecord(txn, key, badgerRecordForgetOutcome, badgerCanonicalForgetOutcome{Fingerprint: request.Fingerprint, Outcome: outcome}); err != nil {
+		if err := putCanonicalRecord(txn, key, badgerRecordForgetOutcome, badgerCanonicalForgetOutcome{Fingerprint: request.Fingerprint, Outcome: outcome}); err != nil {
 			return err
 		}
 		if s.beforeCanonicalMutationCommit != nil {
@@ -338,7 +338,7 @@ func (s *BadgerSessionMemoryStore) CommitCanonicalForget(ctx context.Context, re
 		return nil
 	})
 	if err != nil {
-		return boyan.ForgetOutcome{}, badgerSessionMemoryError("commit canonical forget outcome", err)
+		return boyan.ForgetOutcome{}, canonicalStoreError("commit canonical forget outcome", err)
 	}
 	return outcome, nil
 }
@@ -346,8 +346,8 @@ func (s *BadgerSessionMemoryStore) CommitCanonicalForget(ctx context.Context, re
 // ScrubCanonicalForget removes only payload blobs already protected by the
 // logical deny markers. Structural records, identities, and tombstone markers
 // remain available for audit and replay-safe rejection.
-func (s *BadgerSessionMemoryStore) ScrubCanonicalForget(ctx context.Context, scope boyan.Scope, sourceIDs []string, revisionIDs []string) error {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) ScrubCanonicalForget(ctx context.Context, scope boyan.Scope, sourceIDs []string, revisionIDs []string) error {
+	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
 	if err := scope.Validate(); err != nil {
@@ -397,7 +397,7 @@ func (s *BadgerSessionMemoryStore) ScrubCanonicalForget(ctx context.Context, sco
 	}
 	if err := s.db.View(func(txn *badger.Txn) error {
 		for recordType, wanted := range map[string]map[string]struct{}{badgerRecordSource: deniedSources, badgerRecordRevision: deniedRevisions} {
-			prefix, err := badgerSessionMemoryPrefix(scope, recordType)
+			prefix, err := canonicalPrefix(scope, recordType)
 			if err != nil {
 				return err
 			}
@@ -405,7 +405,7 @@ func (s *BadgerSessionMemoryStore) ScrubCanonicalForget(ctx context.Context, sco
 			for iterator.Seek(prefix); iterator.ValidForPrefix(prefix); iterator.Next() {
 				if recordType == badgerRecordSource {
 					var source boyan.SourceRecordV2
-					if err := getBadgerSessionMemoryRecord(txn, iterator.Item().Key(), recordType, &source); err != nil {
+					if err := getCanonicalRecord(txn, iterator.Item().Key(), recordType, &source); err != nil {
 						iterator.Close()
 						return err
 					}
@@ -414,7 +414,7 @@ func (s *BadgerSessionMemoryStore) ScrubCanonicalForget(ctx context.Context, sco
 					}
 				} else {
 					var revision boyan.MemoryRevision
-					if err := getBadgerSessionMemoryRecord(txn, iterator.Item().Key(), recordType, &revision); err != nil {
+					if err := getCanonicalRecord(txn, iterator.Item().Key(), recordType, &revision); err != nil {
 						iterator.Close()
 						return err
 					}
@@ -429,14 +429,14 @@ func (s *BadgerSessionMemoryStore) ScrubCanonicalForget(ctx context.Context, sco
 		// source/revision payloads would leave forgotten turn text reachable by
 		// a trace hydrator, so scan the bounded exact scope for denied sources.
 		if len(deniedSources) > 0 {
-			prefix, err := badgerSessionMemoryPrefix(scope, badgerRecordMessage)
+			prefix, err := canonicalPrefix(scope, badgerRecordMessage)
 			if err != nil {
 				return err
 			}
 			iterator := txn.NewIterator(badger.DefaultIteratorOptions)
 			for iterator.Seek(prefix); iterator.ValidForPrefix(prefix); iterator.Next() {
 				var message boyan.MessageRecord
-				if err := getBadgerSessionMemoryRecord(txn, iterator.Item().Key(), badgerRecordMessage, &message); err != nil {
+				if err := getCanonicalRecord(txn, iterator.Item().Key(), badgerRecordMessage, &message); err != nil {
 					iterator.Close()
 					return err
 				}
@@ -449,7 +449,7 @@ func (s *BadgerSessionMemoryStore) ScrubCanonicalForget(ctx context.Context, sco
 		return nil
 	}); err != nil {
 		s.maintenanceMu.RUnlock()
-		return badgerSessionMemoryError("scan canonical forget payloads", err)
+		return canonicalStoreError("scan canonical forget payloads", err)
 	}
 	s.maintenanceMu.RUnlock()
 	if scrubOverflow {

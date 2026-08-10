@@ -1,8 +1,10 @@
-package boyan
+package app
 
 import (
 	"context"
 	"errors"
+
+	. "github.com/baldaworks/boyan"
 )
 
 // BoundaryStore is the narrow persistence port required by boundary

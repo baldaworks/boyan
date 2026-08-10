@@ -77,8 +77,7 @@ Current layout:
 ```text
 <state_dir>/
 ├── badger/
-├── bleve/
-└── migration/
+└── bleve/
 ```
 
 Do not point two Boyan processes at the same writable state root.
@@ -114,7 +113,6 @@ Helpful local checks:
 
 ```bash
 boyan serve --help
-boyan migrate balda --help
 curl -sS http://127.0.0.1:8686/livez
 curl -sS http://127.0.0.1:8686/readyz
 go test ./cmd/boyan

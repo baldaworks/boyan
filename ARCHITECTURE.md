@@ -58,14 +58,11 @@ Boyan owns one explicit state root:
 ```text
 <state_dir>/
 ├── badger/
-├── bleve/
-└── migration/
+└── bleve/
 ```
 
 - `badger/` is authoritative canonical state.
 - `bleve/` is disposable and rebuildable from canonical records.
-- `migration/` stores handoff receipts and logical export artifacts used during
-  Balda state transfer.
 
 One process owns one writable Badger directory. Boyan does not support shared
 writer access.
@@ -110,6 +107,6 @@ The model runtime does not choose:
 
 ## Migration boundary
 
-`boyan migrate balda` is an offline handoff from current Balda canonical state
-into an empty Boyan state root. It is restart-safe, verifies integrity, and
-rebuilds Bleve before the target is considered ready to serve.
+Boyan no longer ships Balda migration as part of its supported CLI or runtime
+surface. Historical import, if needed later, belongs in a separate legacy tool
+outside this repository's primary service boundary.

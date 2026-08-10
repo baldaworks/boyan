@@ -73,10 +73,10 @@ type StructuredInvoker interface {
 	Close(ctx context.Context) error
 }
 
-// BoundaryProcessor is the application-owned boundary semantic port.  Hosts
+// BoundaryExecutor is the application-owned boundary semantic port.  Hosts
 // may provide a processor backed by the canonical store, while the runtime
 // still owns capability composition and projection ordering.
-type BoundaryProcessor interface {
+type BoundaryExecutor interface {
 	ProcessBoundary(ctx context.Context, boundary boyan.Boundary) (boyan.BoundaryOutcome, error)
 }
 
@@ -101,7 +101,7 @@ type RuntimeConfig struct {
 	// Extractor is nil.  It is never inspected for a concrete provider type.
 	StructuredInvoker StructuredInvoker
 
-	Boundary BoundaryProcessor
+	Boundary BoundaryExecutor
 	Recall   RecallReader
 	Trace    TraceReader
 	Forget   Forgetter

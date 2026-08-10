@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/baldaworks/boyan"
-	portableapp "github.com/baldaworks/boyan/app"
+	portableapp "github.com/baldaworks/boyan/internal/apps/boyan"
 	"github.com/normahq/runtime/v2/agentconfig"
 	"github.com/normahq/runtime/v2/agentfactory"
 	runtimeconfig "github.com/normahq/runtime/v2/appconfig"

@@ -24,7 +24,7 @@ type CanonicalMaintenanceConfig struct {
 // CanonicalMaintenance owns one bounded maintenance goroutine for a Badger
 // canonical store. It never repairs records and it never owns store closure.
 type CanonicalMaintenance struct {
-	store    *BadgerSessionMemoryStore
+	store    *CanonicalStore
 	interval time.Duration
 	ratio    float64
 
@@ -37,7 +37,7 @@ type CanonicalMaintenance struct {
 
 // NewCanonicalMaintenance validates operational defaults without opening a
 // second database handle or changing the store's ownership boundary.
-func NewCanonicalMaintenance(store *BadgerSessionMemoryStore, config CanonicalMaintenanceConfig) (*CanonicalMaintenance, error) {
+func NewCanonicalMaintenance(store *CanonicalStore, config CanonicalMaintenanceConfig) (*CanonicalMaintenance, error) {
 	if store == nil {
 		return nil, boyan.PermanentError(boyan.CodeStoreFailure, "canonical maintenance store is required", nil)
 	}

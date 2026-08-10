@@ -44,7 +44,6 @@ func newRootCommand(stdout, stderr io.Writer) *cobra.Command {
 	command.SetErr(stderr)
 	command.PersistentFlags().StringVar(&configPath, configFlagPath, "", "path to a Boyan YAML config file")
 	command.AddCommand(newServeCommand(&configPath))
-	command.AddCommand(newMigrateCommand(&configPath))
 	return command
 }
 

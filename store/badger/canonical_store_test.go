@@ -35,51 +35,51 @@ func TestOpenPortableAPIReopensCanonicalDirectory(t *testing.T) {
 	t.Cleanup(func() { _ = reopened.Close() })
 }
 
-func TestBadgerSessionMemoryStoreCanonicalContract(t *testing.T) {
+func TestCanonicalStoreCanonicalContract(t *testing.T) {
 	boyantest.RunCanonicalStoreContract(t, func(t *testing.T) boyan.CanonicalStore {
-		store, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "memory.badger"))
+		store, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "memory.badger"))
 		if err != nil {
-			t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+			t.Fatalf("OpenCanonicalStore() error = %v", err)
 		}
 		t.Cleanup(func() { _ = store.Close() })
 		return store
 	})
 }
 
-func TestBadgerSessionMemoryStoreOwnsOneWritableDirectory(t *testing.T) {
+func TestCanonicalStoreOwnsOneWritableDirectory(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "memory.badger")
-	first, err := OpenBadgerSessionMemoryStore(directory)
+	first, err := OpenCanonicalStore(directory)
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
-	if _, err := OpenBadgerSessionMemoryStore(directory); err == nil {
+	if _, err := OpenCanonicalStore(directory); err == nil {
 		t.Fatal("second writable Badger store opened")
 	}
 	if err := first.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
-	reopened, err := OpenBadgerSessionMemoryStore(directory)
+	reopened, err := OpenCanonicalStore(directory)
 	if err != nil {
 		t.Fatalf("reopen error = %v", err)
 	}
 	t.Cleanup(func() { _ = reopened.Close() })
 }
 
-func TestBadgerSessionMemoryRecordCodec(t *testing.T) {
-	store, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "memory.badger"))
+func TestCanonicalRecordCodec(t *testing.T) {
+	store, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "memory.badger"))
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	key := []byte("record")
 	if err := store.db.Update(func(txn *badger.Txn) error {
-		return putBadgerSessionMemoryRecord(txn, key, "scope", map[string]string{"key": "value"})
+		return putCanonicalRecord(txn, key, "scope", map[string]string{"key": "value"})
 	}); err != nil {
 		t.Fatalf("write record error = %v", err)
 	}
 	var got map[string]string
 	if err := store.db.View(func(txn *badger.Txn) error {
-		return getBadgerSessionMemoryRecord(txn, key, "scope", &got)
+		return getCanonicalRecord(txn, key, "scope", &got)
 	}); err != nil {
 		t.Fatalf("read record error = %v", err)
 	}
@@ -87,22 +87,22 @@ func TestBadgerSessionMemoryRecordCodec(t *testing.T) {
 		t.Fatalf("record = %#v", got)
 	}
 	if err := store.db.View(func(txn *badger.Txn) error {
-		return getBadgerSessionMemoryRecord(txn, key, "operation", &got)
+		return getCanonicalRecord(txn, key, "operation", &got)
 	}); err == nil {
 		t.Fatal("wrong record type decoded")
 	}
 }
 
-func TestBadgerSessionMemoryStoreRequiresDirectory(t *testing.T) {
-	if _, err := OpenBadgerSessionMemoryStore(" "); err == nil {
+func TestCanonicalStoreRequiresDirectory(t *testing.T) {
+	if _, err := OpenCanonicalStore(" "); err == nil {
 		t.Fatal("empty directory opened")
 	}
 }
 
-func TestBadgerSessionMemoryStoreValueLogGCValidation(t *testing.T) {
-	store, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "memory.badger"))
+func TestCanonicalStoreValueLogGCValidation(t *testing.T) {
+	store, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "memory.badger"))
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	if err := store.RunValueLogGC(0); err == nil {
@@ -113,11 +113,11 @@ func TestBadgerSessionMemoryStoreValueLogGCValidation(t *testing.T) {
 	}
 }
 
-func TestBadgerSessionMemoryStoreDeniesSourceByExactScope(t *testing.T) {
+func TestCanonicalStoreDeniesSourceByExactScope(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "memory.badger")
-	store, err := OpenBadgerSessionMemoryStore(directory)
+	store, err := OpenCanonicalStore(directory)
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	scope := boyan.Scope{Key: "canonical:deny-a", Kind: boyan.ScopeKindPersonal}
 	if err := store.DenySource(context.Background(), scope, "source-1", time.Date(2026, time.August, 5, 12, 0, 0, 0, time.UTC)); err != nil {
@@ -137,7 +137,7 @@ func TestBadgerSessionMemoryStoreDeniesSourceByExactScope(t *testing.T) {
 	if err := store.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
-	store, err = OpenBadgerSessionMemoryStore(directory)
+	store, err = OpenCanonicalStore(directory)
 	if err != nil {
 		t.Fatalf("reopen error = %v", err)
 	}
@@ -147,11 +147,11 @@ func TestBadgerSessionMemoryStoreDeniesSourceByExactScope(t *testing.T) {
 	}
 }
 
-func TestBadgerSessionMemoryStoreAppliesCanonicalMutation(t *testing.T) {
+func TestCanonicalStoreAppliesCanonicalMutation(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "memory.badger")
-	store, err := OpenBadgerSessionMemoryStore(directory)
+	store, err := OpenCanonicalStore(directory)
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	scope := boyan.Scope{Key: "canonical:badger", Kind: boyan.ScopeKindPersonal}
@@ -206,10 +206,10 @@ func TestBadgerSessionMemoryStoreAppliesCanonicalMutation(t *testing.T) {
 	}
 }
 
-func TestBadgerSessionMemoryStorePersistsBidirectionalProvenance(t *testing.T) {
-	store, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "memory.badger"))
+func TestCanonicalStorePersistsBidirectionalProvenance(t *testing.T) {
+	store, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "memory.badger"))
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	scope := boyan.Scope{Key: "canonical:provenance", Kind: boyan.ScopeKindPersonal}
@@ -232,10 +232,10 @@ func TestBadgerSessionMemoryStorePersistsBidirectionalProvenance(t *testing.T) {
 	}
 	if err := store.db.View(func(txn *badger.Txn) error {
 		var forward, reverse badgerProvenanceEdge
-		if err := getBadgerSessionMemoryRecord(txn, forwardKey, badgerRecordProvenanceForward, &forward); err != nil {
+		if err := getCanonicalRecord(txn, forwardKey, badgerRecordProvenanceForward, &forward); err != nil {
 			return err
 		}
-		if err := getBadgerSessionMemoryRecord(txn, reverseKey, badgerRecordProvenanceReverse, &reverse); err != nil {
+		if err := getCanonicalRecord(txn, reverseKey, badgerRecordProvenanceReverse, &reverse); err != nil {
 			return err
 		}
 		if forward != reverse || forward.ChildRevisionID != second.RevisionID || forward.ParentRevisionID != first.RevisionID {
@@ -251,16 +251,16 @@ func TestBadgerSessionMemoryStorePersistsBidirectionalProvenance(t *testing.T) {
 	}
 	if err := store.db.View(func(txn *badger.Txn) error {
 		var edge badgerProvenanceEdge
-		return getBadgerSessionMemoryRecord(txn, sourceKey, badgerRecordSourceRevision, &edge)
+		return getCanonicalRecord(txn, sourceKey, badgerRecordSourceRevision, &edge)
 	}); err != nil {
 		t.Fatalf("read source provenance edge: %v", err)
 	}
 }
 
-func TestBadgerSessionMemoryStoreBatchesSourceProvenance(t *testing.T) {
-	store, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "memory.badger"))
+func TestCanonicalStoreBatchesSourceProvenance(t *testing.T) {
+	store, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "memory.badger"))
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	scope := boyan.Scope{Key: "canonical:source-batch", Kind: boyan.ScopeKindPersonal}
@@ -284,10 +284,10 @@ func TestBadgerSessionMemoryStoreBatchesSourceProvenance(t *testing.T) {
 	}
 }
 
-func TestBadgerSessionMemoryStoreRejectsInvalidProvenanceAtomically(t *testing.T) {
-	store, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "memory.badger"))
+func TestCanonicalStoreRejectsInvalidProvenanceAtomically(t *testing.T) {
+	store, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "memory.badger"))
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	scope := boyan.Scope{Key: "canonical:provenance-invalid", Kind: boyan.ScopeKindPersonal}
@@ -306,10 +306,10 @@ func TestBadgerSessionMemoryStoreRejectsInvalidProvenanceAtomically(t *testing.T
 	}
 }
 
-func TestBadgerSessionMemoryStoreRejectsDanglingHeadAtomically(t *testing.T) {
-	store, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "memory.badger"))
+func TestCanonicalStoreRejectsDanglingHeadAtomically(t *testing.T) {
+	store, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "memory.badger"))
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	scope := boyan.Scope{Key: "canonical:dangling-head", Kind: boyan.ScopeKindPersonal}
@@ -328,10 +328,10 @@ func TestBadgerSessionMemoryStoreRejectsDanglingHeadAtomically(t *testing.T) {
 	}
 }
 
-func TestBadgerSessionMemoryStoreClaimsAndRecoversDeliveryLease(t *testing.T) {
-	store, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "memory.badger"))
+func TestCanonicalStoreClaimsAndRecoversDeliveryLease(t *testing.T) {
+	store, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "memory.badger"))
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	scope := boyan.Scope{Key: "canonical:delivery", Kind: boyan.ScopeKindPersonal}
@@ -391,11 +391,11 @@ func TestBadgerSessionMemoryStoreClaimsAndRecoversDeliveryLease(t *testing.T) {
 	}
 }
 
-func TestBadgerSessionMemoryStoreRestoresReplayAndScopeState(t *testing.T) {
+func TestCanonicalStoreRestoresReplayAndScopeState(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "memory.badger")
-	store, err := OpenBadgerSessionMemoryStore(directory)
+	store, err := OpenCanonicalStore(directory)
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	scope := boyan.Scope{Key: "canonical:restart", Kind: boyan.ScopeKindPersonal}
 	mutation := canonicalRevisionMutation(scope, 0, "operation-1", canonicalRevision("revision-1", "item-1"))
@@ -406,7 +406,7 @@ func TestBadgerSessionMemoryStoreRestoresReplayAndScopeState(t *testing.T) {
 	if err := store.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
-	store, err = OpenBadgerSessionMemoryStore(directory)
+	store, err = OpenCanonicalStore(directory)
 	if err != nil {
 		t.Fatalf("reopen error = %v", err)
 	}
@@ -421,12 +421,12 @@ func TestBadgerSessionMemoryStoreRestoresReplayAndScopeState(t *testing.T) {
 	}
 }
 
-func TestBadgerSessionMemoryStoreBackupRestoreAndIntegrityVerification(t *testing.T) {
+func TestCanonicalStoreBackupRestoreAndIntegrityVerification(t *testing.T) {
 	ctx := context.Background()
 	sourceDir := filepath.Join(t.TempDir(), "source.badger")
-	source, err := OpenBadgerSessionMemoryStore(sourceDir)
+	source, err := OpenCanonicalStore(sourceDir)
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore(source) error = %v", err)
+		t.Fatalf("OpenCanonicalStore(source) error = %v", err)
 	}
 	scope := boyan.Scope{Key: "canonical:backup", Kind: boyan.ScopeKindPersonal}
 	mutation := canonicalRevisionMutation(scope, 0, "operation-backup", canonicalRevision("revision-backup", "item-backup"))
@@ -442,9 +442,9 @@ func TestBadgerSessionMemoryStoreBackupRestoreAndIntegrityVerification(t *testin
 		t.Fatalf("source Close() error = %v", err)
 	}
 
-	restored, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "restored.badger"))
+	restored, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "restored.badger"))
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore(restored) error = %v", err)
+		t.Fatalf("OpenCanonicalStore(restored) error = %v", err)
 	}
 	t.Cleanup(func() { _ = restored.Close() })
 	if err := restored.RestoreCanonicalBackup(ctx, bytes.NewReader(backup.Bytes()), 0); err != nil {
@@ -459,11 +459,11 @@ func TestBadgerSessionMemoryStoreBackupRestoreAndIntegrityVerification(t *testin
 	}
 }
 
-func TestBadgerSessionMemoryStoreLogicalExportImportRoundTrip(t *testing.T) {
+func TestCanonicalStoreLogicalExportImportRoundTrip(t *testing.T) {
 	ctx := context.Background()
-	source, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "source.badger"))
+	source, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "source.badger"))
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore(source) error = %v", err)
+		t.Fatalf("OpenCanonicalStore(source) error = %v", err)
 	}
 	scope := boyan.Scope{Key: "canonical:logical-export", Kind: boyan.ScopeKindPersonal}
 	mutation := canonicalRevisionMutation(scope, 0, "operation-logical", canonicalRevision("revision-logical", "item-logical"))
@@ -481,9 +481,9 @@ func TestBadgerSessionMemoryStoreLogicalExportImportRoundTrip(t *testing.T) {
 		t.Fatalf("source Close() error = %v", err)
 	}
 
-	destination, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "destination.badger"))
+	destination, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "destination.badger"))
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore(destination) error = %v", err)
+		t.Fatalf("OpenCanonicalStore(destination) error = %v", err)
 	}
 	t.Cleanup(func() { _ = destination.Close() })
 	if err := destination.ImportCanonicalLogical(ctx, bytes.NewReader(encoded.Bytes())); err != nil {
@@ -498,11 +498,11 @@ func TestBadgerSessionMemoryStoreLogicalExportImportRoundTrip(t *testing.T) {
 	}
 }
 
-func TestBadgerSessionMemoryStoreLogicalImportStreamsBeyondLegacyRecordCeiling(t *testing.T) {
+func TestCanonicalStoreLogicalImportStreamsBeyondLegacyRecordCeiling(t *testing.T) {
 	ctx := context.Background()
-	source, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "source.badger"))
+	source, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "source.badger"))
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore(source) error = %v", err)
+		t.Fatalf("OpenCanonicalStore(source) error = %v", err)
 	}
 	scope := boyan.Scope{Key: "canonical:logical-large", Kind: boyan.ScopeKindPersonal}
 	for index := 0; index < 900; index++ {
@@ -520,9 +520,9 @@ func TestBadgerSessionMemoryStoreLogicalImportStreamsBeyondLegacyRecordCeiling(t
 		t.Fatalf("source Close() error = %v", err)
 	}
 
-	destination, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "destination.badger"))
+	destination, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "destination.badger"))
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore(destination) error = %v", err)
+		t.Fatalf("OpenCanonicalStore(destination) error = %v", err)
 	}
 	t.Cleanup(func() { _ = destination.Close() })
 	if err := destination.ImportCanonicalLogical(ctx, bytes.NewReader(encoded.Bytes())); err != nil {
@@ -540,10 +540,10 @@ func TestBadgerSessionMemoryStoreLogicalImportStreamsBeyondLegacyRecordCeiling(t
 	}
 }
 
-func TestBadgerSessionMemoryStoreProvidesBoundedRevisionAndHeadReads(t *testing.T) {
-	store, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "memory.badger"))
+func TestCanonicalStoreProvidesBoundedRevisionAndHeadReads(t *testing.T) {
+	store, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "memory.badger"))
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	scope := boyan.Scope{Key: "canonical:projection-read", Kind: boyan.ScopeKindPersonal}
@@ -571,10 +571,10 @@ func TestBadgerSessionMemoryStoreProvidesBoundedRevisionAndHeadReads(t *testing.
 	}
 }
 
-func TestBadgerSessionMemoryStoreProjectionManifestFailsClosedUntilActivation(t *testing.T) {
-	store, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "memory.badger"))
+func TestCanonicalStoreProjectionManifestFailsClosedUntilActivation(t *testing.T) {
+	store, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "memory.badger"))
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	now := time.Date(2026, time.August, 6, 0, 0, 0, 0, time.UTC)
@@ -602,10 +602,10 @@ func TestBadgerSessionMemoryStoreProjectionManifestFailsClosedUntilActivation(t 
 	}
 }
 
-func TestBadgerSessionMemoryStoreAtomicallySwitchesActiveProjectionGeneration(t *testing.T) {
-	store, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "memory.badger"))
+func TestCanonicalStoreAtomicallySwitchesActiveProjectionGeneration(t *testing.T) {
+	store, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "memory.badger"))
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	now := time.Date(2026, time.August, 6, 0, 0, 0, 0, time.UTC)
@@ -638,10 +638,10 @@ func TestBadgerSessionMemoryStoreAtomicallySwitchesActiveProjectionGeneration(t 
 	}
 }
 
-func TestBadgerSessionMemoryStorePersistsProjectionRetentionAndScopeCheckpoints(t *testing.T) {
-	store, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "memory.badger"))
+func TestCanonicalStorePersistsProjectionRetentionAndScopeCheckpoints(t *testing.T) {
+	store, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "memory.badger"))
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	ctx := context.Background()
@@ -682,11 +682,11 @@ func TestBadgerSessionMemoryStorePersistsProjectionRetentionAndScopeCheckpoints(
 	}
 }
 
-func TestBadgerSessionMemoryStoreReopensScopeCheckpoint(t *testing.T) {
+func TestCanonicalStoreReopensScopeCheckpoint(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "memory.badger")
-	store, err := OpenBadgerSessionMemoryStore(directory)
+	store, err := OpenCanonicalStore(directory)
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	scope := boyan.Scope{Key: "canonical:checkpoint-reopen", Kind: boyan.ScopeKindPersonal}
 	checkpoint := boyan.ScopeCheckpoint{
@@ -705,7 +705,7 @@ func TestBadgerSessionMemoryStoreReopensScopeCheckpoint(t *testing.T) {
 	if err := store.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
-	store, err = OpenBadgerSessionMemoryStore(directory)
+	store, err = OpenCanonicalStore(directory)
 	if err != nil {
 		t.Fatalf("reopen error = %v", err)
 	}
@@ -716,11 +716,11 @@ func TestBadgerSessionMemoryStoreReopensScopeCheckpoint(t *testing.T) {
 	}
 }
 
-func TestBadgerSessionMemoryStoreFaultBeforeCommitLeavesNoPartialMutationAfterReopen(t *testing.T) {
+func TestCanonicalStoreFaultBeforeCommitLeavesNoPartialMutationAfterReopen(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "memory.badger")
-	store, err := OpenBadgerSessionMemoryStore(directory)
+	store, err := OpenCanonicalStore(directory)
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	scope := boyan.Scope{Key: "canonical:fault", Kind: boyan.ScopeKindPersonal}
 	mutation := canonicalRevisionMutation(scope, 0, "operation-fault", canonicalRevision("revision-fault", "item-fault"))
@@ -731,7 +731,7 @@ func TestBadgerSessionMemoryStoreFaultBeforeCommitLeavesNoPartialMutationAfterRe
 	if err := store.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
-	store, err = OpenBadgerSessionMemoryStore(directory)
+	store, err = OpenCanonicalStore(directory)
 	if err != nil {
 		t.Fatalf("reopen error = %v", err)
 	}
@@ -750,10 +750,10 @@ func TestBadgerSessionMemoryStoreFaultBeforeCommitLeavesNoPartialMutationAfterRe
 	}
 }
 
-func TestBadgerSessionMemoryStoreRejectsStaleCASAndAllowsIndependentScopes(t *testing.T) {
-	store, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "memory.badger"))
+func TestCanonicalStoreRejectsStaleCASAndAllowsIndependentScopes(t *testing.T) {
+	store, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "memory.badger"))
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	scope := boyan.Scope{Key: "canonical:cas", Kind: boyan.ScopeKindPersonal}
@@ -783,10 +783,10 @@ func TestBadgerSessionMemoryStoreRejectsStaleCASAndAllowsIndependentScopes(t *te
 	}
 }
 
-func TestBadgerSessionMemoryStoreIsolatesEqualIDsAcrossScopes(t *testing.T) {
-	store, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "memory.badger"))
+func TestCanonicalStoreIsolatesEqualIDsAcrossScopes(t *testing.T) {
+	store, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "memory.badger"))
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	for _, scope := range []boyan.Scope{
@@ -799,11 +799,11 @@ func TestBadgerSessionMemoryStoreIsolatesEqualIDsAcrossScopes(t *testing.T) {
 	}
 }
 
-func TestBadgerSessionMemoryErrorMapsTxnTooBig(t *testing.T) {
-	err := badgerSessionMemoryError("test", badger.ErrTxnTooBig)
+func TestCanonicalStoreErrorMapsTxnTooBig(t *testing.T) {
+	err := canonicalStoreError("test", badger.ErrTxnTooBig)
 	var memoryErr *boyan.Error
 	if !errors.As(err, &memoryErr) || memoryErr.Code != boyan.CodeLimitExceeded {
-		t.Fatalf("badgerSessionMemoryError() = %#v", err)
+		t.Fatalf("canonicalStoreError() = %#v", err)
 	}
 }
 

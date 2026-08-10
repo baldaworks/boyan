@@ -1,10 +1,12 @@
-package boyan
+package app
 
 import (
 	"context"
 	"errors"
 	"testing"
 	"time"
+
+	. "github.com/baldaworks/boyan"
 )
 
 func TestScopeViewBuilderKeepsActiveRecentAndChangedReadsBounded(t *testing.T) {

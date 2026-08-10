@@ -12,17 +12,17 @@ import (
 	"github.com/baldaworks/boyan"
 )
 
-// BenchmarkBadgerSessionMemoryStoreApplyCanonicalMutation100k records the
+// BenchmarkCanonicalStoreApplyCanonicalMutation100k records the
 // fixed 100k-turn, one-scope longevity shape from the v2 acceptance contract.
 // Run it with -benchtime=1x so every sample contains exactly 100,000 commits.
-func BenchmarkBadgerSessionMemoryStoreApplyCanonicalMutation100k(b *testing.B) {
+func BenchmarkCanonicalStoreApplyCanonicalMutation100k(b *testing.B) {
 	const commits = 100_000
 	if b.N != 1 {
 		b.Fatalf("run with -benchtime=1x so the benchmark performs exactly %d commits", commits)
 	}
-	store, err := OpenBadgerSessionMemoryStore(filepath.Join(b.TempDir(), "memory.badger"))
+	store, err := OpenCanonicalStore(filepath.Join(b.TempDir(), "memory.badger"))
 	if err != nil {
-		b.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		b.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	b.Cleanup(func() { _ = store.Close() })
 
@@ -46,12 +46,12 @@ func BenchmarkBadgerSessionMemoryStoreApplyCanonicalMutation100k(b *testing.B) {
 	b.ReportMetric(float64(time.Since(started))/commits, "ns/commit")
 }
 
-// BenchmarkBadgerSessionMemoryStoreApplyCanonicalMutation128Scopes measures
+// BenchmarkCanonicalStoreApplyCanonicalMutation128Scopes measures
 // the acceptance concurrency shape: 50,000 mutations across 128 independent,
 // ordered scope lanes. Run with -benchtime=1x and compare p95/p99 with the
 // documented hardware-specific thresholds rather than treating them as CI
 // pass/fail values.
-func BenchmarkBadgerSessionMemoryStoreApplyCanonicalMutation128Scopes(b *testing.B) {
+func BenchmarkCanonicalStoreApplyCanonicalMutation128Scopes(b *testing.B) {
 	const (
 		scopes       = 128
 		commits      = 50_000
@@ -61,9 +61,9 @@ func BenchmarkBadgerSessionMemoryStoreApplyCanonicalMutation128Scopes(b *testing
 	if b.N != 1 {
 		b.Fatalf("run with -benchtime=1x so the benchmark performs exactly %d commits", commits)
 	}
-	store, err := OpenBadgerSessionMemoryStore(filepath.Join(b.TempDir(), "memory.badger"))
+	store, err := OpenCanonicalStore(filepath.Join(b.TempDir(), "memory.badger"))
 	if err != nil {
-		b.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		b.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	b.Cleanup(func() { _ = store.Close() })
 

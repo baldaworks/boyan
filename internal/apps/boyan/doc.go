@@ -1,4 +1,4 @@
-// Package app owns the portable Boyan application use cases.
+// Package app owns the internal Boyan application use cases.
 //
 // The package is deliberately independent from Balda.  Hosts provide narrow
 // storage, projection, lifecycle, and structured-model ports; the runtime

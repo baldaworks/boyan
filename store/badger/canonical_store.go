@@ -16,10 +16,10 @@ import (
 	"github.com/baldaworks/boyan"
 )
 
-// BadgerSessionMemoryStore owns one canonical Badger directory. Store methods
+// CanonicalStore owns one canonical Badger directory. Store methods
 // are added alongside the v2 canonical mutation contract; construction is kept
 // separate so directory locking and durability defaults are testable now.
-type BadgerSessionMemoryStore struct {
+type CanonicalStore struct {
 	db   *badger.DB
 	gcMu sync.Mutex
 	// maintenanceMu excludes lifecycle/maintenance operations while allowing
@@ -31,18 +31,18 @@ type BadgerSessionMemoryStore struct {
 // DB exposes the owned handle only to composition adapters that need a
 // backend-specific maintenance operation. Callers should prefer the
 // storage-neutral ports implemented by the store.
-func (s *BadgerSessionMemoryStore) DB() *badger.DB {
+func (s *CanonicalStore) DB() *badger.DB {
 	if s == nil {
 		return nil
 	}
 	return s.db
 }
 
-var _ boyan.CanonicalSourceForgetStore = (*BadgerSessionMemoryStore)(nil)
+var _ boyan.CanonicalSourceForgetStore = (*CanonicalStore)(nil)
 
 // RunValueLogGC performs at most one non-destructive Badger value-log cleanup.
 // A skipped/rejected GC is normal when no reclaimable log exists.
-func (s *BadgerSessionMemoryStore) RunValueLogGC(discardRatio float64) error {
+func (s *CanonicalStore) RunValueLogGC(discardRatio float64) error {
 	if s == nil || s.db == nil {
 		return boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
@@ -54,17 +54,17 @@ func (s *BadgerSessionMemoryStore) RunValueLogGC(discardRatio float64) error {
 	s.maintenanceMu.Lock()
 	defer s.maintenanceMu.Unlock()
 	if err := s.db.RunValueLogGC(discardRatio); err != nil && !errors.Is(err, badger.ErrNoRewrite) {
-		return badgerSessionMemoryError("run canonical badger value-log GC", err)
+		return canonicalStoreError("run canonical badger value-log GC", err)
 	}
 	return nil
 }
 
-var _ boyan.CanonicalStore = (*BadgerSessionMemoryStore)(nil)
-var _ boyan.ProjectionCheckpointStore = (*BadgerSessionMemoryStore)(nil)
-var _ boyan.ProjectionRetentionFloorWriter = (*BadgerSessionMemoryStore)(nil)
-var _ boyan.ScopeCheckpointStore = (*BadgerSessionMemoryStore)(nil)
-var _ boyan.CanonicalOperationReader = (*BadgerSessionMemoryStore)(nil)
-var _ boyan.CanonicalOperationCommitter = (*BadgerSessionMemoryStore)(nil)
+var _ boyan.CanonicalStore = (*CanonicalStore)(nil)
+var _ boyan.ProjectionCheckpointStore = (*CanonicalStore)(nil)
+var _ boyan.ProjectionRetentionFloorWriter = (*CanonicalStore)(nil)
+var _ boyan.ScopeCheckpointStore = (*CanonicalStore)(nil)
+var _ boyan.CanonicalOperationReader = (*CanonicalStore)(nil)
+var _ boyan.CanonicalOperationCommitter = (*CanonicalStore)(nil)
 
 type badgerCanonicalOperation struct {
 	Fingerprint string                                 `json:"fingerprint"`
@@ -72,8 +72,8 @@ type badgerCanonicalOperation struct {
 }
 
 // LoadCanonicalOperation reads one exact-scope v2 mutation replay record.
-func (s *BadgerSessionMemoryStore) LoadCanonicalOperation(ctx context.Context, scope boyan.Scope, operationID string) (boyan.CanonicalOperationRecord, bool, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) LoadCanonicalOperation(ctx context.Context, scope boyan.Scope, operationID string) (boyan.CanonicalOperationRecord, bool, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return boyan.CanonicalOperationRecord{}, false, err
 	}
 	if err := scope.Validate(); err != nil {
@@ -96,13 +96,13 @@ func (s *BadgerSessionMemoryStore) LoadCanonicalOperation(ctx context.Context, s
 	}
 	var stored badgerCanonicalOperation
 	err = s.db.View(func(txn *badger.Txn) error {
-		return getBadgerSessionMemoryRecord(txn, key, badgerRecordOperation, &stored)
+		return getCanonicalRecord(txn, key, badgerRecordOperation, &stored)
 	})
 	if errors.Is(err, badger.ErrKeyNotFound) {
 		return boyan.CanonicalOperationRecord{}, false, nil
 	}
 	if err != nil {
-		return boyan.CanonicalOperationRecord{}, false, badgerSessionMemoryError("load canonical operation", err)
+		return boyan.CanonicalOperationRecord{}, false, canonicalStoreError("load canonical operation", err)
 	}
 	record := boyan.CanonicalOperationRecord{Fingerprint: stored.Fingerprint, Outcome: stored.Outcome}
 	if err := record.Validate(); err != nil {
@@ -113,8 +113,8 @@ func (s *BadgerSessionMemoryStore) LoadCanonicalOperation(ctx context.Context, s
 
 // CommitCanonicalOperation durably advances one scope for an operation that
 // has no revision records while preserving replay and CAS semantics.
-func (s *BadgerSessionMemoryStore) CommitCanonicalOperation(ctx context.Context, request boyan.CanonicalOperationCommitRequest) (boyan.CanonicalMutationOutcome, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) CommitCanonicalOperation(ctx context.Context, request boyan.CanonicalOperationCommitRequest) (boyan.CanonicalMutationOutcome, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return boyan.CanonicalMutationOutcome{}, err
 	}
 	if err := request.Validate(); err != nil {
@@ -139,7 +139,7 @@ func (s *BadgerSessionMemoryStore) CommitCanonicalOperation(ctx context.Context,
 	var outcome boyan.CanonicalMutationOutcome
 	err = s.db.Update(func(txn *badger.Txn) error {
 		var stored badgerCanonicalOperation
-		lookupErr := getBadgerSessionMemoryRecord(txn, operationKey, badgerRecordOperation, &stored)
+		lookupErr := getCanonicalRecord(txn, operationKey, badgerRecordOperation, &stored)
 		if lookupErr == nil {
 			if stored.Fingerprint != request.Fingerprint {
 				return boyan.PermanentError(boyan.CodeConflict, "canonical operation identity was reused", nil)
@@ -154,7 +154,7 @@ func (s *BadgerSessionMemoryStore) CommitCanonicalOperation(ctx context.Context,
 			return lookupErr
 		}
 		state := boyan.ScopeState{SchemaVersion: boyan.CanonicalSchemaVersionV1, Scope: request.Scope}
-		stateErr := getBadgerSessionMemoryRecord(txn, scopeKey, badgerRecordScope, &state)
+		stateErr := getCanonicalRecord(txn, scopeKey, badgerRecordScope, &state)
 		if stateErr != nil && !errors.Is(stateErr, badger.ErrKeyNotFound) {
 			return stateErr
 		}
@@ -175,13 +175,13 @@ func (s *BadgerSessionMemoryStore) CommitCanonicalOperation(ctx context.Context,
 			return keyErr
 		}
 		change := boyan.ScopeChange{Sequence: state.ChangeSeq, OperationID: request.OperationID, OccurredAt: request.CommittedAt}
-		if err := putBadgerSessionMemoryRecord(txn, changeKey, badgerRecordChange, change); err != nil {
+		if err := putCanonicalRecord(txn, changeKey, badgerRecordChange, change); err != nil {
 			return err
 		}
-		if err := putBadgerSessionMemoryRecord(txn, scopeKey, badgerRecordScope, state); err != nil {
+		if err := putCanonicalRecord(txn, scopeKey, badgerRecordScope, state); err != nil {
 			return err
 		}
-		if err := putBadgerSessionMemoryRecord(txn, operationKey, badgerRecordOperation, badgerCanonicalOperation{Fingerprint: request.Fingerprint, Outcome: outcome}); err != nil {
+		if err := putCanonicalRecord(txn, operationKey, badgerRecordOperation, badgerCanonicalOperation{Fingerprint: request.Fingerprint, Outcome: outcome}); err != nil {
 			return err
 		}
 		if s.beforeCanonicalMutationCommit != nil {
@@ -190,7 +190,7 @@ func (s *BadgerSessionMemoryStore) CommitCanonicalOperation(ctx context.Context,
 		return nil
 	})
 	if err != nil {
-		return boyan.CanonicalMutationOutcome{}, badgerSessionMemoryError("commit canonical operation", err)
+		return boyan.CanonicalMutationOutcome{}, canonicalStoreError("commit canonical operation", err)
 	}
 	return outcome, nil
 }
@@ -218,7 +218,7 @@ type badgerProjectionRetention struct {
 	Floor uint64 `json:"floor"`
 }
 
-func putBadgerSessionMemoryRecord(txn *badger.Txn, key []byte, recordType string, value any) error {
+func putCanonicalRecord(txn *badger.Txn, key []byte, recordType string, value any) error {
 	payload, err := json.Marshal(value)
 	if err != nil {
 		return fmt.Errorf("marshal %s record: %w", recordType, err)
@@ -233,7 +233,7 @@ func putBadgerSessionMemoryRecord(txn *badger.Txn, key []byte, recordType string
 	return nil
 }
 
-func getBadgerSessionMemoryRecord(txn *badger.Txn, key []byte, recordType string, value any) error {
+func getCanonicalRecord(txn *badger.Txn, key []byte, recordType string, value any) error {
 	item, err := txn.Get(key)
 	if err != nil {
 		return err
@@ -255,7 +255,7 @@ func getBadgerSessionMemoryRecord(txn *badger.Txn, key []byte, recordType string
 	return nil
 }
 
-func putBadgerSessionMemoryImmutableRecord(txn *badger.Txn, key []byte, recordType string, value any) error {
+func putCanonicalImmutableRecord(txn *badger.Txn, key []byte, recordType string, value any) error {
 	payload, err := json.Marshal(value)
 	if err != nil {
 		return fmt.Errorf("marshal immutable %s record: %w", recordType, err)
@@ -275,12 +275,12 @@ func putBadgerSessionMemoryImmutableRecord(txn *badger.Txn, key []byte, recordTy
 	if !errors.Is(err, badger.ErrKeyNotFound) {
 		return fmt.Errorf("lookup immutable %s record: %w", recordType, err)
 	}
-	return putBadgerSessionMemoryRecord(txn, key, recordType, value)
+	return putCanonicalRecord(txn, key, recordType, value)
 }
 
 // LoadScopeState reads the small mutable cursor for one exact scope.
-func (s *BadgerSessionMemoryStore) LoadScopeState(ctx context.Context, scope boyan.Scope) (boyan.ScopeState, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) LoadScopeState(ctx context.Context, scope boyan.Scope) (boyan.ScopeState, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return boyan.ScopeState{}, err
 	}
 	if err := scope.Validate(); err != nil {
@@ -300,14 +300,14 @@ func (s *BadgerSessionMemoryStore) LoadScopeState(ctx context.Context, scope boy
 	}
 	state := boyan.ScopeState{SchemaVersion: boyan.CanonicalSchemaVersionV1, Scope: scope}
 	err = s.db.View(func(txn *badger.Txn) error {
-		err := getBadgerSessionMemoryRecord(txn, key, badgerRecordScope, &state)
+		err := getCanonicalRecord(txn, key, badgerRecordScope, &state)
 		if errors.Is(err, badger.ErrKeyNotFound) {
 			return nil
 		}
 		return err
 	})
 	if err != nil {
-		return boyan.ScopeState{}, badgerSessionMemoryError("load canonical scope state", err)
+		return boyan.ScopeState{}, canonicalStoreError("load canonical scope state", err)
 	}
 	if err := state.Validate(); err != nil || state.Scope != scope {
 		return boyan.ScopeState{}, boyan.PermanentError(boyan.CodeStoreFailure, "stored canonical scope state is invalid", err)
@@ -317,8 +317,8 @@ func (s *BadgerSessionMemoryStore) LoadScopeState(ctx context.Context, scope boy
 
 // ApplyCanonicalMutation appends immutable records and advances the exact
 // scope cursor in one Badger transaction.
-func (s *BadgerSessionMemoryStore) ApplyCanonicalMutation(ctx context.Context, mutation boyan.CanonicalMutation) (boyan.CanonicalMutationOutcome, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) ApplyCanonicalMutation(ctx context.Context, mutation boyan.CanonicalMutation) (boyan.CanonicalMutationOutcome, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return boyan.CanonicalMutationOutcome{}, err
 	}
 	if err := mutation.Validate(); err != nil {
@@ -343,7 +343,7 @@ func (s *BadgerSessionMemoryStore) ApplyCanonicalMutation(ctx context.Context, m
 	var outcome boyan.CanonicalMutationOutcome
 	err = s.db.Update(func(txn *badger.Txn) error {
 		var operation badgerCanonicalOperation
-		err := getBadgerSessionMemoryRecord(txn, operationKey, badgerRecordOperation, &operation)
+		err := getCanonicalRecord(txn, operationKey, badgerRecordOperation, &operation)
 		if err == nil {
 			if operation.Fingerprint != mutation.Operation.Fingerprint {
 				return boyan.PermanentError(boyan.CodeConflict, "canonical operation identity was reused", nil)
@@ -358,7 +358,7 @@ func (s *BadgerSessionMemoryStore) ApplyCanonicalMutation(ctx context.Context, m
 			return err
 		}
 		state := boyan.ScopeState{SchemaVersion: boyan.CanonicalSchemaVersionV1, Scope: mutation.Scope}
-		err = getBadgerSessionMemoryRecord(txn, scopeKey, badgerRecordScope, &state)
+		err = getCanonicalRecord(txn, scopeKey, badgerRecordScope, &state)
 		if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
 			return err
 		}
@@ -385,13 +385,13 @@ func (s *BadgerSessionMemoryStore) ApplyCanonicalMutation(ctx context.Context, m
 		if err != nil {
 			return err
 		}
-		if err := putBadgerSessionMemoryRecord(txn, changeKey, badgerRecordChange, change); err != nil {
+		if err := putCanonicalRecord(txn, changeKey, badgerRecordChange, change); err != nil {
 			return err
 		}
-		if err := putBadgerSessionMemoryRecord(txn, scopeKey, badgerRecordScope, state); err != nil {
+		if err := putCanonicalRecord(txn, scopeKey, badgerRecordScope, state); err != nil {
 			return err
 		}
-		if err := putBadgerSessionMemoryRecord(txn, operationKey, badgerRecordOperation, badgerCanonicalOperation{Fingerprint: mutation.Operation.Fingerprint, Outcome: outcome}); err != nil {
+		if err := putCanonicalRecord(txn, operationKey, badgerRecordOperation, badgerCanonicalOperation{Fingerprint: mutation.Operation.Fingerprint, Outcome: outcome}); err != nil {
 			return err
 		}
 		if s.beforeCanonicalMutationCommit != nil {
@@ -400,12 +400,12 @@ func (s *BadgerSessionMemoryStore) ApplyCanonicalMutation(ctx context.Context, m
 		return nil
 	})
 	if err != nil {
-		return boyan.CanonicalMutationOutcome{}, badgerSessionMemoryError("apply canonical mutation", err)
+		return boyan.CanonicalMutationOutcome{}, canonicalStoreError("apply canonical mutation", err)
 	}
 	return outcome, nil
 }
 
-func (s *BadgerSessionMemoryStore) putCanonicalMutationRecords(txn *badger.Txn, mutation boyan.CanonicalMutation) error {
+func (s *CanonicalStore) putCanonicalMutationRecords(txn *badger.Txn, mutation boyan.CanonicalMutation) error {
 	if err := validateBadgerMutationReferences(txn, mutation); err != nil {
 		return err
 	}
@@ -413,11 +413,11 @@ func (s *BadgerSessionMemoryStore) putCanonicalMutationRecords(txn *badger.Txn, 
 		return err
 	}
 	for _, payload := range mutation.Payloads {
-		key, err := badgerSessionMemoryKey(boyan.Scope{Key: "internal:payload", Kind: boyan.ScopeKindPersonal}, badgerRecordPayload, payload.Ref.ID)
+		key, err := canonicalKey(boyan.Scope{Key: "internal:payload", Kind: boyan.ScopeKindPersonal}, badgerRecordPayload, payload.Ref.ID)
 		if err != nil {
 			return err
 		}
-		if err := putBadgerSessionMemoryImmutableRecord(txn, key, badgerRecordPayload, payload.Data); err != nil {
+		if err := putCanonicalImmutableRecord(txn, key, badgerRecordPayload, payload.Data); err != nil {
 			return err
 		}
 	}
@@ -446,14 +446,14 @@ func (s *BadgerSessionMemoryStore) putCanonicalMutationRecords(txn *badger.Txn, 
 			if err != nil {
 				return err
 			}
-			if err := putBadgerSessionMemoryImmutableRecord(txn, forwardKey, badgerRecordProvenanceForward, edge); err != nil {
+			if err := putCanonicalImmutableRecord(txn, forwardKey, badgerRecordProvenanceForward, edge); err != nil {
 				return err
 			}
 			reverseKey, err := badgerProvenanceKey(mutation.Scope, badgerRecordProvenanceReverse, parentID, revision.RevisionID)
 			if err != nil {
 				return err
 			}
-			if err := putBadgerSessionMemoryImmutableRecord(txn, reverseKey, badgerRecordProvenanceReverse, edge); err != nil {
+			if err := putCanonicalImmutableRecord(txn, reverseKey, badgerRecordProvenanceReverse, edge); err != nil {
 				return err
 			}
 		}
@@ -463,7 +463,7 @@ func (s *BadgerSessionMemoryStore) putCanonicalMutationRecords(txn *badger.Txn, 
 				return err
 			}
 			edge := badgerProvenanceEdge{ChildRevisionID: revision.RevisionID, ParentRevisionID: evidence.SourceID}
-			if err := putBadgerSessionMemoryImmutableRecord(txn, key, badgerRecordSourceRevision, edge); err != nil {
+			if err := putCanonicalImmutableRecord(txn, key, badgerRecordSourceRevision, edge); err != nil {
 				return err
 			}
 		}
@@ -474,11 +474,11 @@ func (s *BadgerSessionMemoryStore) putCanonicalMutationRecords(txn *badger.Txn, 
 		}
 	}
 	for _, head := range mutation.Heads {
-		key, err := badgerSessionMemoryKey(mutation.Scope, badgerRecordHead, head.ItemID)
+		key, err := canonicalKey(mutation.Scope, badgerRecordHead, head.ItemID)
 		if err != nil {
 			return err
 		}
-		if err := putBadgerSessionMemoryRecord(txn, key, badgerRecordHead, head); err != nil {
+		if err := putCanonicalRecord(txn, key, badgerRecordHead, head); err != nil {
 			return err
 		}
 	}
@@ -522,7 +522,7 @@ func validateBadgerMutationReferences(txn *badger.Txn, mutation boyan.CanonicalM
 }
 
 func badgerCanonicalRecordExists(txn *badger.Txn, scope boyan.Scope, recordType, id string) error {
-	key, err := badgerSessionMemoryKey(scope, recordType, id)
+	key, err := canonicalKey(scope, recordType, id)
 	if err != nil {
 		return err
 	}
@@ -544,7 +544,7 @@ func validateBadgerMutationProvenance(txn *badger.Txn, mutation boyan.CanonicalM
 			if _, exists := revisions[parentID]; exists {
 				continue
 			}
-			parentKey, err := badgerSessionMemoryKey(mutation.Scope, badgerRecordRevision, parentID)
+			parentKey, err := canonicalKey(mutation.Scope, badgerRecordRevision, parentID)
 			if err != nil {
 				return err
 			}
@@ -586,16 +586,16 @@ func validateBadgerMutationProvenance(txn *badger.Txn, mutation boyan.CanonicalM
 }
 
 func putBadgerCanonicalRecord(txn *badger.Txn, scope boyan.Scope, recordType, id string, value any) error {
-	key, err := badgerSessionMemoryKey(scope, recordType, id)
+	key, err := canonicalKey(scope, recordType, id)
 	if err != nil {
 		return err
 	}
-	return putBadgerSessionMemoryImmutableRecord(txn, key, recordType, value)
+	return putCanonicalImmutableRecord(txn, key, recordType, value)
 }
 
 // ScanScopeChanges returns a bounded ordered tail for projection recovery.
-func (s *BadgerSessionMemoryStore) ScanScopeChanges(ctx context.Context, scope boyan.Scope, after uint64, limit uint32) ([]boyan.ScopeChange, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) ScanScopeChanges(ctx context.Context, scope boyan.Scope, after uint64, limit uint32) ([]boyan.ScopeChange, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return nil, err
 	}
 	if err := scope.Validate(); err != nil {
@@ -620,7 +620,7 @@ func (s *BadgerSessionMemoryStore) ScanScopeChanges(ctx context.Context, scope b
 		}
 		for iterator.Seek(start); iterator.ValidForPrefix(prefix) && uint32(len(changes)) < limit; iterator.Next() {
 			var change boyan.ScopeChange
-			if err := getBadgerSessionMemoryRecord(txn, iterator.Item().Key(), badgerRecordChange, &change); err != nil {
+			if err := getCanonicalRecord(txn, iterator.Item().Key(), badgerRecordChange, &change); err != nil {
 				return err
 			}
 			if err := change.Validate(); err != nil {
@@ -634,13 +634,13 @@ func (s *BadgerSessionMemoryStore) ScanScopeChanges(ctx context.Context, scope b
 		return nil
 	})
 	if err != nil {
-		return nil, badgerSessionMemoryError("scan canonical scope changes", err)
+		return nil, canonicalStoreError("scan canonical scope changes", err)
 	}
 	return changes, nil
 }
 
-func (s *BadgerSessionMemoryStore) LoadCanonicalRevisions(ctx context.Context, request boyan.CanonicalRevisionReadRequest) ([]boyan.MemoryRevision, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) LoadCanonicalRevisions(ctx context.Context, request boyan.CanonicalRevisionReadRequest) ([]boyan.MemoryRevision, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return nil, err
 	}
 	if err := request.Validate(); err != nil {
@@ -649,12 +649,12 @@ func (s *BadgerSessionMemoryStore) LoadCanonicalRevisions(ctx context.Context, r
 	revisions := make([]boyan.MemoryRevision, 0, len(request.RevisionIDs))
 	err := s.db.View(func(txn *badger.Txn) error {
 		for _, revisionID := range request.RevisionIDs {
-			key, err := badgerSessionMemoryKey(request.Scope, badgerRecordRevision, revisionID)
+			key, err := canonicalKey(request.Scope, badgerRecordRevision, revisionID)
 			if err != nil {
 				return err
 			}
 			var revision boyan.MemoryRevision
-			if err := getBadgerSessionMemoryRecord(txn, key, badgerRecordRevision, &revision); err != nil {
+			if err := getCanonicalRecord(txn, key, badgerRecordRevision, &revision); err != nil {
 				if errors.Is(err, badger.ErrKeyNotFound) {
 					return boyan.PermanentError(boyan.CodeNotFound, "canonical revision is missing", nil)
 				}
@@ -668,19 +668,19 @@ func (s *BadgerSessionMemoryStore) LoadCanonicalRevisions(ctx context.Context, r
 		return nil
 	})
 	if err != nil {
-		return nil, badgerSessionMemoryError("load canonical revisions", err)
+		return nil, canonicalStoreError("load canonical revisions", err)
 	}
 	return revisions, nil
 }
 
-func (s *BadgerSessionMemoryStore) ScanActiveHeads(ctx context.Context, request boyan.ActiveHeadScanRequest) ([]boyan.ItemHead, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) ScanActiveHeads(ctx context.Context, request boyan.ActiveHeadScanRequest) ([]boyan.ItemHead, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return nil, err
 	}
 	if err := request.Validate(); err != nil {
 		return nil, err
 	}
-	prefix, err := badgerSessionMemoryPrefix(request.Scope, badgerRecordHead)
+	prefix, err := canonicalPrefix(request.Scope, badgerRecordHead)
 	if err != nil {
 		return nil, err
 	}
@@ -692,14 +692,14 @@ func (s *BadgerSessionMemoryStore) ScanActiveHeads(ctx context.Context, request 
 		defer iterator.Close()
 		start := prefix
 		if request.AfterItemID != "" {
-			start, err = badgerSessionMemoryKey(request.Scope, badgerRecordHead, request.AfterItemID)
+			start, err = canonicalKey(request.Scope, badgerRecordHead, request.AfterItemID)
 			if err != nil {
 				return err
 			}
 		}
 		for iterator.Seek(start); iterator.ValidForPrefix(prefix) && uint32(len(heads)) < request.Limit; iterator.Next() {
 			var head boyan.ItemHead
-			if err := getBadgerSessionMemoryRecord(txn, iterator.Item().Key(), badgerRecordHead, &head); err != nil {
+			if err := getCanonicalRecord(txn, iterator.Item().Key(), badgerRecordHead, &head); err != nil {
 				return err
 			}
 			if request.AfterItemID != "" && head.ItemID <= request.AfterItemID {
@@ -713,7 +713,7 @@ func (s *BadgerSessionMemoryStore) ScanActiveHeads(ctx context.Context, request 
 		return nil
 	})
 	if err != nil {
-		return nil, badgerSessionMemoryError("scan canonical active heads", err)
+		return nil, canonicalStoreError("scan canonical active heads", err)
 	}
 	return heads, nil
 }
@@ -721,8 +721,8 @@ func (s *BadgerSessionMemoryStore) ScanActiveHeads(ctx context.Context, request 
 // ScanActiveMemory returns a bounded reconciler view without scanning historic
 // revisions. Scope-level CAS on the subsequent mutation handles concurrent
 // changes after this read.
-func (s *BadgerSessionMemoryStore) ScanActiveMemory(ctx context.Context, request boyan.ActiveMemoryScanRequest) ([]boyan.ActiveCanonicalMemory, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) ScanActiveMemory(ctx context.Context, request boyan.ActiveMemoryScanRequest) ([]boyan.ActiveCanonicalMemory, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return nil, err
 	}
 	if err := request.Validate(); err != nil {
@@ -735,20 +735,20 @@ func (s *BadgerSessionMemoryStore) ScanActiveMemory(ctx context.Context, request
 	active := make([]boyan.ActiveCanonicalMemory, 0, len(heads))
 	err = s.db.View(func(txn *badger.Txn) error {
 		for _, head := range heads {
-			itemKey, keyErr := badgerSessionMemoryKey(request.Scope, badgerRecordItem, head.ItemID)
+			itemKey, keyErr := canonicalKey(request.Scope, badgerRecordItem, head.ItemID)
 			if keyErr != nil {
 				return keyErr
 			}
-			revisionKey, keyErr := badgerSessionMemoryKey(request.Scope, badgerRecordRevision, head.RevisionID)
+			revisionKey, keyErr := canonicalKey(request.Scope, badgerRecordRevision, head.RevisionID)
 			if keyErr != nil {
 				return keyErr
 			}
 			var item boyan.MemoryItem
-			if err := getBadgerSessionMemoryRecord(txn, itemKey, badgerRecordItem, &item); err != nil {
+			if err := getCanonicalRecord(txn, itemKey, badgerRecordItem, &item); err != nil {
 				return err
 			}
 			var revision boyan.MemoryRevision
-			if err := getBadgerSessionMemoryRecord(txn, revisionKey, badgerRecordRevision, &revision); err != nil {
+			if err := getCanonicalRecord(txn, revisionKey, badgerRecordRevision, &revision); err != nil {
 				return err
 			}
 			if err := item.Validate(); err != nil {
@@ -767,13 +767,13 @@ func (s *BadgerSessionMemoryStore) ScanActiveMemory(ctx context.Context, request
 		return nil
 	})
 	if err != nil {
-		return nil, badgerSessionMemoryError("scan active canonical memory", err)
+		return nil, canonicalStoreError("scan active canonical memory", err)
 	}
 	return active, nil
 }
 
-func (s *BadgerSessionMemoryStore) LoadProjectionManifest(ctx context.Context, scope boyan.Scope, projectionID, generationID string) (boyan.ProjectionManifest, bool, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) LoadProjectionManifest(ctx context.Context, scope boyan.Scope, projectionID, generationID string) (boyan.ProjectionManifest, bool, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return boyan.ProjectionManifest{}, false, err
 	}
 	if err := scope.Validate(); err != nil || strings.TrimSpace(projectionID) == "" || strings.TrimSpace(generationID) == "" {
@@ -785,13 +785,13 @@ func (s *BadgerSessionMemoryStore) LoadProjectionManifest(ctx context.Context, s
 	}
 	var manifest boyan.ProjectionManifest
 	err = s.db.View(func(txn *badger.Txn) error {
-		return getBadgerSessionMemoryRecord(txn, key, badgerRecordProjectionManifest, &manifest)
+		return getCanonicalRecord(txn, key, badgerRecordProjectionManifest, &manifest)
 	})
 	if errors.Is(err, badger.ErrKeyNotFound) {
 		return boyan.ProjectionManifest{}, false, nil
 	}
 	if err != nil {
-		return boyan.ProjectionManifest{}, false, badgerSessionMemoryError("load projection manifest", err)
+		return boyan.ProjectionManifest{}, false, canonicalStoreError("load projection manifest", err)
 	}
 	if err := manifest.Validate(); err != nil || manifest.Scope != scope || manifest.ProjectionID != projectionID || manifest.GenerationID != generationID {
 		return boyan.ProjectionManifest{}, false, boyan.PermanentError(boyan.CodeStoreFailure, "stored projection manifest is invalid", err)
@@ -799,26 +799,26 @@ func (s *BadgerSessionMemoryStore) LoadProjectionManifest(ctx context.Context, s
 	return manifest, true, nil
 }
 
-func (s *BadgerSessionMemoryStore) LoadActiveProjectionManifest(ctx context.Context, scope boyan.Scope, projectionID string) (boyan.ProjectionManifest, bool, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) LoadActiveProjectionManifest(ctx context.Context, scope boyan.Scope, projectionID string) (boyan.ProjectionManifest, bool, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return boyan.ProjectionManifest{}, false, err
 	}
 	if err := scope.Validate(); err != nil || strings.TrimSpace(projectionID) == "" {
 		return boyan.ProjectionManifest{}, false, boyan.PermanentError(boyan.CodeInvalidScope, "active projection lookup is invalid", err)
 	}
-	activeKey, err := badgerSessionMemoryKey(scope, badgerRecordProjectionActive, projectionID)
+	activeKey, err := canonicalKey(scope, badgerRecordProjectionActive, projectionID)
 	if err != nil {
 		return boyan.ProjectionManifest{}, false, err
 	}
 	var active badgerProjectionActive
 	err = s.db.View(func(txn *badger.Txn) error {
-		return getBadgerSessionMemoryRecord(txn, activeKey, badgerRecordProjectionActive, &active)
+		return getCanonicalRecord(txn, activeKey, badgerRecordProjectionActive, &active)
 	})
 	if errors.Is(err, badger.ErrKeyNotFound) {
 		return boyan.ProjectionManifest{}, false, nil
 	}
 	if err != nil {
-		return boyan.ProjectionManifest{}, false, badgerSessionMemoryError("load active projection", err)
+		return boyan.ProjectionManifest{}, false, canonicalStoreError("load active projection", err)
 	}
 	manifest, found, err := s.LoadProjectionManifest(ctx, scope, projectionID, active.GenerationID)
 	if err != nil || !found || manifest.Status != boyan.ProjectionGenerationActive {
@@ -827,8 +827,8 @@ func (s *BadgerSessionMemoryStore) LoadActiveProjectionManifest(ctx context.Cont
 	return manifest, true, nil
 }
 
-func (s *BadgerSessionMemoryStore) MarkProjectionDirty(ctx context.Context, manifest boyan.ProjectionManifest) error {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) MarkProjectionDirty(ctx context.Context, manifest boyan.ProjectionManifest) error {
+	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
 	if err := manifest.Validate(); err != nil {
@@ -840,14 +840,14 @@ func (s *BadgerSessionMemoryStore) MarkProjectionDirty(ctx context.Context, mani
 		return err
 	}
 	if err := s.db.Update(func(txn *badger.Txn) error {
-		return putBadgerSessionMemoryRecord(txn, key, badgerRecordProjectionManifest, manifest)
+		return putCanonicalRecord(txn, key, badgerRecordProjectionManifest, manifest)
 	}); err != nil {
-		return badgerSessionMemoryError("mark projection generation dirty", err)
+		return canonicalStoreError("mark projection generation dirty", err)
 	}
 	return nil
 }
 
-func (s *BadgerSessionMemoryStore) AdvanceProjectionWatermark(ctx context.Context, manifest boyan.ProjectionManifest, watermark uint64, updatedAt time.Time) error {
+func (s *CanonicalStore) AdvanceProjectionWatermark(ctx context.Context, manifest boyan.ProjectionManifest, watermark uint64, updatedAt time.Time) error {
 	return s.updateProjectionManifest(ctx, manifest, updatedAt, func(stored *boyan.ProjectionManifest) error {
 		if stored.Status != boyan.ProjectionGenerationDirty || watermark < stored.Watermark {
 			return boyan.PermanentError(boyan.CodeConflict, "projection watermark cannot advance", nil)
@@ -857,8 +857,8 @@ func (s *BadgerSessionMemoryStore) AdvanceProjectionWatermark(ctx context.Contex
 	})
 }
 
-func (s *BadgerSessionMemoryStore) ActivateProjectionGeneration(ctx context.Context, manifest boyan.ProjectionManifest, updatedAt time.Time) error {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) ActivateProjectionGeneration(ctx context.Context, manifest boyan.ProjectionManifest, updatedAt time.Time) error {
+	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
 	if err := manifest.Validate(); err != nil || updatedAt.IsZero() {
@@ -868,31 +868,31 @@ func (s *BadgerSessionMemoryStore) ActivateProjectionGeneration(ctx context.Cont
 	if err != nil {
 		return err
 	}
-	activeKey, err := badgerSessionMemoryKey(manifest.Scope, badgerRecordProjectionActive, manifest.ProjectionID)
+	activeKey, err := canonicalKey(manifest.Scope, badgerRecordProjectionActive, manifest.ProjectionID)
 	if err != nil {
 		return err
 	}
 	err = s.db.Update(func(txn *badger.Txn) error {
 		var stored boyan.ProjectionManifest
-		if err := getBadgerSessionMemoryRecord(txn, manifestKey, badgerRecordProjectionManifest, &stored); err != nil {
+		if err := getCanonicalRecord(txn, manifestKey, badgerRecordProjectionManifest, &stored); err != nil {
 			return err
 		}
 		if stored.Status != boyan.ProjectionGenerationDirty {
 			return boyan.PermanentError(boyan.CodeConflict, "projection generation is not dirty", nil)
 		}
 		var previous badgerProjectionActive
-		if err := getBadgerSessionMemoryRecord(txn, activeKey, badgerRecordProjectionActive, &previous); err == nil && previous.GenerationID != stored.GenerationID {
+		if err := getCanonicalRecord(txn, activeKey, badgerRecordProjectionActive, &previous); err == nil && previous.GenerationID != stored.GenerationID {
 			previousKey, keyErr := badgerProjectionManifestKey(manifest.Scope, manifest.ProjectionID, previous.GenerationID)
 			if keyErr != nil {
 				return keyErr
 			}
 			var old boyan.ProjectionManifest
-			if err := getBadgerSessionMemoryRecord(txn, previousKey, badgerRecordProjectionManifest, &old); err != nil {
+			if err := getCanonicalRecord(txn, previousKey, badgerRecordProjectionManifest, &old); err != nil {
 				return err
 			}
 			old.Status = boyan.ProjectionGenerationSuperseded
 			old.UpdatedAt = updatedAt.UTC()
-			if err := putBadgerSessionMemoryRecord(txn, previousKey, badgerRecordProjectionManifest, old); err != nil {
+			if err := putCanonicalRecord(txn, previousKey, badgerRecordProjectionManifest, old); err != nil {
 				return err
 			}
 		} else if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
@@ -900,19 +900,19 @@ func (s *BadgerSessionMemoryStore) ActivateProjectionGeneration(ctx context.Cont
 		}
 		stored.Status = boyan.ProjectionGenerationActive
 		stored.UpdatedAt = updatedAt.UTC()
-		if err := putBadgerSessionMemoryRecord(txn, manifestKey, badgerRecordProjectionManifest, stored); err != nil {
+		if err := putCanonicalRecord(txn, manifestKey, badgerRecordProjectionManifest, stored); err != nil {
 			return err
 		}
-		return putBadgerSessionMemoryRecord(txn, activeKey, badgerRecordProjectionActive, badgerProjectionActive{GenerationID: stored.GenerationID})
+		return putCanonicalRecord(txn, activeKey, badgerRecordProjectionActive, badgerProjectionActive{GenerationID: stored.GenerationID})
 	})
 	if err != nil {
-		return badgerSessionMemoryError("activate projection generation", err)
+		return canonicalStoreError("activate projection generation", err)
 	}
 	return nil
 }
 
-func (s *BadgerSessionMemoryStore) updateProjectionManifest(ctx context.Context, manifest boyan.ProjectionManifest, updatedAt time.Time, update func(*boyan.ProjectionManifest) error) error {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) updateProjectionManifest(ctx context.Context, manifest boyan.ProjectionManifest, updatedAt time.Time, update func(*boyan.ProjectionManifest) error) error {
+	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
 	if err := manifest.Validate(); err != nil || updatedAt.IsZero() {
@@ -924,7 +924,7 @@ func (s *BadgerSessionMemoryStore) updateProjectionManifest(ctx context.Context,
 	}
 	err = s.db.Update(func(txn *badger.Txn) error {
 		var stored boyan.ProjectionManifest
-		if err := getBadgerSessionMemoryRecord(txn, key, badgerRecordProjectionManifest, &stored); err != nil {
+		if err := getCanonicalRecord(txn, key, badgerRecordProjectionManifest, &stored); err != nil {
 			return err
 		}
 		if stored.Scope != manifest.Scope || stored.ProjectionID != manifest.ProjectionID || stored.GenerationID != manifest.GenerationID {
@@ -934,10 +934,10 @@ func (s *BadgerSessionMemoryStore) updateProjectionManifest(ctx context.Context,
 			return err
 		}
 		stored.UpdatedAt = updatedAt.UTC()
-		return putBadgerSessionMemoryRecord(txn, key, badgerRecordProjectionManifest, stored)
+		return putCanonicalRecord(txn, key, badgerRecordProjectionManifest, stored)
 	})
 	if err != nil {
-		return badgerSessionMemoryError("update projection manifest", err)
+		return canonicalStoreError("update projection manifest", err)
 	}
 	return nil
 }
@@ -946,8 +946,8 @@ func (s *BadgerSessionMemoryStore) updateProjectionManifest(ctx context.Context,
 // for incremental replay after retention removed older change records. A
 // missing floor means that all canonical changes are still available and is
 // represented as zero.
-func (s *BadgerSessionMemoryStore) LoadProjectionRetentionFloor(ctx context.Context, scope boyan.Scope, projectionID string) (uint64, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) LoadProjectionRetentionFloor(ctx context.Context, scope boyan.Scope, projectionID string) (uint64, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return 0, err
 	}
 	if err := scope.Validate(); err != nil || strings.TrimSpace(projectionID) == "" {
@@ -959,13 +959,13 @@ func (s *BadgerSessionMemoryStore) LoadProjectionRetentionFloor(ctx context.Cont
 	}
 	var retention badgerProjectionRetention
 	err = s.db.View(func(txn *badger.Txn) error {
-		return getBadgerSessionMemoryRecord(txn, key, badgerRecordProjectionRetention, &retention)
+		return getCanonicalRecord(txn, key, badgerRecordProjectionRetention, &retention)
 	})
 	if errors.Is(err, badger.ErrKeyNotFound) {
 		return 0, nil
 	}
 	if err != nil {
-		return 0, badgerSessionMemoryError("load projection retention floor", err)
+		return 0, canonicalStoreError("load projection retention floor", err)
 	}
 	return retention.Floor, nil
 }
@@ -973,8 +973,8 @@ func (s *BadgerSessionMemoryStore) LoadProjectionRetentionFloor(ctx context.Cont
 // SetProjectionRetentionFloor records a verified maintenance cursor. The
 // floor is monotonic and is intentionally separate from disposable index
 // files, so a projector can detect when incremental replay is no longer safe.
-func (s *BadgerSessionMemoryStore) SetProjectionRetentionFloor(ctx context.Context, scope boyan.Scope, projectionID string, floor uint64) error {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) SetProjectionRetentionFloor(ctx context.Context, scope boyan.Scope, projectionID string, floor uint64) error {
+	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
 	if err := scope.Validate(); err != nil || strings.TrimSpace(projectionID) == "" {
@@ -991,24 +991,24 @@ func (s *BadgerSessionMemoryStore) SetProjectionRetentionFloor(ctx context.Conte
 	}
 	err = s.db.Update(func(txn *badger.Txn) error {
 		var current badgerProjectionRetention
-		err := getBadgerSessionMemoryRecord(txn, key, badgerRecordProjectionRetention, &current)
+		err := getCanonicalRecord(txn, key, badgerRecordProjectionRetention, &current)
 		if err == nil && floor < current.Floor {
 			return boyan.PermanentError(boyan.CodeConflict, "projection retention floor moved backwards", nil)
 		}
 		if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
 			return err
 		}
-		return putBadgerSessionMemoryRecord(txn, key, badgerRecordProjectionRetention, badgerProjectionRetention{Floor: floor})
+		return putCanonicalRecord(txn, key, badgerRecordProjectionRetention, badgerProjectionRetention{Floor: floor})
 	})
 	if err != nil {
-		return badgerSessionMemoryError("set projection retention floor", err)
+		return canonicalStoreError("set projection retention floor", err)
 	}
 	return nil
 }
 
 // LoadScopeCheckpoint loads the latest cursor for one trigger kind.
-func (s *BadgerSessionMemoryStore) LoadScopeCheckpoint(ctx context.Context, scope boyan.Scope, kind boyan.ScopeCheckpointKind) (boyan.ScopeCheckpoint, bool, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) LoadScopeCheckpoint(ctx context.Context, scope boyan.Scope, kind boyan.ScopeCheckpointKind) (boyan.ScopeCheckpoint, bool, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return boyan.ScopeCheckpoint{}, false, err
 	}
 	if err := scope.Validate(); err != nil {
@@ -1023,13 +1023,13 @@ func (s *BadgerSessionMemoryStore) LoadScopeCheckpoint(ctx context.Context, scop
 	}
 	var checkpoint boyan.ScopeCheckpoint
 	err = s.db.View(func(txn *badger.Txn) error {
-		return getBadgerSessionMemoryRecord(txn, key, badgerRecordProjectionCheckpoint, &checkpoint)
+		return getCanonicalRecord(txn, key, badgerRecordProjectionCheckpoint, &checkpoint)
 	})
 	if errors.Is(err, badger.ErrKeyNotFound) {
 		return boyan.ScopeCheckpoint{}, false, nil
 	}
 	if err != nil {
-		return boyan.ScopeCheckpoint{}, false, badgerSessionMemoryError("load scope checkpoint", err)
+		return boyan.ScopeCheckpoint{}, false, canonicalStoreError("load scope checkpoint", err)
 	}
 	if err := checkpoint.Validate(); err != nil || checkpoint.Scope != scope || checkpoint.Kind != kind {
 		return boyan.ScopeCheckpoint{}, false, boyan.PermanentError(boyan.CodeStoreFailure, "stored scope checkpoint is invalid", err)
@@ -1040,8 +1040,8 @@ func (s *BadgerSessionMemoryStore) LoadScopeCheckpoint(ctx context.Context, scop
 // SaveScopeCheckpoint persists one latest-per-kind cursor and rejects stale
 // writes. The maintenance mutex serializes this update with canonical
 // lifecycle work in the same Badger owner.
-func (s *BadgerSessionMemoryStore) SaveScopeCheckpoint(ctx context.Context, checkpoint boyan.ScopeCheckpoint) error {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) SaveScopeCheckpoint(ctx context.Context, checkpoint boyan.ScopeCheckpoint) error {
+	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
 	if err := checkpoint.Validate(); err != nil {
@@ -1058,7 +1058,7 @@ func (s *BadgerSessionMemoryStore) SaveScopeCheckpoint(ctx context.Context, chec
 	}
 	err = s.db.Update(func(txn *badger.Txn) error {
 		var current boyan.ScopeCheckpoint
-		err := getBadgerSessionMemoryRecord(txn, key, badgerRecordProjectionCheckpoint, &current)
+		err := getCanonicalRecord(txn, key, badgerRecordProjectionCheckpoint, &current)
 		if err == nil {
 			if current.ScopeVersion > checkpoint.ScopeVersion || current.ChangeSeq > checkpoint.ChangeSeq || current.OccurredAt.After(checkpoint.OccurredAt) {
 				return boyan.PermanentError(boyan.CodeConflict, "scope checkpoint moved backwards", nil)
@@ -1069,24 +1069,24 @@ func (s *BadgerSessionMemoryStore) SaveScopeCheckpoint(ctx context.Context, chec
 		} else if !errors.Is(err, badger.ErrKeyNotFound) {
 			return err
 		}
-		return putBadgerSessionMemoryRecord(txn, key, badgerRecordProjectionCheckpoint, checkpoint)
+		return putCanonicalRecord(txn, key, badgerRecordProjectionCheckpoint, checkpoint)
 	})
 	if err != nil {
-		return badgerSessionMemoryError("save scope checkpoint", err)
+		return canonicalStoreError("save scope checkpoint", err)
 	}
 	return nil
 }
 
 // ClaimDeliveryOutbox atomically leases pending or expired exact-scope
 // deliveries. Immutable records are never modified while delivery state moves.
-func (s *BadgerSessionMemoryStore) ClaimDeliveryOutbox(ctx context.Context, request boyan.DeliveryClaimRequest) ([]boyan.ClaimedDelivery, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) ClaimDeliveryOutbox(ctx context.Context, request boyan.DeliveryClaimRequest) ([]boyan.ClaimedDelivery, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return nil, err
 	}
 	if err := request.Validate(); err != nil {
 		return nil, err
 	}
-	prefix, err := badgerSessionMemoryPrefix(request.Scope, badgerRecordDelivery)
+	prefix, err := canonicalPrefix(request.Scope, badgerRecordDelivery)
 	if err != nil {
 		return nil, err
 	}
@@ -1098,15 +1098,15 @@ func (s *BadgerSessionMemoryStore) ClaimDeliveryOutbox(ctx context.Context, requ
 		defer iterator.Close()
 		for iterator.Seek(prefix); iterator.ValidForPrefix(prefix) && uint32(len(claimed)) < request.Limit; iterator.Next() {
 			var record boyan.DeliveryOutboxRecord
-			if err := getBadgerSessionMemoryRecord(txn, iterator.Item().Key(), badgerRecordDelivery, &record); err != nil {
+			if err := getCanonicalRecord(txn, iterator.Item().Key(), badgerRecordDelivery, &record); err != nil {
 				return err
 			}
-			claimKey, err := badgerSessionMemoryKey(request.Scope, badgerRecordDeliveryClaim, record.DeliveryID)
+			claimKey, err := canonicalKey(request.Scope, badgerRecordDeliveryClaim, record.DeliveryID)
 			if err != nil {
 				return err
 			}
 			claim := boyan.DeliveryClaim{DeliveryID: record.DeliveryID, Status: boyan.DeliveryStatusPending}
-			err = getBadgerSessionMemoryRecord(txn, claimKey, badgerRecordDeliveryClaim, &claim)
+			err = getCanonicalRecord(txn, claimKey, badgerRecordDeliveryClaim, &claim)
 			if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
 				return err
 			}
@@ -1116,7 +1116,7 @@ func (s *BadgerSessionMemoryStore) ClaimDeliveryOutbox(ctx context.Context, requ
 			}
 			leaseUntil := request.LeaseUntil
 			claim = boyan.DeliveryClaim{DeliveryID: record.DeliveryID, Status: boyan.DeliveryStatusLeased, LeaseOwner: request.LeaseOwner, LeaseUntil: &leaseUntil, Attempts: claim.Attempts + 1}
-			if err := putBadgerSessionMemoryRecord(txn, claimKey, badgerRecordDeliveryClaim, claim); err != nil {
+			if err := putCanonicalRecord(txn, claimKey, badgerRecordDeliveryClaim, claim); err != nil {
 				return err
 			}
 			claimed = append(claimed, boyan.ClaimedDelivery{Record: record, Claim: claim})
@@ -1124,27 +1124,27 @@ func (s *BadgerSessionMemoryStore) ClaimDeliveryOutbox(ctx context.Context, requ
 		return nil
 	})
 	if err != nil {
-		return nil, badgerSessionMemoryError("claim canonical delivery outbox", err)
+		return nil, canonicalStoreError("claim canonical delivery outbox", err)
 	}
 	return claimed, nil
 }
 
 // SettleDeliveryOutbox marks an active exact-worker lease as delivered or
 // terminal. A stale or foreign worker cannot settle another worker's lease.
-func (s *BadgerSessionMemoryStore) SettleDeliveryOutbox(ctx context.Context, request boyan.DeliverySettlementRequest) error {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) SettleDeliveryOutbox(ctx context.Context, request boyan.DeliverySettlementRequest) error {
+	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
 	if err := request.Validate(); err != nil {
 		return err
 	}
-	claimKey, err := badgerSessionMemoryKey(request.Scope, badgerRecordDeliveryClaim, request.DeliveryID)
+	claimKey, err := canonicalKey(request.Scope, badgerRecordDeliveryClaim, request.DeliveryID)
 	if err != nil {
 		return err
 	}
 	err = s.db.Update(func(txn *badger.Txn) error {
 		var claim boyan.DeliveryClaim
-		if err := getBadgerSessionMemoryRecord(txn, claimKey, badgerRecordDeliveryClaim, &claim); err != nil {
+		if err := getCanonicalRecord(txn, claimKey, badgerRecordDeliveryClaim, &claim); err != nil {
 			if errors.Is(err, badger.ErrKeyNotFound) {
 				return boyan.PermanentError(boyan.CodeNotFound, "canonical delivery claim does not exist", nil)
 			}
@@ -1156,17 +1156,17 @@ func (s *BadgerSessionMemoryStore) SettleDeliveryOutbox(ctx context.Context, req
 		claim.Status = request.Status
 		claim.LeaseOwner = ""
 		claim.LeaseUntil = nil
-		return putBadgerSessionMemoryRecord(txn, claimKey, badgerRecordDeliveryClaim, claim)
+		return putCanonicalRecord(txn, claimKey, badgerRecordDeliveryClaim, claim)
 	})
 	if err != nil {
-		return badgerSessionMemoryError("settle canonical delivery outbox", err)
+		return canonicalStoreError("settle canonical delivery outbox", err)
 	}
 	return nil
 }
 
 // PutPayload persists payload bytes outside structural canonical records.
-func (s *BadgerSessionMemoryStore) PutPayload(ctx context.Context, data []byte, ref boyan.PayloadRef) error {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) PutPayload(ctx context.Context, data []byte, ref boyan.PayloadRef) error {
+	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
 	if !isBadgerPayloadValid(data, ref) {
@@ -1180,21 +1180,21 @@ func (s *BadgerSessionMemoryStore) PutPayload(ctx context.Context, data []byte, 
 	if s.db == nil {
 		return boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
-	key, err := badgerSessionMemoryKey(boyan.Scope{Key: "internal:payload", Kind: boyan.ScopeKindPersonal}, badgerRecordPayload, ref.ID)
+	key, err := canonicalKey(boyan.Scope{Key: "internal:payload", Kind: boyan.ScopeKindPersonal}, badgerRecordPayload, ref.ID)
 	if err != nil {
 		return err
 	}
 	if err := s.db.Update(func(txn *badger.Txn) error {
-		return putBadgerSessionMemoryImmutableRecord(txn, key, badgerRecordPayload, data)
+		return putCanonicalImmutableRecord(txn, key, badgerRecordPayload, data)
 	}); err != nil {
-		return badgerSessionMemoryError("store payload", err)
+		return canonicalStoreError("store payload", err)
 	}
 	return nil
 }
 
 // LoadPayload reads a content-free reference's payload bytes.
-func (s *BadgerSessionMemoryStore) LoadPayload(ctx context.Context, ref boyan.PayloadRef) ([]byte, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) LoadPayload(ctx context.Context, ref boyan.PayloadRef) ([]byte, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return nil, err
 	}
 	if err := ref.Validate(); err != nil {
@@ -1208,15 +1208,15 @@ func (s *BadgerSessionMemoryStore) LoadPayload(ctx context.Context, ref boyan.Pa
 	if s.db == nil {
 		return nil, boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
-	key, err := badgerSessionMemoryKey(boyan.Scope{Key: "internal:payload", Kind: boyan.ScopeKindPersonal}, badgerRecordPayload, ref.ID)
+	key, err := canonicalKey(boyan.Scope{Key: "internal:payload", Kind: boyan.ScopeKindPersonal}, badgerRecordPayload, ref.ID)
 	if err != nil {
 		return nil, err
 	}
 	var data []byte
 	if err := s.db.View(func(txn *badger.Txn) error {
-		return getBadgerSessionMemoryRecord(txn, key, badgerRecordPayload, &data)
+		return getCanonicalRecord(txn, key, badgerRecordPayload, &data)
 	}); err != nil {
-		return nil, badgerSessionMemoryError("load payload", err)
+		return nil, canonicalStoreError("load payload", err)
 	}
 	if !isBadgerPayloadValid(data, ref) {
 		return nil, boyan.PermanentError(boyan.CodeStoreFailure, "stored payload is invalid", nil)
@@ -1226,8 +1226,8 @@ func (s *BadgerSessionMemoryStore) LoadPayload(ctx context.Context, ref boyan.Pa
 
 // DeletePayload removes a payload blob after its logical forget state has
 // committed. Structural tombstones remain intact.
-func (s *BadgerSessionMemoryStore) DeletePayload(ctx context.Context, ref boyan.PayloadRef) error {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) DeletePayload(ctx context.Context, ref boyan.PayloadRef) error {
+	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
 	if err := ref.Validate(); err != nil {
@@ -1241,20 +1241,20 @@ func (s *BadgerSessionMemoryStore) DeletePayload(ctx context.Context, ref boyan.
 	if s.db == nil {
 		return boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
-	key, err := badgerSessionMemoryKey(boyan.Scope{Key: "internal:payload", Kind: boyan.ScopeKindPersonal}, badgerRecordPayload, ref.ID)
+	key, err := canonicalKey(boyan.Scope{Key: "internal:payload", Kind: boyan.ScopeKindPersonal}, badgerRecordPayload, ref.ID)
 	if err != nil {
 		return err
 	}
 	if err := s.db.Update(func(txn *badger.Txn) error { return txn.Delete(key) }); err != nil {
-		return badgerSessionMemoryError("delete payload", err)
+		return canonicalStoreError("delete payload", err)
 	}
 	return nil
 }
 
 // DenySource commits the fail-closed logical forget marker before any
 // asynchronous provenance traversal or payload scrubbing begins.
-func (s *BadgerSessionMemoryStore) DenySource(ctx context.Context, scope boyan.Scope, sourceID string, deniedAt time.Time) error {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) DenySource(ctx context.Context, scope boyan.Scope, sourceID string, deniedAt time.Time) error {
+	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
 	if err := scope.Validate(); err != nil {
@@ -1271,7 +1271,7 @@ func (s *BadgerSessionMemoryStore) DenySource(ctx context.Context, scope boyan.S
 	if s.db == nil {
 		return boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
-	key, err := badgerSessionMemoryKey(scope, badgerRecordDeniedSource, sourceID)
+	key, err := canonicalKey(scope, badgerRecordDeniedSource, sourceID)
 	if err != nil {
 		return err
 	}
@@ -1279,20 +1279,20 @@ func (s *BadgerSessionMemoryStore) DenySource(ctx context.Context, scope boyan.S
 	if err := s.db.Update(func(txn *badger.Txn) error {
 		return putBadgerDenyRecord(txn, key, badgerRecordDeniedSource, denied)
 	}); err != nil {
-		return badgerSessionMemoryError("deny canonical source", err)
+		return canonicalStoreError("deny canonical source", err)
 	}
 	return nil
 }
 
 // IsSourceDenied lets recall and traversal fail closed before physical scrub.
-func (s *BadgerSessionMemoryStore) IsSourceDenied(ctx context.Context, scope boyan.Scope, sourceID string) (bool, error) {
+func (s *CanonicalStore) IsSourceDenied(ctx context.Context, scope boyan.Scope, sourceID string) (bool, error) {
 	var denied badgerDeniedSource
 	return s.isDenied(ctx, scope, sourceID, badgerRecordDeniedSource, "read canonical source deny", &denied)
 }
 
 // DenyRevision commits a fail-closed cascade result for one revision.
-func (s *BadgerSessionMemoryStore) DenyRevision(ctx context.Context, scope boyan.Scope, revisionID string, deniedAt time.Time) error {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) DenyRevision(ctx context.Context, scope boyan.Scope, revisionID string, deniedAt time.Time) error {
+	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
 	if err := scope.Validate(); err != nil {
@@ -1309,7 +1309,7 @@ func (s *BadgerSessionMemoryStore) DenyRevision(ctx context.Context, scope boyan
 	if s.db == nil {
 		return boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
-	key, err := badgerSessionMemoryKey(scope, badgerRecordDeniedRevision, revisionID)
+	key, err := canonicalKey(scope, badgerRecordDeniedRevision, revisionID)
 	if err != nil {
 		return err
 	}
@@ -1317,7 +1317,7 @@ func (s *BadgerSessionMemoryStore) DenyRevision(ctx context.Context, scope boyan
 	if err := s.db.Update(func(txn *badger.Txn) error {
 		return putBadgerDenyRecord(txn, key, badgerRecordDeniedRevision, denied)
 	}); err != nil {
-		return badgerSessionMemoryError("deny canonical revision", err)
+		return canonicalStoreError("deny canonical revision", err)
 	}
 	return nil
 }
@@ -1328,17 +1328,17 @@ func putBadgerDenyRecord(txn *badger.Txn, key []byte, recordType string, value a
 	} else if !errors.Is(err, badger.ErrKeyNotFound) {
 		return err
 	}
-	return putBadgerSessionMemoryRecord(txn, key, recordType, value)
+	return putCanonicalRecord(txn, key, recordType, value)
 }
 
 // IsRevisionDenied lets recall fail closed while physical scrub is pending.
-func (s *BadgerSessionMemoryStore) IsRevisionDenied(ctx context.Context, scope boyan.Scope, revisionID string) (bool, error) {
+func (s *CanonicalStore) IsRevisionDenied(ctx context.Context, scope boyan.Scope, revisionID string) (bool, error) {
 	var denied badgerDeniedRevision
 	return s.isDenied(ctx, scope, revisionID, badgerRecordDeniedRevision, "read canonical revision deny", &denied)
 }
 
-func (s *BadgerSessionMemoryStore) isDenied(ctx context.Context, scope boyan.Scope, id, recordType, operation string, denied any) (bool, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) isDenied(ctx context.Context, scope boyan.Scope, id, recordType, operation string, denied any) (bool, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return false, err
 	}
 	if s == nil {
@@ -1349,18 +1349,18 @@ func (s *BadgerSessionMemoryStore) isDenied(ctx context.Context, scope boyan.Sco
 	if s.db == nil {
 		return false, boyan.PermanentError(boyan.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
-	key, err := badgerSessionMemoryKey(scope, recordType, id)
+	key, err := canonicalKey(scope, recordType, id)
 	if err != nil {
 		return false, err
 	}
 	err = s.db.View(func(txn *badger.Txn) error {
-		return getBadgerSessionMemoryRecord(txn, key, recordType, denied)
+		return getCanonicalRecord(txn, key, recordType, denied)
 	})
 	if errors.Is(err, badger.ErrKeyNotFound) {
 		return false, nil
 	}
 	if err != nil {
-		return false, badgerSessionMemoryError(operation, err)
+		return false, canonicalStoreError(operation, err)
 	}
 	return true, nil
 }
@@ -1368,8 +1368,8 @@ func (s *BadgerSessionMemoryStore) isDenied(ctx context.Context, scope boyan.Sco
 // SourceRevisionBatch returns a bounded, resumable source-provenance batch.
 // The next cursor is the final revision ID returned; an empty cursor means
 // the source has no further indexed descendants in this batch direction.
-func (s *BadgerSessionMemoryStore) SourceRevisionBatch(ctx context.Context, scope boyan.Scope, sourceID, afterRevisionID string, limit uint32) ([]string, string, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+func (s *CanonicalStore) SourceRevisionBatch(ctx context.Context, scope boyan.Scope, sourceID, afterRevisionID string, limit uint32) ([]string, string, error) {
+	if err := canonicalContextError(ctx); err != nil {
 		return nil, "", err
 	}
 	if err := scope.Validate(); err != nil {
@@ -1398,7 +1398,7 @@ func (s *BadgerSessionMemoryStore) SourceRevisionBatch(ctx context.Context, scop
 		defer iterator.Close()
 		for iterator.Seek(prefix); iterator.ValidForPrefix(prefix) && uint32(len(results)) < limit; iterator.Next() {
 			var edge badgerProvenanceEdge
-			if err := getBadgerSessionMemoryRecord(txn, iterator.Item().Key(), badgerRecordSourceRevision, &edge); err != nil {
+			if err := getCanonicalRecord(txn, iterator.Item().Key(), badgerRecordSourceRevision, &edge); err != nil {
 				return err
 			}
 			if edge.ChildRevisionID > afterRevisionID {
@@ -1408,7 +1408,7 @@ func (s *BadgerSessionMemoryStore) SourceRevisionBatch(ctx context.Context, scop
 		return nil
 	})
 	if err != nil {
-		return nil, "", badgerSessionMemoryError("scan source provenance", err)
+		return nil, "", canonicalStoreError("scan source provenance", err)
 	}
 	if len(results) == 0 {
 		return results, "", nil
@@ -1424,7 +1424,7 @@ func isBadgerPayloadValid(data []byte, ref boyan.PayloadRef) bool {
 	return hex.EncodeToString(digest[:]) == ref.Digest
 }
 
-func badgerSessionMemoryError(operation string, err error) error {
+func canonicalStoreError(operation string, err error) error {
 	if errors.Is(err, badger.ErrTxnTooBig) {
 		return boyan.PermanentError(boyan.CodeLimitExceeded, operation, err)
 	}
@@ -1438,15 +1438,15 @@ func badgerSessionMemoryError(operation string, err error) error {
 	return boyan.RetryableError(boyan.CodeStoreFailure, operation, err)
 }
 
-// OpenBadgerSessionMemoryStore opens the sole writable canonical directory.
-func OpenBadgerSessionMemoryStore(directory string) (*BadgerSessionMemoryStore, error) {
+// OpenCanonicalStore opens the sole writable canonical directory.
+func OpenCanonicalStore(directory string) (*CanonicalStore, error) {
 	return openWithConfig(directory, DefaultConfig())
 }
 
-func openWithConfig(directory string, config Config) (*BadgerSessionMemoryStore, error) {
+func openWithConfig(directory string, config Config) (*CanonicalStore, error) {
 	directory = strings.TrimSpace(directory)
 	if directory == "" {
-		return nil, fmt.Errorf("badger session-memory directory is required")
+		return nil, fmt.Errorf("canonical badger directory is required")
 	}
 	if !config.SyncWrites {
 		config.SyncWrites = true
@@ -1463,23 +1463,23 @@ func openWithConfig(directory string, config Config) (*BadgerSessionMemoryStore,
 		WithNumVersionsToKeep(config.NumVersionsToKeep)
 	db, err := badger.Open(options)
 	if err != nil {
-		return nil, fmt.Errorf("open canonical badger session-memory store: %w", err)
+		return nil, fmt.Errorf("open canonical badger store: %w", err)
 	}
-	return &BadgerSessionMemoryStore{db: db}, nil
+	return &CanonicalStore{db: db}, nil
 }
 
 // Close syncs and releases the canonical directory lock.
-func (s *BadgerSessionMemoryStore) Close() error {
+func (s *CanonicalStore) Close() error {
 	if s == nil || s.db == nil {
 		return nil
 	}
 	s.maintenanceMu.Lock()
 	defer s.maintenanceMu.Unlock()
 	if err := s.db.Sync(); err != nil {
-		return fmt.Errorf("sync canonical badger session-memory store: %w", err)
+		return fmt.Errorf("sync canonical badger store: %w", err)
 	}
 	if err := s.db.Close(); err != nil {
-		return fmt.Errorf("close canonical badger session-memory store: %w", err)
+		return fmt.Errorf("close canonical badger store: %w", err)
 	}
 	s.db = nil
 	return nil

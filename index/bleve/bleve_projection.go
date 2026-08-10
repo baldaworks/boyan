@@ -244,7 +244,7 @@ func (p *BleveRecallProjection) NewGeneration(id string) (*BleveGeneration, erro
 
 // Index adds one validated document to a build generation.
 func (g *BleveGeneration) Index(ctx context.Context, document boyan.RecallProjectionDocument) error {
-	if err := sessionMemoryContextError(ctx); err != nil {
+	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
 	if err := document.Validate(); err != nil {
@@ -279,7 +279,7 @@ func (g *BleveGeneration) Index(ctx context.Context, document boyan.RecallProjec
 
 // Delete removes one revision from a build generation before commit.
 func (g *BleveGeneration) Delete(ctx context.Context, revisionID string) error {
-	if err := sessionMemoryContextError(ctx); err != nil {
+	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
 	if strings.TrimSpace(revisionID) == "" {
@@ -300,7 +300,7 @@ func (g *BleveGeneration) Delete(ctx context.Context, revisionID string) error {
 // Commit durably applies the pending generation batch. Activation is a
 // separate operation, so a dirty/partial generation is never advertised.
 func (g *BleveGeneration) Commit(ctx context.Context) error {
-	if err := sessionMemoryContextError(ctx); err != nil {
+	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
 	if g == nil {
@@ -365,7 +365,7 @@ func (p *BleveRecallProjection) ActivateGenerationForScope(ctx context.Context, 
 }
 
 func (p *BleveRecallProjection) activateGeneration(ctx context.Context, scope boyan.Scope, id string, scoped bool) error {
-	if err := sessionMemoryContextError(ctx); err != nil {
+	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
 	if p == nil || !validBleveGenerationID(id) {
@@ -417,7 +417,7 @@ func (p *BleveRecallProjection) activateGeneration(ctx context.Context, scope bo
 // SearchRecall queries only the active generation and returns bounded
 // metadata. Canonical hydration and fail-closed validation happen elsewhere.
 func (p *BleveRecallProjection) SearchRecall(ctx context.Context, request boyan.RecallRequest) ([]boyan.RecallProjectionHit, error) {
-	if err := sessionMemoryContextError(ctx); err != nil {
+	if err := canonicalContextError(ctx); err != nil {
 		return nil, err
 	}
 	normalized, err := boyan.NormalizeRecallRequest(request)
@@ -512,7 +512,7 @@ func (p *BleveRecallProjection) SearchRecall(ctx context.Context, request boyan.
 // updated in place for this bounded maintenance operation; canonical denial
 // remains the read gate if the projection is unavailable or stale.
 func (p *BleveRecallProjection) ScrubCanonicalForget(ctx context.Context, scope boyan.Scope, sourceIDs, revisionIDs []string) error {
-	if err := sessionMemoryContextError(ctx); err != nil {
+	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
 	if err := scope.Validate(); err != nil {

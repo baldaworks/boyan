@@ -10,7 +10,7 @@ import (
 // a validated terminal turn.  The canonical store remains the source of truth;
 // projection work is a post-commit side effect.
 type TurnProcessor struct {
-	processor  *boyan.CanonicalTurnProcessor
+	processor  *CanonicalTurnProcessor
 	projection ProjectionSyncer
 	derivation boyan.DerivationRef
 }
@@ -29,7 +29,7 @@ func NewTurnProcessor(store boyan.CanonicalStore, extractor boyan.CanonicalSeman
 	if err := derivation.Validate(); err != nil {
 		return nil, err
 	}
-	processor, err := boyan.NewCanonicalTurnProcessor(store, extractor, policy)
+	processor, err := NewCanonicalTurnProcessor(store, extractor, policy)
 	if err != nil {
 		return nil, err
 	}
@@ -67,12 +67,12 @@ var _ TurnIngestor = (*TurnProcessor)(nil)
 // with the rebuildable projection.  The semantic processor itself is a narrow
 // port so a future service adapter can replace it without changing Runtime.
 type BoundaryService struct {
-	processor  BoundaryProcessor
+	processor  BoundaryExecutor
 	projection ProjectionSyncer
 }
 
 // NewBoundaryService constructs the boundary application service.
-func NewBoundaryService(processor BoundaryProcessor, projection ProjectionSyncer) (*BoundaryService, error) {
+func NewBoundaryService(processor BoundaryExecutor, projection ProjectionSyncer) (*BoundaryService, error) {
 	if processor == nil {
 		return nil, boyan.PermanentError(boyan.CodeStoreFailure, "boundary processor is required", nil)
 	}

@@ -9,10 +9,10 @@ import (
 	"github.com/baldaworks/boyan"
 )
 
-func TestBadgerSessionMemoryStorePersistsIngestSequenceReplay(t *testing.T) {
-	store, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "canonical.badger"))
+func TestCanonicalStorePersistsIngestSequenceReplay(t *testing.T) {
+	store, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "canonical.badger"))
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
@@ -50,10 +50,10 @@ func TestBadgerSessionMemoryStorePersistsIngestSequenceReplay(t *testing.T) {
 	}
 }
 
-func TestBadgerSessionMemoryStoreRejectsConflictingOrSkippedIngestSequence(t *testing.T) {
-	store, err := OpenBadgerSessionMemoryStore(filepath.Join(t.TempDir(), "canonical.badger"))
+func TestCanonicalStoreRejectsConflictingOrSkippedIngestSequence(t *testing.T) {
+	store, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "canonical.badger"))
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
@@ -75,11 +75,11 @@ func TestBadgerSessionMemoryStoreRejectsConflictingOrSkippedIngestSequence(t *te
 	}
 }
 
-func TestBadgerSessionMemoryStoreRestoresIngestSequenceAfterReopen(t *testing.T) {
+func TestCanonicalStoreRestoresIngestSequenceAfterReopen(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "canonical.badger")
-	store, err := OpenBadgerSessionMemoryStore(path)
+	store, err := OpenCanonicalStore(path)
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore() error = %v", err)
+		t.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
 	record := testIngestSequenceRecord(1)
 	if err := store.SaveIngestSequence(context.Background(), record); err != nil {
@@ -89,9 +89,9 @@ func TestBadgerSessionMemoryStoreRestoresIngestSequenceAfterReopen(t *testing.T)
 		t.Fatalf("Close() error = %v", err)
 	}
 
-	reopened, err := OpenBadgerSessionMemoryStore(path)
+	reopened, err := OpenCanonicalStore(path)
 	if err != nil {
-		t.Fatalf("OpenBadgerSessionMemoryStore(reopen) error = %v", err)
+		t.Fatalf("OpenCanonicalStore(reopen) error = %v", err)
 	}
 	t.Cleanup(func() { _ = reopened.Close() })
 

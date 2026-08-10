@@ -16,12 +16,12 @@ import (
 // Badger records. It deliberately implements the storage-neutral recall port
 // and keeps Badger keys, envelopes, and payload layout inside state.
 type CanonicalReader struct {
-	store *BadgerSessionMemoryStore
+	store *CanonicalStore
 }
 
 // NewCanonicalReader constructs the canonical read adapter for one Badger
 // owner. The reader does not open a second database handle.
-func NewCanonicalReader(store *BadgerSessionMemoryStore) (*CanonicalReader, error) {
+func NewCanonicalReader(store *CanonicalStore) (*CanonicalReader, error) {
 	if store == nil {
 		return nil, boyan.PermanentError(boyan.CodeStoreFailure, "canonical reader store is required", nil)
 	}
@@ -228,11 +228,11 @@ func (r *CanonicalReader) loadCanonicalView(ctx context.Context, scope boyan.Sco
 	defer r.store.maintenanceMu.RUnlock()
 	var view = canonicalRecallView{state: boyan.RevisionStateActive}
 	err := r.store.db.View(func(txn *badger.Txn) error {
-		revisionKey, err := badgerSessionMemoryKey(scope, badgerRecordRevision, revisionID)
+		revisionKey, err := canonicalKey(scope, badgerRecordRevision, revisionID)
 		if err != nil {
 			return err
 		}
-		if err := getBadgerSessionMemoryRecord(txn, revisionKey, badgerRecordRevision, &view.revision); err != nil {
+		if err := getCanonicalRecord(txn, revisionKey, badgerRecordRevision, &view.revision); err != nil {
 			if errors.Is(err, badger.ErrKeyNotFound) {
 				return err
 			}
@@ -241,22 +241,22 @@ func (r *CanonicalReader) loadCanonicalView(ctx context.Context, scope boyan.Sco
 		if err := view.revision.Validate(); err != nil {
 			return boyan.PermanentError(boyan.CodeStoreFailure, "stored canonical revision is invalid", err)
 		}
-		itemKey, err := badgerSessionMemoryKey(scope, badgerRecordItem, view.revision.ItemID)
+		itemKey, err := canonicalKey(scope, badgerRecordItem, view.revision.ItemID)
 		if err != nil {
 			return err
 		}
-		if err := getBadgerSessionMemoryRecord(txn, itemKey, badgerRecordItem, &view.item); err != nil {
+		if err := getCanonicalRecord(txn, itemKey, badgerRecordItem, &view.item); err != nil {
 			return err
 		}
 		if err := view.item.Validate(); err != nil || view.item.Scope != scope || view.item.ItemID != view.revision.ItemID {
 			return boyan.PermanentError(boyan.CodeStoreFailure, "stored canonical item is invalid", err)
 		}
-		headKey, keyErr := badgerSessionMemoryKey(scope, badgerRecordHead, view.item.ItemID)
+		headKey, keyErr := canonicalKey(scope, badgerRecordHead, view.item.ItemID)
 		if keyErr != nil {
 			return keyErr
 		}
 		var head boyan.ItemHead
-		if err := getBadgerSessionMemoryRecord(txn, headKey, badgerRecordHead, &head); err != nil {
+		if err := getCanonicalRecord(txn, headKey, badgerRecordHead, &head); err != nil {
 			return err
 		}
 		if err := head.Validate(); err != nil || head.ItemID != view.item.ItemID {
@@ -268,12 +268,12 @@ func (r *CanonicalReader) loadCanonicalView(ctx context.Context, scope boyan.Sco
 				return errCanonicalInactive
 			}
 		}
-		deniedKey, err := badgerSessionMemoryKey(scope, badgerRecordDeniedRevision, view.revision.RevisionID)
+		deniedKey, err := canonicalKey(scope, badgerRecordDeniedRevision, view.revision.RevisionID)
 		if err != nil {
 			return err
 		}
 		var denied badgerDeniedRevision
-		if err := getBadgerSessionMemoryRecord(txn, deniedKey, badgerRecordDeniedRevision, &denied); err == nil {
+		if err := getCanonicalRecord(txn, deniedKey, badgerRecordDeniedRevision, &denied); err == nil {
 			return errCanonicalDenied
 		} else if !errors.Is(err, badger.ErrKeyNotFound) {
 			return err
@@ -284,33 +284,33 @@ func (r *CanonicalReader) loadCanonicalView(ctx context.Context, scope boyan.Sco
 				continue
 			}
 			seenSources[evidence.SourceID] = struct{}{}
-			deniedSourceKey, keyErr := badgerSessionMemoryKey(scope, badgerRecordDeniedSource, evidence.SourceID)
+			deniedSourceKey, keyErr := canonicalKey(scope, badgerRecordDeniedSource, evidence.SourceID)
 			if keyErr != nil {
 				return keyErr
 			}
 			var deniedSource badgerDeniedSource
-			if err := getBadgerSessionMemoryRecord(txn, deniedSourceKey, badgerRecordDeniedSource, &deniedSource); err == nil {
+			if err := getCanonicalRecord(txn, deniedSourceKey, badgerRecordDeniedSource, &deniedSource); err == nil {
 				return errCanonicalDenied
 			} else if !errors.Is(err, badger.ErrKeyNotFound) {
 				return err
 			}
-			sourceKey, keyErr := badgerSessionMemoryKey(scope, badgerRecordSource, evidence.SourceID)
+			sourceKey, keyErr := canonicalKey(scope, badgerRecordSource, evidence.SourceID)
 			if keyErr != nil {
 				return keyErr
 			}
 			var source boyan.SourceRecordV2
-			if err := getBadgerSessionMemoryRecord(txn, sourceKey, badgerRecordSource, &source); err != nil {
+			if err := getCanonicalRecord(txn, sourceKey, badgerRecordSource, &source); err != nil {
 				return err
 			}
 			if err := source.Validate(); err != nil || source.Scope != scope {
 				return boyan.PermanentError(boyan.CodeStoreFailure, "stored canonical source is invalid", err)
 			}
-			payloadKey, keyErr := badgerSessionMemoryKey(payloadScope(), badgerRecordPayload, source.Payload.ID)
+			payloadKey, keyErr := canonicalKey(payloadScope(), badgerRecordPayload, source.Payload.ID)
 			if keyErr != nil {
 				return keyErr
 			}
 			var payload []byte
-			if err := getBadgerSessionMemoryRecord(txn, payloadKey, badgerRecordPayload, &payload); err != nil {
+			if err := getCanonicalRecord(txn, payloadKey, badgerRecordPayload, &payload); err != nil {
 				return err
 			}
 			if !isBadgerPayloadValid(payload, source.Payload) {
@@ -331,7 +331,7 @@ func (r *CanonicalReader) loadCanonicalView(ctx context.Context, scope boyan.Sco
 		return canonicalRecallView{}, false, nil
 	}
 	if err != nil {
-		return canonicalRecallView{}, false, badgerSessionMemoryError("load canonical recall view", err)
+		return canonicalRecallView{}, false, canonicalStoreError("load canonical recall view", err)
 	}
 	return view, true, nil
 }
@@ -726,27 +726,27 @@ func (r *CanonicalReader) loadSourceRecord(ctx context.Context, scope boyan.Scop
 		return boyan.SourceRecord{}, err
 	}
 	var source boyan.SourceRecordV2
-	key, err := badgerSessionMemoryKey(scope, badgerRecordSource, sourceID)
+	key, err := canonicalKey(scope, badgerRecordSource, sourceID)
 	if err != nil {
 		return boyan.SourceRecord{}, err
 	}
 	if err := r.store.db.View(func(txn *badger.Txn) error {
-		return getBadgerSessionMemoryRecord(txn, key, badgerRecordSource, &source)
+		return getCanonicalRecord(txn, key, badgerRecordSource, &source)
 	}); err != nil {
-		return boyan.SourceRecord{}, badgerSessionMemoryError("load canonical trace source", err)
+		return boyan.SourceRecord{}, canonicalStoreError("load canonical trace source", err)
 	}
 	// Evidence keys normally use the canonical SourceID, whereas migrated
 	// payloads retain the original export ID. Try both identities so the
 	// adapter remains compatible with either representation.
 	if source.SourceID != ref.ExportID {
-		key, err = badgerSessionMemoryKey(scope, badgerRecordSource, ref.ExportID)
+		key, err = canonicalKey(scope, badgerRecordSource, ref.ExportID)
 		if err != nil {
 			return boyan.SourceRecord{}, err
 		}
 		if loadErr := r.store.db.View(func(txn *badger.Txn) error {
-			return getBadgerSessionMemoryRecord(txn, key, badgerRecordSource, &source)
+			return getCanonicalRecord(txn, key, badgerRecordSource, &source)
 		}); loadErr != nil {
-			return boyan.SourceRecord{}, badgerSessionMemoryError("load canonical trace source alias", loadErr)
+			return boyan.SourceRecord{}, canonicalStoreError("load canonical trace source alias", loadErr)
 		}
 	}
 	payload, err := r.store.LoadPayload(ctx, source.Payload)
@@ -798,7 +798,7 @@ func (r *CanonicalReader) loadSourceMessages(ctx context.Context, scope boyan.Sc
 	if err := canonicalReaderContext(ctx); err != nil {
 		return nil, err
 	}
-	prefix, err := badgerSessionMemoryPrefix(scope, badgerRecordMessage)
+	prefix, err := canonicalPrefix(scope, badgerRecordMessage)
 	if err != nil {
 		return nil, err
 	}
@@ -810,7 +810,7 @@ func (r *CanonicalReader) loadSourceMessages(ctx context.Context, scope boyan.Sc
 		defer iterator.Close()
 		for iterator.Seek(prefix); iterator.ValidForPrefix(prefix); iterator.Next() {
 			var record boyan.MessageRecord
-			if err := getBadgerSessionMemoryRecord(txn, iterator.Item().Key(), badgerRecordMessage, &record); err != nil {
+			if err := getCanonicalRecord(txn, iterator.Item().Key(), badgerRecordMessage, &record); err != nil {
 				return err
 			}
 			if record.SourceID == sourceID {
@@ -825,7 +825,7 @@ func (r *CanonicalReader) loadSourceMessages(ctx context.Context, scope boyan.Sc
 		}
 		return nil
 	}); err != nil {
-		return nil, badgerSessionMemoryError("scan canonical trace messages", err)
+		return nil, canonicalStoreError("scan canonical trace messages", err)
 	}
 	sort.Slice(records, func(i, j int) bool {
 		return messageRoleOrder(records[i].Role) < messageRoleOrder(records[j].Role) ||

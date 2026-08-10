@@ -31,7 +31,7 @@ type SequencedIngestRuntime struct {
 	}
 
 	boundary struct {
-		processor  BoundaryProcessor
+		processor  BoundaryExecutor
 		projection ProjectionSyncer
 		repair     *projectionRepairer
 	}
@@ -52,7 +52,7 @@ func NewSequencedIngestRuntime(sequences boyan.IngestSequenceStore, canonical bo
 		derivation = turn.derivation
 		turnProjection = turn.projection
 	}
-	var boundaryProcessor BoundaryProcessor
+	var boundaryProcessor BoundaryExecutor
 	var boundaryProjection ProjectionSyncer
 	if boundary != nil {
 		boundaryProcessor = boundary.processor
@@ -61,7 +61,7 @@ func NewSequencedIngestRuntime(sequences boyan.IngestSequenceStore, canonical bo
 	return newSequencedIngestRuntimeWithParts(sequences, canonical, turnProcessor, derivation, turnProjection, boundaryProcessor, boundaryProjection, config)
 }
 
-func newSequencedIngestRuntimeWithParts(sequences boyan.IngestSequenceStore, canonical boyan.CanonicalStore, turnProcessor sequencedTurnCanonicalProcessor, derivation boyan.DerivationRef, turnProjection ProjectionSyncer, boundaryProcessor BoundaryProcessor, boundaryProjection ProjectionSyncer, config SequencedIngestConfig) (*SequencedIngestRuntime, error) {
+func newSequencedIngestRuntimeWithParts(sequences boyan.IngestSequenceStore, canonical boyan.CanonicalStore, turnProcessor sequencedTurnCanonicalProcessor, derivation boyan.DerivationRef, turnProjection ProjectionSyncer, boundaryProcessor BoundaryExecutor, boundaryProjection ProjectionSyncer, config SequencedIngestConfig) (*SequencedIngestRuntime, error) {
 	if sequences == nil || canonical == nil {
 		return nil, boyan.PermanentError(boyan.CodeStoreFailure, "sequenced ingest dependencies are required", nil)
 	}

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	clienthttp "github.com/baldaworks/boyan/client/http"
-	portableapp "github.com/baldaworks/boyan/app"
+	portableapp "github.com/baldaworks/boyan/internal/apps/boyan"
 	"github.com/baldaworks/boyan"
 )
 

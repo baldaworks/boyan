@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	portableapp "github.com/baldaworks/boyan/app"
+	portableapp "github.com/baldaworks/boyan/internal/apps/boyan"
 	adkagent "google.golang.org/adk/v2/agent"
 	adksession "google.golang.org/adk/v2/session"
 )

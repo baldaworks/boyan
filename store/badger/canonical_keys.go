@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	badgerSessionMemoryNamespace     byte = 0x53
-	badgerSessionMemoryVersion       byte = 1
+	canonicalNamespace     byte = 0x53
+	canonicalVersion       byte = 1
 	badgerRecordScope                     = "scope"
 	badgerRecordOperation                 = "operation"
 	badgerRecordSource                    = "source"
@@ -39,32 +39,32 @@ func badgerScopeKey(scope boyan.Scope) ([]byte, error) {
 	if err := scope.Validate(); err != nil {
 		return nil, err
 	}
-	return boyan.TupleKey(badgerSessionMemoryNamespace, badgerSessionMemoryVersion, badgerRecordScope, scope.Key, string(scope.Kind))
+	return boyan.TupleKey(canonicalNamespace, canonicalVersion, badgerRecordScope, scope.Key, string(scope.Kind))
 }
 
 func badgerProvenanceKey(scope boyan.Scope, recordType, revisionID, relatedRevisionID string) ([]byte, error) {
 	if err := scope.Validate(); err != nil {
 		return nil, err
 	}
-	return boyan.TupleKey(badgerSessionMemoryNamespace, badgerSessionMemoryVersion, recordType, scope.Key, string(scope.Kind), revisionID, relatedRevisionID)
+	return boyan.TupleKey(canonicalNamespace, canonicalVersion, recordType, scope.Key, string(scope.Kind), revisionID, relatedRevisionID)
 }
 
 func badgerProvenancePrefix(scope boyan.Scope, recordType, revisionID string) ([]byte, error) {
 	if err := scope.Validate(); err != nil {
 		return nil, err
 	}
-	return boyan.TupleKey(badgerSessionMemoryNamespace, badgerSessionMemoryVersion, recordType, scope.Key, string(scope.Kind), revisionID)
+	return boyan.TupleKey(canonicalNamespace, canonicalVersion, recordType, scope.Key, string(scope.Kind), revisionID)
 }
 
 func badgerOperationKey(scope boyan.Scope, operationID string) ([]byte, error) {
 	if err := scope.Validate(); err != nil {
 		return nil, err
 	}
-	return badgerSessionMemoryKey(scope, badgerRecordOperation, operationID)
+	return canonicalKey(scope, badgerRecordOperation, operationID)
 }
 
 func badgerForgetOutcomeKey(scope boyan.Scope, kind boyan.ForgetKind, operationID string) ([]byte, error) {
-	return badgerSessionMemoryKey(scope, badgerRecordForgetOutcome, string(kind)+"\x00"+operationID)
+	return canonicalKey(scope, badgerRecordForgetOutcome, string(kind)+"\x00"+operationID)
 }
 
 func badgerIngestSequenceKey(scope boyan.Scope, producerID string, sequence uint64) ([]byte, error) {
@@ -85,50 +85,50 @@ func badgerIngestSequencePrefix(scope boyan.Scope, producerID string) ([]byte, e
 	if !isCanonicalProducerID(producerID) {
 		return nil, boyan.PermanentError(boyan.CodeInvalidDerived, "ingest producer id is invalid", nil)
 	}
-	return boyan.TupleKey(badgerSessionMemoryNamespace, badgerSessionMemoryVersion, badgerRecordIngestSequence, scope.Key, string(scope.Kind), producerID)
+	return boyan.TupleKey(canonicalNamespace, canonicalVersion, badgerRecordIngestSequence, scope.Key, string(scope.Kind), producerID)
 }
 
 func badgerIngestCursorKey(scope boyan.Scope, producerID string) ([]byte, error) {
 	if !isCanonicalProducerID(producerID) {
 		return nil, boyan.PermanentError(boyan.CodeInvalidDerived, "ingest producer id is invalid", nil)
 	}
-	return badgerSessionMemoryKey(scope, badgerRecordIngestCursor, producerID)
+	return canonicalKey(scope, badgerRecordIngestCursor, producerID)
 }
 
-func badgerSessionMemoryKey(scope boyan.Scope, recordType string, id string) ([]byte, error) {
+func canonicalKey(scope boyan.Scope, recordType string, id string) ([]byte, error) {
 	if err := scope.Validate(); err != nil {
 		return nil, err
 	}
-	return boyan.TupleKey(badgerSessionMemoryNamespace, badgerSessionMemoryVersion, recordType, scope.Key, string(scope.Kind), id)
+	return boyan.TupleKey(canonicalNamespace, canonicalVersion, recordType, scope.Key, string(scope.Kind), id)
 }
 
 func badgerProjectionManifestKey(scope boyan.Scope, projectionID, generationID string) ([]byte, error) {
 	if err := scope.Validate(); err != nil {
 		return nil, err
 	}
-	return boyan.TupleKey(badgerSessionMemoryNamespace, badgerSessionMemoryVersion, badgerRecordProjectionManifest, scope.Key, string(scope.Kind), projectionID, generationID)
+	return boyan.TupleKey(canonicalNamespace, canonicalVersion, badgerRecordProjectionManifest, scope.Key, string(scope.Kind), projectionID, generationID)
 }
 
 func badgerProjectionRetentionKey(scope boyan.Scope, projectionID string) ([]byte, error) {
-	return badgerSessionMemoryKey(scope, badgerRecordProjectionRetention, projectionID)
+	return canonicalKey(scope, badgerRecordProjectionRetention, projectionID)
 }
 
 func badgerProjectionCheckpointKey(scope boyan.Scope, kind boyan.ScopeCheckpointKind) ([]byte, error) {
-	return badgerSessionMemoryKey(scope, badgerRecordProjectionCheckpoint, string(kind))
+	return canonicalKey(scope, badgerRecordProjectionCheckpoint, string(kind))
 }
 
-func badgerSessionMemoryPrefix(scope boyan.Scope, recordType string) ([]byte, error) {
+func canonicalPrefix(scope boyan.Scope, recordType string) ([]byte, error) {
 	if err := scope.Validate(); err != nil {
 		return nil, err
 	}
-	return boyan.TupleKey(badgerSessionMemoryNamespace, badgerSessionMemoryVersion, recordType, scope.Key, string(scope.Kind))
+	return boyan.TupleKey(canonicalNamespace, canonicalVersion, recordType, scope.Key, string(scope.Kind))
 }
 
 func badgerScopeChangePrefix(scope boyan.Scope) ([]byte, error) {
 	if err := scope.Validate(); err != nil {
 		return nil, err
 	}
-	return boyan.TupleKey(badgerSessionMemoryNamespace, badgerSessionMemoryVersion, badgerRecordChange, scope.Key, string(scope.Kind))
+	return boyan.TupleKey(canonicalNamespace, canonicalVersion, badgerRecordChange, scope.Key, string(scope.Kind))
 }
 
 func badgerScopeChangeKey(scope boyan.Scope, sequence uint64) ([]byte, error) {

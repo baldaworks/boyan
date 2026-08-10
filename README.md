@@ -44,7 +44,6 @@ Inspect the available commands:
 ```bash
 go run ./cmd/boyan --help
 go run ./cmd/boyan serve --help
-go run ./cmd/boyan migrate balda --help
 ```
 
 ## Quick start
@@ -75,8 +74,7 @@ By default Boyan stores data in `./.state/boyan` with this layout:
 ```text
 .state/boyan/
 ├── badger/
-├── bleve/
-└── migration/
+└── bleve/
 ```
 
 ## Configuration
@@ -98,17 +96,6 @@ Boyan exposes two external surfaces with separate responsibilities:
 - MCP for memory operations
 
 See [docs/API.md](docs/API.md).
-
-## Balda migration
-
-Boyan includes an offline migration command for current Balda canonical state:
-
-```bash
-boyan migrate balda --source /path/to/balda/session-memory --state-dir /path/to/boyan-state
-```
-
-The migration is restart-safe, non-destructive, and writes content-free
-receipts under `migration/`. See [docs/MIGRATION.md](docs/MIGRATION.md).
 
 ## Repository guides
 
