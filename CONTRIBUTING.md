@@ -79,6 +79,6 @@ claim hosted, multi-tenant, or container features that do not exist.
 ## Repository rules
 
 - Use Beads for durable work tracking.
-- Keep Boyan independent from `github.com/normahq/balda`.
+- Keep Boyan standalone and self-contained.
 - Do not commit or push unless explicitly authorized.
 - Keep `pack/callee/**` untouched.

@@ -4,14 +4,14 @@ import (
 	"context"
 	"testing"
 
-	portableapp "github.com/baldaworks/boyan/internal/apps/boyan"
+	portableapp "github.com/baldaworks/boyan/internal/portableapp"
+	"github.com/baldaworks/boyan/internal/structuredderive"
 	adkagent "google.golang.org/adk/v2/agent"
-	adksession "google.golang.org/adk/v2/session"
 )
 
 type presetInvoker struct{}
 
-func (*presetInvoker) Invoke(context.Context, portableapp.StructuredInvocation) ([]byte, error) {
+func (*presetInvoker) Invoke(context.Context, structuredderive.StructuredInvocation) ([]byte, error) {
 	return nil, nil
 }
 
@@ -24,7 +24,7 @@ func TestNewRuntimeComposesThroughPortableAppRuntime(t *testing.T) {
 		testConfig(t),
 		portableapp.RuntimeConfig{},
 		&fakeFactory{},
-		func(adkagent.Agent, adksession.Service, string) (eventRunner, error) {
+		func(adkagent.Agent, runStateStore, string) (eventRunner, error) {
 			return fakeRunner{}, nil
 		},
 	)
@@ -46,7 +46,7 @@ func TestNewRuntimeRejectsPrewiredDerivationOwners(t *testing.T) {
 		testConfig(t),
 		portableapp.RuntimeConfig{StructuredInvoker: &presetInvoker{}},
 		&fakeFactory{},
-		func(adkagent.Agent, adksession.Service, string) (eventRunner, error) {
+		func(adkagent.Agent, runStateStore, string) (eventRunner, error) {
 			return fakeRunner{}, nil
 		},
 	)

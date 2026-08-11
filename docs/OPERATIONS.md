@@ -55,8 +55,8 @@ Nested runtime provider configuration is usually easiest to manage in YAML.
 - `GET /livez` checks process responsiveness
 - `GET /readyz` checks that Boyan can accept work safely
 
-Readiness fails if migration state is incomplete or canonical maintenance has
-reported an error.
+Readiness fails if the standalone runtime reports a current readiness
+diagnostic.
 
 ## Listener safety
 

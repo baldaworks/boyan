@@ -26,8 +26,8 @@ func TestClientIngestTurnSuccess(t *testing.T) {
 			ExportID:       mustTurn(t, "client-turn").ExportID,
 			Disposition:    boyan.IngestDispositionDuplicate,
 			Projection:     boyan.ProjectionStatusLagging,
-			OperationID:    "boyan-memory:v1:operation:client",
-			OperationIDs:   []string{"boyan-memory:v1:operation:client"},
+			OperationID:    "boyan-memory:operation:client",
+			OperationIDs:   []string{"boyan-memory:operation:client"},
 			ScopeVersion:   3,
 			ScopeChangeSeq: 4,
 		})
@@ -130,7 +130,7 @@ func mustTurn(t *testing.T, turnID string) boyan.Turn {
 	t.Helper()
 	turn, err := boyan.NewTurn(
 		boyan.Scope{Key: "telegram:client-turn", Kind: boyan.ScopeKindPersonal},
-		boyan.SessionRef{SessionID: "client-session", AgentSessionID: "client-agent"},
+		boyan.ConversationRef{ConversationID: "client-conversation", AgentConversationID: "client-agent"},
 		turnID,
 		time.Date(2026, time.August, 9, 13, 5, 0, 0, time.UTC),
 		"Ada",

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	clienthttp "github.com/baldaworks/boyan/client/http"
-	portableapp "github.com/baldaworks/boyan/internal/apps/boyan"
+	orderedingest "github.com/baldaworks/boyan/internal/orderedingest"
 	boyan "github.com/baldaworks/boyan/pkg/memory"
 )
 
@@ -27,7 +27,7 @@ func TestHandlerTurnSuccessAndTypedClientRoundTrip(t *testing.T) {
 		ScopeSequence:  1,
 		Fingerprint:    "boyan-ingest-fingerprint:1",
 		ExportID:       mustTurn(t, "http-turn").ExportID,
-		OperationIDs:   []string{"boyan-memory:v1:operation:turn"},
+		OperationIDs:   []string{"boyan-memory:operation:turn"},
 		ScopeVersion:   1,
 		ScopeChangeSeq: 1,
 	}}
@@ -361,7 +361,7 @@ func (p *persistentTurnReplayIngestor) IngestSequencedTurn(_ context.Context, re
 			ScopeSequence:  request.ScopeSequence,
 			Fingerprint:    request.Fingerprint,
 			ExportID:       request.Turn.ExportID,
-			OperationIDs:   []string{"boyan-memory:v1:operation:restart"},
+			OperationIDs:   []string{"boyan-memory:operation:restart"},
 			ScopeVersion:   1,
 			ScopeChangeSeq: 1,
 		}
@@ -372,14 +372,14 @@ func (p *persistentTurnReplayIngestor) IngestSequencedTurn(_ context.Context, re
 	return replayed, nil
 }
 
-var _ portableapp.SequencedTurnIngestor = (*fakeTurnIngestor)(nil)
-var _ portableapp.SequencedBoundaryIngestor = (*fakeBoundaryIngestor)(nil)
+var _ orderedingest.TurnIngestor = (*fakeTurnIngestor)(nil)
+var _ orderedingest.BoundaryIngestor = (*fakeBoundaryIngestor)(nil)
 
 func mustTurn(t *testing.T, turnID string) boyan.Turn {
 	t.Helper()
 	turn, err := boyan.NewTurn(
 		boyan.Scope{Key: "telegram:http-turn", Kind: boyan.ScopeKindPersonal},
-		boyan.SessionRef{SessionID: "session-http", AgentSessionID: "agent-http"},
+		boyan.ConversationRef{ConversationID: "conversation-http", AgentConversationID: "agent-http"},
 		turnID,
 		time.Date(2026, time.August, 9, 13, 0, 0, 0, time.UTC),
 		"Ada",
@@ -395,7 +395,7 @@ func mustBoundary(t *testing.T, transitionID string) boyan.Boundary {
 	t.Helper()
 	boundary, err := boyan.NewBoundary(
 		boyan.Scope{Key: "telegram:http-turn", Kind: boyan.ScopeKindPersonal},
-		boyan.SessionRef{SessionID: "session-http", AgentSessionID: "agent-http"},
+		boyan.ConversationRef{ConversationID: "conversation-http", AgentConversationID: "agent-http"},
 		transitionID,
 		boyan.BoundaryReasonClose,
 		time.Date(2026, time.August, 9, 13, 1, 0, 0, time.UTC),

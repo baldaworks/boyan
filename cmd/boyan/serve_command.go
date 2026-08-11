@@ -2,14 +2,20 @@ package main
 
 import (
 	"context"
-	"errors"
-	"io"
-	stdhttp "net/http"
 	"strings"
 
+	standalonecfg "github.com/baldaworks/boyan/internal/standalonecfg"
+	boyan "github.com/baldaworks/boyan/pkg/boyan"
 	"github.com/spf13/cobra"
-	"go.uber.org/fx"
 )
+
+type serveRunner interface {
+	Run(context.Context) error
+}
+
+var newServeHost = func(ctx context.Context, config boyan.Config) (serveRunner, error) {
+	return boyan.New(ctx, config)
+}
 
 func newServeCommand(configPath *string) *cobra.Command {
 	command := &cobra.Command{
@@ -26,54 +32,23 @@ The listener serves:
   - /mcp
 `),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := loadApplicationConfig(derefString(configPath), cmd.Flags())
+			cfg, err := standalonecfg.LoadConfig(derefString(configPath))
 			if err != nil {
 				return err
 			}
-			return runServe(cmd.Context(), cfg, cmd.OutOrStdout(), cmd.ErrOrStderr())
+			cfg, err = applyConfigFlags(cfg, cmd.Flags())
+			if err != nil {
+				return err
+			}
+			host, err := newServeHost(cmd.Context(), cfg)
+			if err != nil {
+				return err
+			}
+			return host.Run(cmd.Context())
 		},
 	}
 	bindServeFlags(command.Flags())
 	return command
-}
-
-func runServe(ctx context.Context, cfg applicationConfig, _ io.Writer, _ io.Writer) error {
-	logger, err := newLogger(cfg.Log)
-	if err != nil {
-		return err
-	}
-	service, err := newStandaloneService(cfg, logger)
-	if err != nil {
-		return err
-	}
-	fxApp := fx.New(
-		fx.Supply(service),
-		fx.Supply(logger),
-		fx.Invoke(func(lifecycle fx.Lifecycle, svc *standaloneService) {
-			lifecycle.Append(fx.Hook{
-				OnStart: svc.Start,
-				OnStop:  svc.Stop,
-			})
-		}),
-	)
-	startCtx, cancel := context.WithTimeout(ctx, cfg.HTTP.ShutdownTimeout)
-	defer cancel()
-	if err := fxApp.Start(startCtx); err != nil {
-		return err
-	}
-	select {
-	case <-ctx.Done():
-	case err := <-service.done:
-		if err != nil && !errors.Is(err, stdhttp.ErrServerClosed) {
-			stopCtx, cancel := context.WithTimeout(context.Background(), cfg.HTTP.ShutdownTimeout)
-			defer cancel()
-			_ = fxApp.Stop(stopCtx)
-			return err
-		}
-	}
-	stopCtx, cancel := context.WithTimeout(context.Background(), cfg.HTTP.ShutdownTimeout)
-	defer cancel()
-	return fxApp.Stop(stopCtx)
 }
 
 func derefString(value *string) string {

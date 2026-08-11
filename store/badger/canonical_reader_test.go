@@ -21,11 +21,11 @@ func TestCanonicalReaderHydratesRecallAndBoundedTrace(t *testing.T) {
 
 	scope := boyan.Scope{Key: "canonical:reader", Kind: boyan.ScopeKindPersonal}
 	completedAt := time.Date(2026, time.August, 6, 12, 0, 0, 0, time.UTC)
-	turn, err := boyan.NewTurn(scope, boyan.SessionRef{SessionID: "session-reader", AgentSessionID: "agent-reader"}, "turn-reader", completedAt, "remember canonical", "canonical result")
+	turn, err := boyan.NewTurn(scope, boyan.ConversationRef{ConversationID: "conversation-reader", AgentConversationID: "agent-reader"}, "turn-reader", completedAt, "remember canonical", "canonical result")
 	if err != nil {
 		t.Fatalf("NewTurn() error = %v", err)
 	}
-	sourcePayload, err := json.Marshal(canonicalTurnSourcePayload{ExportID: turn.ExportID, SessionID: turn.Session.SessionID, AgentSessionID: turn.Session.AgentSessionID, SourceTurnID: turn.SourceTurnID, CompletedAt: turn.CompletedAt, TerminalStatus: turn.TerminalStatus})
+	sourcePayload, err := json.Marshal(canonicalTurnSourcePayload{ExportID: turn.ExportID, ConversationID: turn.Conversation.ConversationID, AgentConversationID: turn.Conversation.AgentConversationID, SourceTurnID: turn.SourceTurnID, CompletedAt: turn.CompletedAt, TerminalStatus: turn.TerminalStatus})
 	if err != nil {
 		t.Fatalf("marshal source payload: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestCanonicalReaderHydratesRecallAndBoundedTrace(t *testing.T) {
 	if err != nil || len(records) != 1 {
 		t.Fatalf("LoadRecallRecords() = %#v, error = %v", records, err)
 	}
-	if records[0].Text != "canonical result" || records[0].SessionIDs[0] != turn.Session.SessionID || records[0].SourceIDs[0] != turn.SourceID {
+	if records[0].Text != "canonical result" || records[0].ConversationIDs[0] != turn.Conversation.ConversationID || records[0].SourceIDs[0] != turn.SourceID {
 		t.Fatalf("hydrated record = %#v", records[0])
 	}
 	search, err := reader.SearchDerived(context.Background(), boyan.DerivedSearchRequest{Scope: scope, Query: "canonical", Limit: 10})

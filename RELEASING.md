@@ -41,7 +41,7 @@ go list -deps ./...
 go tool golangci-lint run ./...
 ```
 
-The dependency graph must not introduce `github.com/normahq/balda`.
+The dependency graph must not introduce legacy integration-only dependencies.
 
 ## Distribution expectations
 
@@ -66,4 +66,4 @@ them.
 2. `boyan.example.yaml` matches the actual loader keys.
 3. README, API, architecture, and operations docs match the current binary.
 4. Local verification passes.
-5. No Balda dependency is introduced.
+5. No legacy integration-only dependency is introduced.

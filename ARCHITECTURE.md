@@ -20,25 +20,108 @@ operations.
 - HTTP ingest handler
 - Streamable HTTP MCP handler
 
-The process is started and stopped through a small Cobra/Viper/Fx composition
-root in `cmd/boyan`.
+`cmd/boyan serve` loads operator config through `internal/standalonecfg` and
+then runs the public `pkg/boyan` host path. `internal/standaloneruntime`
+remains the private engine behind that host.
 
-## Module layout
+## Layer model
 
-The repository is organized as a standalone service plus an explicit public Go
-contract:
+The repository is organized as one standalone service plus an explicit public
+Go contract. The architecture is defined by four layers, not by every
+`internal/*` package.
 
-- `pkg/memory` contains the reusable standalone Boyan memory contract: raw wire types, canonical records, derived records, and ordered-ingest DTOs.
-- `internal/apps/boyan` contains application orchestration.
-- `internal/httpingest` contains HTTP transport validation and handlers.
-- `internal/derivation` contains provider/runtime integration.
-- `store/badger` and `index/bleve` are storage and projection adapters.
+Layers define dependency direction and ownership. Usage surfaces define
+audience and stability. One layer may participate in multiple usage surfaces,
+and usage surfaces are documented here rather than encoded as lint components.
 
-## External surfaces
+### Public contracts
 
-### HTTP ingest
+The public-contract layer contains the exported reusable contract and
+consumer-facing helpers:
 
-HTTP ingest is the write surface:
+- `pkg/memory`
+- `client/http`
+- `boyantest`
+
+This layer owns the reusable memory types, the typed HTTP client, and the test
+helpers intended for external consumers of the module.
+
+### Memory engine
+
+The memory engine owns Boyan's internal semantics and orchestration:
+
+- semantic processing in `internal/canonicalcore` and `internal/boundarycore`
+- application orchestration in `internal/ingestapp`, `internal/memoryread`,
+  `internal/memoryops`, and `internal/portableapp`
+- ordered ingest and projection coordination in `internal/orderedingest`,
+  `internal/scopelanes`, `internal/projection`, and
+  `internal/projectionsync`
+- boundary snapshot shaping stays inside `internal/boundarycore`
+- derivation contracts stay in `internal/structuredderive`
+
+Packages inside this layer may be small, but they are implementation modules,
+not separate architectural peers.
+
+### Infrastructure
+
+The infrastructure layer owns concrete adapters to persistence, projection
+storage, and runtime-backed derivation:
+
+- `internal/canonicalops`
+- `internal/forgetops`
+- `internal/derivation`
+- `store/badger`
+- `index/bleve`
+
+This layer binds the memory engine to Badger, Bleve, and provider-backed
+derivation runtimes.
+
+### Standalone shell
+
+The standalone shell owns process concerns, transport, and composition:
+
+- `pkg/boyan`
+- `internal/standalonecfg`
+- `internal/httpingest`
+- `internal/standaloneruntime`
+- `mcp`
+- `cmd/boyan`
+
+This is the only layer that composes concrete adapters into the runnable
+service. `internal/standaloneruntime` is a process shell and composition root,
+not a domain or application layer.
+
+## Usage surfaces
+
+### Public Go Contract
+
+Boyan exposes two public Go surfaces:
+
+- `pkg/boyan` for host embedding and lifecycle
+- `pkg/memory` for transport-neutral contracts and validation
+
+Audience:
+
+- other Go code that embeds Boyan in-process
+- other Go code that needs Boyan wire types
+- validation and semantic contracts shared across the shipped surfaces
+
+`pkg/boyan` is the standalone-shell public host API. `pkg/memory` stays
+focused on exported contracts and validation helpers and is not a host
+lifecycle API.
+
+### HTTP/OpenAPI
+
+The deterministic remote wire surface is the standalone HTTP API.
+
+Audience:
+
+- services
+- automation
+- typed clients
+- non-MCP integrations
+
+Current endpoints:
 
 - `POST /v1/ingest/turns`
 - `POST /v1/ingest/boundaries`
@@ -48,9 +131,21 @@ HTTP ingest is the write surface:
 HTTP requests are validated strictly and routed through the sequenced ingest
 runtime so same-scope ordering stays deterministic.
 
+The machine-readable contract for this surface lives in `docs/openapi.yaml`.
+
+`client/http` is the typed client for this surface, not a separate product
+surface.
+
+This surface is intentionally narrow. Boyan does not expand it into a broader
+admin or control plane unless product requirements demand that later.
+
 ### MCP
 
-MCP is the memory operation surface and is served by Streamable HTTP at `/mcp`.
+MCP is the agent-tool surface and is served by Streamable HTTP at `/mcp`.
+
+Audience:
+
+- generic agents
 
 The current tool set is:
 
@@ -61,6 +156,36 @@ The current tool set is:
 
 Search and trace return untrusted reference data. Forget operations are exact
 scope mutations with explicit target confirmation.
+
+This surface stays narrower and simpler than Boyan's internal application
+capabilities and narrower than the HTTP/domain contract.
+
+### CLI
+
+The CLI is the operator surface.
+
+Audience:
+
+- developers
+- operators
+- human workflows
+
+It provides service start and operational convenience commands. It is a shell
+around the standalone runtime and public remote surfaces, not a place for
+separate business logic.
+
+### Internal implementation surfaces
+
+The remaining internal packages are implementation surfaces for Boyan
+maintainers only:
+
+- `internal/*`
+- store adapters
+- provider adapters
+- standalone composition packages
+
+These are not audience-facing usage surfaces and are not part of Boyan's
+public compatibility promise.
 
 ## State ownership
 
@@ -118,6 +243,6 @@ The model runtime does not choose:
 
 ## Migration boundary
 
-Boyan no longer ships Balda migration as part of its supported CLI or runtime
-surface. Historical import, if needed later, belongs in a separate legacy tool
-outside this repository's primary service boundary.
+Boyan does not ship migration or historical import as part of its supported
+CLI or runtime surface. If that capability is needed later, it belongs in a
+separate migration tool outside this repository's primary service boundary.

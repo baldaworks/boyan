@@ -167,6 +167,6 @@ func recallProjectionDocument(scope boyan.Scope, itemID, revisionID, text string
 		Kind: boyan.MemoryKindState, Category: &category, MemoryKey: boyan.MemoryKey(itemID + "-key"),
 		Text: text, CreatedAt: createdAt, Temporal: boyan.Temporal{ObservedAt: createdAt},
 		Sensitivity: boyan.SensitivityStandard, Retention: boyan.RetentionClassStandard,
-		SourceIDs: []string{"source-1"}, SessionIDs: []string{"session-1"}, ScopeChangeSeq: changeSeq,
+		SourceIDs: []string{"source-1"}, ConversationIDs: []string{"conversation-1"}, ScopeChangeSeq: changeSeq,
 	}
 }

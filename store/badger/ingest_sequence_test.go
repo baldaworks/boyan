@@ -120,7 +120,7 @@ func testIngestSequenceRecord(sequence uint64) boyan.IngestSequenceRecord {
 			ScopeSequence:  sequence,
 			Fingerprint:    fingerprint,
 			ExportID:       "boyan:v1:turn:export-1",
-			OperationIDs:   []string{"boyan-memory:v1:operation:1"},
+			OperationIDs:   []string{"boyan-memory:operation:1"},
 			ScopeVersion:   sequence,
 			ScopeChangeSeq: sequence,
 		},

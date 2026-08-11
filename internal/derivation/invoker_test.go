@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	portableapp "github.com/baldaworks/boyan/internal/apps/boyan"
+	"github.com/baldaworks/boyan/internal/structuredderive"
 	boyan "github.com/baldaworks/boyan/pkg/memory"
 	"github.com/normahq/runtime/v2/agentconfig"
 	"github.com/normahq/runtime/v2/agentfactory"
@@ -16,7 +16,6 @@ import (
 	adkagent "google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/model"
 	"google.golang.org/adk/v2/runner"
-	adksession "google.golang.org/adk/v2/session"
 	"google.golang.org/genai"
 )
 
@@ -39,11 +38,11 @@ func (f *fakeFactory) Build(_ context.Context, req agentfactory.BuildRequest) (a
 }
 
 type fakeRunner struct {
-	run func(ctx context.Context, userID, sessionID string, msg *genai.Content, cfg adkagent.RunConfig) iter.Seq2[*adksession.Event, error]
+	run func(ctx context.Context, userID, stateID string, msg *genai.Content, cfg adkagent.RunConfig) iter.Seq2[*runEvent, error]
 }
 
-func (f fakeRunner) Run(ctx context.Context, userID, sessionID string, msg *genai.Content, cfg adkagent.RunConfig, _ ...runner.RunOption) iter.Seq2[*adksession.Event, error] {
-	return f.run(ctx, userID, sessionID, msg, cfg)
+func (f fakeRunner) Run(ctx context.Context, userID, stateID string, msg *genai.Content, cfg adkagent.RunConfig, _ ...runner.RunOption) iter.Seq2[*runEvent, error] {
+	return f.run(ctx, userID, stateID, msg, cfg)
 }
 
 func testConfig(t *testing.T) Config {
@@ -90,7 +89,7 @@ func TestNewInvokerIsLazyAndCloseIsIdempotent(t *testing.T) {
 	t.Parallel()
 
 	factory := &fakeFactory{}
-	invoker, err := newInvokerWithFactory(testConfig(t), factory, func(adkagent.Agent, adksession.Service, string) (eventRunner, error) {
+	invoker, err := newInvokerWithFactory(testConfig(t), factory, func(adkagent.Agent, runStateStore, string) (eventRunner, error) {
 		return fakeRunner{}, nil
 	})
 	if err != nil {
@@ -113,13 +112,13 @@ func TestNewInvokerIsLazyAndCloseIsIdempotent(t *testing.T) {
 func TestInvokeBuildFailureIsRetryableModelError(t *testing.T) {
 	t.Parallel()
 
-	invoker, err := newInvokerWithFactory(testConfig(t), &fakeFactory{buildErr: errors.New("boom")}, func(adkagent.Agent, adksession.Service, string) (eventRunner, error) {
+	invoker, err := newInvokerWithFactory(testConfig(t), &fakeFactory{buildErr: errors.New("boom")}, func(adkagent.Agent, runStateStore, string) (eventRunner, error) {
 		return fakeRunner{}, nil
 	})
 	if err != nil {
 		t.Fatalf("newInvokerWithFactory() error = %v", err)
 	}
-	_, err = invoker.Invoke(context.Background(), portableapp.StructuredInvocation{
+	_, err = invoker.Invoke(context.Background(), structuredderive.StructuredInvocation{
 		OperationID:  "operation-1",
 		Stage:        "canonical_semantics",
 		InputJSON:    []byte(`{"input":"hi"}`),
@@ -136,10 +135,10 @@ func TestInvokeTimeoutMapsToStableTimeout(t *testing.T) {
 
 	cfg := testConfig(t)
 	cfg.Timeout = 10 * time.Millisecond
-	invoker, err := newInvokerWithFactory(cfg, &fakeFactory{}, func(adkagent.Agent, adksession.Service, string) (eventRunner, error) {
+	invoker, err := newInvokerWithFactory(cfg, &fakeFactory{}, func(adkagent.Agent, runStateStore, string) (eventRunner, error) {
 		return fakeRunner{
-			run: func(ctx context.Context, userID, sessionID string, msg *genai.Content, cfg adkagent.RunConfig) iter.Seq2[*adksession.Event, error] {
-				return func(yield func(*adksession.Event, error) bool) {
+			run: func(ctx context.Context, userID, stateID string, msg *genai.Content, cfg adkagent.RunConfig) iter.Seq2[*runEvent, error] {
+				return func(yield func(*runEvent, error) bool) {
 					<-ctx.Done()
 					yield(nil, ctx.Err())
 				}
@@ -149,7 +148,7 @@ func TestInvokeTimeoutMapsToStableTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newInvokerWithFactory() error = %v", err)
 	}
-	_, err = invoker.Invoke(context.Background(), portableapp.StructuredInvocation{
+	_, err = invoker.Invoke(context.Background(), structuredderive.StructuredInvocation{
 		OperationID:  "operation-1",
 		Stage:        "canonical_semantics",
 		InputJSON:    []byte(`{"input":"hi"}`),
@@ -164,11 +163,11 @@ func TestInvokeTimeoutMapsToStableTimeout(t *testing.T) {
 func TestDeriverRejectsMalformedOutputFromRuntimeInvoker(t *testing.T) {
 	t.Parallel()
 
-	invoker, err := newInvokerWithFactory(testConfig(t), &fakeFactory{}, func(_ adkagent.Agent, svc adksession.Service, _ string) (eventRunner, error) {
+	invoker, err := newInvokerWithFactory(testConfig(t), &fakeFactory{}, func(_ adkagent.Agent, _ runStateStore, _ string) (eventRunner, error) {
 		return fakeRunner{
-			run: func(ctx context.Context, userID, sessionID string, msg *genai.Content, cfg adkagent.RunConfig) iter.Seq2[*adksession.Event, error] {
-				return func(yield func(*adksession.Event, error) bool) {
-					yield(&adksession.Event{
+			run: func(ctx context.Context, userID, stateID string, msg *genai.Content, cfg adkagent.RunConfig) iter.Seq2[*runEvent, error] {
+				return func(yield func(*runEvent, error) bool) {
+					yield(&runEvent{
 						LLMResponse: model.LLMResponse{
 							Content: &genai.Content{Parts: []*genai.Part{{Text: "not-json"}}},
 						},
@@ -180,13 +179,13 @@ func TestDeriverRejectsMalformedOutputFromRuntimeInvoker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newInvokerWithFactory() error = %v", err)
 	}
-	deriver, err := portableapp.NewDeriver(invoker)
+	deriver, err := structuredderive.NewDeriver(invoker)
 	if err != nil {
 		t.Fatalf("NewDeriver() error = %v", err)
 	}
 	turn, err := boyan.NewTurn(
 		boyan.Scope{Key: "telegram:1", Kind: boyan.ScopeKindPersonal},
-		boyan.SessionRef{SessionID: "session-1", AgentSessionID: "agent-1"},
+		boyan.ConversationRef{ConversationID: "conversation-1", AgentConversationID: "agent-1"},
 		"turn-1",
 		time.Date(2026, time.August, 9, 10, 0, 0, 0, time.UTC),
 		"remember",
@@ -206,18 +205,18 @@ func TestDeriverRejectsMalformedOutputFromRuntimeInvoker(t *testing.T) {
 	}
 }
 
-func TestInvokeUsesShortLivedInMemorySessions(t *testing.T) {
+func TestInvokeUsesShortLivedInMemoryRuntimeState(t *testing.T) {
 	t.Parallel()
 
-	var sessionSvc adksession.Service
-	var sessionID string
-	invoker, err := newInvokerWithFactory(testConfig(t), &fakeFactory{}, func(_ adkagent.Agent, svc adksession.Service, _ string) (eventRunner, error) {
-		sessionSvc = svc
+	var stateStore runStateStore
+	var runStateID string
+	invoker, err := newInvokerWithFactory(testConfig(t), &fakeFactory{}, func(_ adkagent.Agent, store runStateStore, _ string) (eventRunner, error) {
+		stateStore = store
 		return fakeRunner{
-			run: func(ctx context.Context, userID, currentSessionID string, msg *genai.Content, cfg adkagent.RunConfig) iter.Seq2[*adksession.Event, error] {
-				sessionID = currentSessionID
-				return func(yield func(*adksession.Event, error) bool) {
-					yield(&adksession.Event{
+			run: func(ctx context.Context, userID, currentStateID string, msg *genai.Content, cfg adkagent.RunConfig) iter.Seq2[*runEvent, error] {
+				runStateID = currentStateID
+				return func(yield func(*runEvent, error) bool) {
+					yield(&runEvent{
 						LLMResponse: model.LLMResponse{
 							Content: &genai.Content{Parts: []*genai.Part{{Text: `{"output":[{"Kind":"state","Subject":"Ada","Predicate":"Lives In","Memory":{"Kind":"state","Statement":"Ada lives in Bishkek","Temporal":{"ObservedAt":"2026-08-09T10:00:00Z"},"Evidence":[{"SourceID":"source-1","MessageID":"message-1","Role":"user","StartByte":0,"EndByte":3,"AssertionMode":"user"}],"Sensitivity":"standard","Retention":"standard"}}]}`}}},
 						},
@@ -229,13 +228,13 @@ func TestInvokeUsesShortLivedInMemorySessions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newInvokerWithFactory() error = %v", err)
 	}
-	deriver, err := portableapp.NewDeriver(invoker)
+	deriver, err := structuredderive.NewDeriver(invoker)
 	if err != nil {
 		t.Fatalf("NewDeriver() error = %v", err)
 	}
 	turn, err := boyan.NewTurn(
 		boyan.Scope{Key: "telegram:2", Kind: boyan.ScopeKindPersonal},
-		boyan.SessionRef{SessionID: "session-2", AgentSessionID: "agent-2"},
+		boyan.ConversationRef{ConversationID: "conversation-2", AgentConversationID: "agent-2"},
 		"turn-2",
 		time.Date(2026, time.August, 9, 10, 0, 0, 0, time.UTC),
 		"Ada",
@@ -255,14 +254,10 @@ func TestInvokeUsesShortLivedInMemorySessions(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("items = %#v, want one output item", items)
 	}
-	if strings.TrimSpace(sessionID) == "" {
-		t.Fatal("runner session ID was empty")
+	if strings.TrimSpace(runStateID) == "" {
+		t.Fatal("runner runtime state ID was empty")
 	}
-	if _, err := sessionSvc.Get(context.Background(), &adksession.GetRequest{
-		AppName:   defaultRuntimeAppName,
-		UserID:    defaultDerivationUser,
-		SessionID: sessionID,
-	}); err == nil {
-		t.Fatal("derivation session still exists after invoke")
+	if err := getRunState(context.Background(), stateStore, defaultRuntimeAppName, runStateID); err == nil {
+		t.Fatal("derivation runtime state still exists after invoke")
 	}
 }

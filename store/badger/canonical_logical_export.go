@@ -5,11 +5,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"io"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
-	"github.com/dgraph-io/badger/v4"
 )
 
 // ExportCanonicalLogical writes a deterministic, backend-neutral JSONL
@@ -35,49 +33,7 @@ func (s *CanonicalStore) ExportCanonicalLogical(ctx context.Context, destination
 		return err
 	}
 	hash := sha256.New()
-	var count uint64
-	err := s.db.View(func(txn *badger.Txn) error {
-		iterator := txn.NewIterator(badger.DefaultIteratorOptions)
-		defer iterator.Close()
-		for iterator.Rewind(); iterator.Valid(); iterator.Next() {
-			if err := checkCanonicalMaintenanceContext(ctx); err != nil {
-				return err
-			}
-			components, suffix, err := decodeCanonicalLogicalKey(iterator.Item().Key())
-			if err != nil {
-				return fmt.Errorf("decode canonical key %x: %w", iterator.Item().Key(), err)
-			}
-			if !isExportableCanonicalRecordType(components[0]) {
-				continue
-			}
-			envelope, err := iterator.Item().ValueCopy(nil)
-			if err != nil {
-				return err
-			}
-			decoded, err := memory.UnmarshalRecordEnvelope(envelope)
-			if err != nil || decoded.RecordType != components[0] {
-				return memory.PermanentError(memory.CodeStoreFailure, "canonical logical export found an invalid record", err)
-			}
-			record := CanonicalLogicalExportRecord{
-				Kind:       canonicalLogicalRecordKind,
-				RecordType: components[0],
-				Components: components,
-				Suffix:     suffix,
-				Envelope:   envelope,
-			}
-			line, err := marshalCanonicalLogicalJSON(record)
-			if err != nil {
-				return err
-			}
-			line = append(line, '\n')
-			if _, err := writer.Write(line); err != nil {
-				return err
-			}
-			_, _ = hash.Write(line)
-			count++
-		}
-		return nil
-	})
+	count, err := s.exportCanonicalLogicalRecords(ctx, writer, hash)
 	if err != nil {
 		return canonicalStoreError("export canonical logical records", err)
 	}

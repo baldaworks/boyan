@@ -194,20 +194,20 @@ func TestForgetSourceUsesServerOwnedTimestampAndContentFreeOutcome(t *testing.T)
 			Scope:         scope,
 			ScopeVersion:  4,
 			Sources: []boyan.SourceRef{{
-				Scope:        scope,
-				ExportID:     "export-1",
-				SessionID:    "session-1",
-				SourceTurnID: "turn-1",
+				Scope:          scope,
+				ExportID:       "export-1",
+				ConversationID: "conversation-1",
+				SourceTurnID:   "turn-1",
 			}},
 		},
 	}
 	service := New(Config{Enabled: true, Forgetter: backend, Now: func() time.Time { return now }})
 
 	_, output, err := service.forgetSource(context.Background(), nil, ForgetSourceInput{
-		ScopeInput:   ScopeInput{ScopeKey: scope.Key, ScopeKind: scope.Kind},
-		ExportID:     "export-1",
-		SessionID:    "session-1",
-		SourceTurnID: "turn-1",
+		ScopeInput:     ScopeInput{ScopeKey: scope.Key, ScopeKind: scope.Kind},
+		ExportID:       "export-1",
+		ConversationID: "conversation-1",
+		SourceTurnID:   "turn-1",
 	})
 	if err != nil || !output.OK {
 		t.Fatalf("forgetSource() error = %v output=%#v", err, output)
@@ -311,13 +311,13 @@ func TestHandlerServesStreamableHTTPTools(t *testing.T) {
 	defer server.Close()
 
 	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil)
-	session, err := client.Connect(context.Background(), &sdkmcp.StreamableClientTransport{Endpoint: server.URL + "/mcp"}, nil)
+	conn, err := client.Connect(context.Background(), &sdkmcp.StreamableClientTransport{Endpoint: server.URL + "/mcp"}, nil)
 	if err != nil {
 		t.Fatalf("Connect() error = %v", err)
 	}
-	defer session.Close()
+	defer conn.Close()
 
-	toolsResult, err := session.ListTools(context.Background(), nil)
+	toolsResult, err := conn.ListTools(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("ListTools() error = %v", err)
 	}
@@ -335,7 +335,7 @@ func TestHandlerServesStreamableHTTPTools(t *testing.T) {
 		t.Fatalf("tool names = %#v, want %#v", gotTools, wantTools)
 	}
 
-	result, err := session.CallTool(context.Background(), &sdkmcp.CallToolParams{
+	result, err := conn.CallTool(context.Background(), &sdkmcp.CallToolParams{
 		Name: SearchToolName,
 		Arguments: map[string]any{
 			"scope_key":  scope.Key,
@@ -352,7 +352,7 @@ func TestHandlerServesStreamableHTTPTools(t *testing.T) {
 		t.Fatalf("search output = %#v", output)
 	}
 
-	forgetResult, err := session.CallTool(context.Background(), &sdkmcp.CallToolParams{
+	forgetResult, err := conn.CallTool(context.Background(), &sdkmcp.CallToolParams{
 		Name: ForgetScopeToolName,
 		Arguments: map[string]any{
 			"scope_key":         scope.Key,
@@ -452,7 +452,7 @@ func validTraceRoot(t *testing.T, scope boyan.Scope) boyan.RevisionRef {
 func validTraceSource(scope boyan.Scope) (boyan.SourceRef, boyan.Turn) {
 	turn, err := boyan.NewTurn(
 		scope,
-		boyan.SessionRef{SessionID: "session-trace", AgentSessionID: "agent-session-trace"},
+		boyan.ConversationRef{ConversationID: "conversation-trace", AgentConversationID: "agent-conversation-trace"},
 		"turn-trace",
 		time.Date(2026, time.August, 9, 12, 15, 0, 0, time.UTC),
 		"user trace",
@@ -462,9 +462,9 @@ func validTraceSource(scope boyan.Scope) (boyan.SourceRef, boyan.Turn) {
 		panic(err)
 	}
 	return boyan.SourceRef{
-		Scope:        scope,
-		ExportID:     turn.ExportID,
-		SessionID:    turn.Session.SessionID,
-		SourceTurnID: turn.SourceTurnID,
+		Scope:          scope,
+		ExportID:       turn.ExportID,
+		ConversationID: turn.Conversation.ConversationID,
+		SourceTurnID:   turn.SourceTurnID,
 	}, turn
 }

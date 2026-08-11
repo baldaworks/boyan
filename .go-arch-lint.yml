@@ -1,6 +1,9 @@
 version: 3
 workdir: .
 
+# This file enforces layer boundaries only. Audience-facing usage surfaces are
+# documented in ARCHITECTURE.md and may span multiple components here.
+
 allow:
   depOnAnyVendor: false
   deepScan: false
@@ -9,110 +12,66 @@ excludeFiles:
   - "^.*_test\\.go$"
 
 components:
-  public_memory:
+  public_contracts:
     in:
       - pkg/memory
-
-  public_client:
-    in:
       - client/http
-
-  public_testkit:
-    in:
       - boyantest
 
-  app:
+  memory_engine:
     in:
-      - internal/apps/boyan
+      - internal/canonicalcore
+      - internal/boundarycore
+      - internal/ingestapp
+      - internal/portableapp
+      - internal/memoryread
+      - internal/memoryops
+      - internal/orderedingest
+      - internal/scopelanes
+      - internal/projection
+      - internal/projectionsync
+      - internal/structuredderive
 
-  derivation:
+  infrastructure:
     in:
+      - internal/canonicalops
+      - internal/forgetops
       - internal/derivation
-
-  http_ingest:
-    in:
-      - internal/httpingest
-
-  projection:
-    in:
+      - store/badger
       - index/bleve
 
-  store:
+  standalone_shell:
     in:
-      - store/badger
-
-  mcp:
-    in:
+      - pkg/boyan
+      - internal/standalonecfg
+      - internal/httpingest
+      - internal/standaloneruntime
       - mcp
-
-  cmd:
-    in:
       - cmd/boyan
 
 deps:
-  public_memory:
+  public_contracts:
     mayDependOn:
-      - public_memory
+      - public_contracts
     anyVendorDeps: false
 
-  public_client:
+  memory_engine:
     mayDependOn:
-      - public_memory
-      - public_client
+      - public_contracts
+      - memory_engine
     anyVendorDeps: false
 
-  public_testkit:
+  infrastructure:
     mayDependOn:
-      - public_memory
-      - public_testkit
-    anyVendorDeps: false
-
-  app:
-    mayDependOn:
-      - public_memory
-      - app
-    anyVendorDeps: false
-
-  derivation:
-    mayDependOn:
-      - public_memory
-      - app
-      - derivation
+      - public_contracts
+      - memory_engine
+      - infrastructure
     anyVendorDeps: true
 
-  http_ingest:
+  standalone_shell:
     mayDependOn:
-      - public_memory
-      - app
-      - http_ingest
-    anyVendorDeps: false
-
-  projection:
-    mayDependOn:
-      - public_memory
-      - projection
-    anyVendorDeps: true
-
-  store:
-    mayDependOn:
-      - public_memory
-      - store
-    anyVendorDeps: true
-
-  mcp:
-    mayDependOn:
-      - public_memory
-      - mcp
-    anyVendorDeps: true
-
-  cmd:
-    mayDependOn:
-      - public_memory
-      - app
-      - derivation
-      - http_ingest
-      - projection
-      - store
-      - mcp
-      - cmd
+      - public_contracts
+      - memory_engine
+      - infrastructure
+      - standalone_shell
     anyVendorDeps: true

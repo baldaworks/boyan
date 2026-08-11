@@ -1,6 +1,28 @@
 # API
 
-Boyan exposes separate APIs for ingest and memory operations.
+Boyan exposes four official usage surfaces:
+
+- an in-process host API in `pkg/boyan`
+- a deterministic HTTP surface for ingest and health probes
+- a narrower MCP surface for agent memory operations
+- an operator CLI in `cmd/boyan`
+
+## Host API
+
+`pkg/boyan` is the public in-process embedding surface.
+
+It exports:
+
+- `Config`, `DefaultConfig()`, and `Config.Validate()`
+- `New(ctx, config)` and `NewHost(ctx, config)`
+- lifecycle methods: `Start`, `Run`, `Wait`, `Stop`, `Close`
+- runtime state and capability access: `Ready`, `Addr`, `Handler`, `MCP`, `Search`, `Trace`, `ForgetSource`, `ForgetScope`
+
+The host API keeps transport wiring behind host methods and does not require
+`internal/*` imports by embedders.
+
+The machine-readable contract for the deterministic HTTP surface lives at
+[`docs/openapi.yaml`](openapi.yaml).
 
 ## Listener
 
@@ -19,8 +41,7 @@ Returns `200 OK` with `ok` when Boyan is ready to accept work.
 
 Readiness currently checks:
 
-- migration state is complete or absent
-- canonical maintenance has no reported error
+- the standalone runtime has no current readiness diagnostic
 
 ## Ingest endpoints
 
@@ -81,3 +102,4 @@ Current tool set:
 - no tenant or account layer
 - no implicit scope resolution inside Boyan
 - no automatic execution of recalled text
+- no framework-specific wrapper in the current product surface

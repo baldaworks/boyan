@@ -1,0 +1,481 @@
+openapi: 3.1.0
+info:
+  title: Boyan Standalone HTTP API
+  version: 0.0.0-dev
+  summary: Deterministic HTTP surface for the Boyan standalone sidecar.
+  description: |
+    This contract covers only Boyan's current standalone HTTP surface:
+
+    - `GET /livez`
+    - `GET /readyz`
+    - `POST /v1/ingest/turns`
+    - `POST /v1/ingest/boundaries`
+
+    It intentionally excludes the MCP tool surface at `/mcp` and any
+    non-HTTP/internal-only interfaces.
+servers:
+  - url: http://127.0.0.1:8686
+    description: Default loopback listener for the standalone sidecar.
+tags:
+  - name: health
+    description: Loopback-only process and readiness probes.
+  - name: ingest
+    description: Strict ordered ingest endpoints for turn and boundary exports.
+paths:
+  /livez:
+    get:
+      tags: [health]
+      operationId: livez
+      summary: Probe process liveness.
+      description: Returns `ok` when the process event loop is responsive.
+      responses:
+        "200":
+          description: The process is live.
+          content:
+            text/plain:
+              schema:
+                type: string
+                const: "ok\n"
+        "405":
+          description: The request method is not allowed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+  /readyz:
+    get:
+      tags: [health]
+      operationId: readyz
+      summary: Probe sidecar readiness.
+      description: |
+        Returns `ok` when Boyan is ready to accept work. Readiness currently
+        checks the local maintenance and startup diagnostics.
+      responses:
+        "200":
+          description: The sidecar is ready to accept work.
+          content:
+            text/plain:
+              schema:
+                type: string
+                const: "ok\n"
+        "405":
+          description: The request method is not allowed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        "503":
+          description: The sidecar is not currently ready to accept work.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+  /v1/ingest/turns:
+    post:
+      tags: [ingest]
+      operationId: ingestTurn
+      summary: Ingest one sequenced terminal turn export.
+      description: |
+        Accepts exactly one strict JSON envelope. Unknown fields fail closed,
+        the request must use `Content-Type: application/json`, and processing is
+        bounded by request size and request timeout.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestTurnEnvelope"
+            examples:
+              terminalTurn:
+                value:
+                  schema_version: boyan-ingest/v1
+                  producer_id: producer-1
+                  scope_sequence: 1
+                  payload:
+                    schema_version: boyan/v1
+                    export_id: turn-1
+                    scope:
+                      key: slack:C123
+                      kind: group
+                    conversation:
+                      conversation_id: conv-1
+                      agent_conversation_id: agent-conv-1
+                    source_turn_id: source-turn-1
+                    completed_at: "2026-08-11T09:00:00Z"
+                    messages:
+                      - role: user
+                        text: hello
+                      - role: assistant
+                        text: hi
+      responses:
+        "200":
+          description: The turn was accepted or replayed from durable sequencing state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestReceipt"
+        "400":
+          description: The request is invalid, malformed, or exceeds a permanent safety bound.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        "405":
+          description: The request method is not allowed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        "409":
+          description: The request conflicted with durable state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        "429":
+          description: The service is temporarily at capacity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        "503":
+          description: The ingest service is temporarily unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        "504":
+          description: The ingest request timed out.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        default:
+          description: Another safe ingest failure occurred.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+  /v1/ingest/boundaries:
+    post:
+      tags: [ingest]
+      operationId: ingestBoundary
+      summary: Ingest one sequenced conversation boundary export.
+      description: |
+        Accepts exactly one strict JSON envelope. Unknown fields fail closed,
+        the request must use `Content-Type: application/json`, and processing is
+        bounded by request size and request timeout.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestBoundaryEnvelope"
+            examples:
+              boundary:
+                value:
+                  schema_version: boyan-ingest/v1
+                  producer_id: producer-1
+                  scope_sequence: 2
+                  payload:
+                    schema_version: boyan/v1
+                    export_id: boundary-1
+                    scope:
+                      key: slack:C123
+                      kind: group
+                    conversation:
+                      conversation_id: conv-1
+                      agent_conversation_id: agent-conv-1
+                    transition_id: transition-1
+                    reason: close
+                    occurred_at: "2026-08-11T09:01:00Z"
+      responses:
+        "200":
+          description: The boundary was accepted or replayed from durable sequencing state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestReceipt"
+        "400":
+          description: The request is invalid, malformed, or exceeds a permanent safety bound.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        "405":
+          description: The request method is not allowed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        "409":
+          description: The request conflicted with durable state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        "429":
+          description: The service is temporarily at capacity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        "503":
+          description: The ingest service is temporarily unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        "504":
+          description: The ingest request timed out.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+        default:
+          description: Another safe ingest failure occurred.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestErrorResponse"
+components:
+  schemas:
+    IngestTurnEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - producer_id
+        - scope_sequence
+        - payload
+      properties:
+        schema_version:
+          type: string
+          const: boyan-ingest/v1
+        producer_id:
+          type: string
+          minLength: 1
+        scope_sequence:
+          type: integer
+          minimum: 1
+        payload:
+          $ref: "#/components/schemas/Turn"
+    IngestBoundaryEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - producer_id
+        - scope_sequence
+        - payload
+      properties:
+        schema_version:
+          type: string
+          const: boyan-ingest/v1
+        producer_id:
+          type: string
+          minLength: 1
+        scope_sequence:
+          type: integer
+          minimum: 1
+        payload:
+          $ref: "#/components/schemas/Boundary"
+    Turn:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - export_id
+        - scope
+        - conversation
+        - source_turn_id
+        - completed_at
+        - messages
+      properties:
+        schema_version:
+          type: string
+          const: boyan/v1
+        export_id:
+          type: string
+          minLength: 1
+        scope:
+          $ref: "#/components/schemas/Scope"
+        conversation:
+          $ref: "#/components/schemas/ConversationRef"
+        source_turn_id:
+          type: string
+          minLength: 1
+        source_id:
+          type: string
+          minLength: 1
+        completed_at:
+          type: string
+          format: date-time
+        terminal_status:
+          type: string
+          enum: [success, failed, interrupted]
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 18
+          items:
+            $ref: "#/components/schemas/Message"
+    Boundary:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - export_id
+        - scope
+        - conversation
+        - transition_id
+        - reason
+        - occurred_at
+      properties:
+        schema_version:
+          type: string
+          const: boyan/v1
+        export_id:
+          type: string
+          minLength: 1
+        scope:
+          $ref: "#/components/schemas/Scope"
+        conversation:
+          $ref: "#/components/schemas/ConversationRef"
+        transition_id:
+          type: string
+          minLength: 1
+        reason:
+          type: string
+          enum: [reset, close, rotation, shutdown]
+        occurred_at:
+          type: string
+          format: date-time
+    Scope:
+      type: object
+      additionalProperties: false
+      required:
+        - key
+        - kind
+      properties:
+        key:
+          type: string
+          minLength: 1
+          description: Exact canonical scope key in `<channel_type>:<address_key>` form.
+        kind:
+          type: string
+          enum: [personal, group]
+    ConversationRef:
+      type: object
+      additionalProperties: false
+      required:
+        - conversation_id
+        - agent_conversation_id
+      properties:
+        conversation_id:
+          type: string
+          minLength: 1
+        agent_conversation_id:
+          type: string
+          minLength: 1
+        lineage_id:
+          type: string
+          minLength: 1
+        previous_conversation_id:
+          type: string
+          minLength: 1
+    Message:
+      type: object
+      additionalProperties: false
+      required:
+        - role
+        - text
+      properties:
+        message_id:
+          type: string
+          minLength: 1
+        role:
+          type: string
+          enum: [user, assistant, tool]
+        text:
+          type: string
+          minLength: 1
+        tool_name:
+          type: string
+          minLength: 1
+        tool_call_id:
+          type: string
+          minLength: 1
+    IngestReceipt:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - export_id
+        - disposition
+        - projection_status
+        - scope_version
+        - scope_change_seq
+      properties:
+        schema_version:
+          type: string
+          const: boyan-ingest-response/v1
+        export_id:
+          type: string
+          minLength: 1
+        disposition:
+          type: string
+          enum: [accepted, duplicate]
+        projection_status:
+          type: string
+          enum: [current, lagging]
+        operation_id:
+          type: string
+          minLength: 1
+        operation_ids:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        scope_version:
+          type: integer
+          minimum: 1
+        scope_change_seq:
+          type: integer
+          minimum: 1
+    IngestErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - class
+        - message
+      properties:
+        code:
+          type: string
+          enum:
+            - disabled
+            - invalid_scope
+            - unsupported_scope
+            - invalid_conversation
+            - invalid_query
+            - scope_violation
+            - unavailable
+            - timeout
+            - permanent
+            - shutting_down
+            - invalid_derived
+            - conflict
+            - not_found
+            - forgotten
+            - limit_exceeded
+            - store_failure
+            - model_failure
+        class:
+          type: string
+          enum: [retryable, permanent]
+        message:
+          type: string
+        retry_after_ms:
+          type: integer
+          minimum: 0

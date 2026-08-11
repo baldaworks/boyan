@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	portableapp "github.com/baldaworks/boyan/internal/apps/boyan"
+	portableapp "github.com/baldaworks/boyan/internal/portableapp"
 )
 
 // NewRuntime composes a Boyan derivation invoker through the portable app

@@ -5,10 +5,7 @@ import (
 	"strings"
 	"time"
 
-	portableapp "github.com/baldaworks/boyan/internal/apps/boyan"
-	"github.com/normahq/runtime/v2/agentfactory"
 	runtimeconfig "github.com/normahq/runtime/v2/appconfig"
-	"github.com/normahq/runtime/v2/mcpregistry"
 )
 
 const (
@@ -22,7 +19,7 @@ type Config struct {
 	Runtime runtimeconfig.RuntimeConfig
 	// ProviderID selects the dedicated derivation provider entry.
 	ProviderID string
-	// WorkingDir is the runtime working directory for derivation sessions.
+	// WorkingDir is the runtime working directory for derivation runs.
 	WorkingDir string
 	// MaxOutputBytes bounds one structured derivation result. Zero uses the
 	// portable app default.
@@ -60,22 +57,4 @@ func (c Config) validateWithFactory(factory validatingFactory) error {
 		return fmt.Errorf("boyan derivation provider %q: %w", strings.TrimSpace(c.ProviderID), err)
 	}
 	return nil
-}
-
-func (c Config) maxOutputBytes() int {
-	if c.MaxOutputBytes > 0 {
-		return c.MaxOutputBytes
-	}
-	return portableapp.DefaultDerivationMaxOutputBytes
-}
-
-func (c Config) timeout() time.Duration {
-	if c.Timeout > 0 {
-		return c.Timeout
-	}
-	return portableapp.DefaultDerivationTimeout
-}
-
-func newAgentFactory(cfg runtimeconfig.RuntimeConfig) *agentfactory.Factory {
-	return agentfactory.New(cfg.Providers, mcpregistry.New(cfg.MCPServers))
 }

@@ -14,7 +14,7 @@ import (
 // subtest. Implementations should register cleanup on t before returning it.
 type CanonicalStoreFactory func(t *testing.T) memory.CanonicalStore
 
-// RunCanonicalStoreContract applies the storage-neutral v2 canonical-store
+// RunCanonicalStoreContract applies the storage-neutral canonical-store
 // contract. Backend-specific tests retain ownership of reopen, fault, and
 // physical-storage assertions.
 func RunCanonicalStoreContract(t *testing.T, factory CanonicalStoreFactory) {
@@ -245,6 +245,6 @@ func requireCanonicalCode(t *testing.T, err error, want memory.ErrorCode) {
 	t.Helper()
 	var memoryErr *memory.Error
 	if !errors.As(err, &memoryErr) || memoryErr.Code != want {
-		t.Fatalf("error = %v, want sessionmemory code %q", err, want)
+		t.Fatalf("error = %v, want memory code %q", err, want)
 	}
 }

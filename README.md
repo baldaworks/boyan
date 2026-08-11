@@ -16,6 +16,7 @@ state under one explicit state root.
 ## Current scope
 
 - Module: `github.com/baldaworks/boyan`
+- Public host API: `github.com/baldaworks/boyan/pkg/boyan`
 - Public Go contract: `github.com/baldaworks/boyan/pkg/memory`
 - Binary: `boyan`
 - Deployment model: one local process, one local state root
@@ -89,19 +90,40 @@ Boyan loads configuration from:
 
 See [boyan.example.yaml](boyan.example.yaml) and [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
-## APIs
+## Host embedding
 
-Boyan exposes two external surfaces with separate responsibilities:
+Boyan now exposes one first-class in-process host surface in `pkg/boyan`.
 
-- HTTP ingest for durable writes
-- MCP for memory operations
+- `boyan.Config`, `boyan.DefaultConfig()`, and `Config.Validate()` own the public host config shape
+- `boyan.New(...)` and `boyan.NewHost(...)` compose one embedded host without `internal/*` imports
+- `Host.Start`, `Run`, `Wait`, `Stop`, and `Close` own lifecycle
+- `Host.Handler`, `MCP`, `Search`, `Trace`, `ForgetSource`, and `ForgetScope` expose the supported in-process capabilities
 
-See [docs/API.md](docs/API.md).
+See [`pkg/boyan/example_test.go`](pkg/boyan/example_test.go) for a compiling public example.
+
+## Usage surfaces
+
+Boyan separates audience-facing usage surfaces from internal implementation
+surfaces.
+
+- Public host embedding API: `pkg/boyan`
+- Public contract/types: `pkg/memory`
+- Deterministic remote API: HTTP ingest plus `livez` and `readyz`
+- Machine-readable HTTP contract: `docs/openapi.yaml`
+- Typed HTTP client: `client/http` for the HTTP surface
+- Agent tool API: MCP
+- Operator API: CLI
+
+See [docs/API.md](docs/API.md) and [docs/openapi.yaml](docs/openapi.yaml).
 
 ## Go packages
 
-- `pkg/memory` is the standalone public Boyan memory contract: raw wire types, canonical records, derived records, and ordered-ingest DTOs.
-- `internal/` contains service-only orchestration and transport code.
+- `pkg/boyan` is the public host embedding and lifecycle API.
+- `pkg/memory` is the standalone public Boyan memory contract: raw wire types,
+  canonical records, derived records, and ordered-ingest DTOs.
+- `client/http` is the typed client for Boyan's deterministic HTTP surface.
+- `internal/` contains service-only orchestration, adapters, and transport
+  code.
 
 ## Repository guides
 

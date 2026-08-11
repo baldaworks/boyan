@@ -3,7 +3,6 @@ package badger
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
 	"github.com/dgraph-io/badger/v4"
@@ -26,50 +25,6 @@ func (s *CanonicalStore) RunValueLogGC(discardRatio float64) error {
 		return canonicalStoreError("run canonical badger value-log GC", err)
 	}
 	return nil
-}
-
-func canonicalStoreError(operation string, err error) error {
-	if errors.Is(err, badger.ErrTxnTooBig) {
-		return memory.PermanentError(memory.CodeLimitExceeded, operation, err)
-	}
-	if errors.Is(err, badger.ErrConflict) {
-		return memory.RetryableError(memory.CodeConflict, operation, err)
-	}
-	var memoryError *memory.Error
-	if errors.As(err, &memoryError) {
-		return err
-	}
-	return memory.RetryableError(memory.CodeStoreFailure, operation, err)
-}
-
-// OpenCanonicalStore opens the sole writable canonical directory.
-func OpenCanonicalStore(directory string) (*CanonicalStore, error) {
-	return openWithConfig(directory, DefaultConfig())
-}
-
-func openWithConfig(directory string, config Config) (*CanonicalStore, error) {
-	directory = strings.TrimSpace(directory)
-	if directory == "" {
-		return nil, fmt.Errorf("canonical badger directory is required")
-	}
-	if !config.SyncWrites {
-		config.SyncWrites = true
-	}
-	if !config.DetectConflicts {
-		config.DetectConflicts = true
-	}
-	if config.NumVersionsToKeep <= 0 {
-		config.NumVersionsToKeep = 1
-	}
-	options := badger.DefaultOptions(directory).
-		WithSyncWrites(config.SyncWrites).
-		WithDetectConflicts(config.DetectConflicts).
-		WithNumVersionsToKeep(config.NumVersionsToKeep)
-	db, err := badger.Open(options)
-	if err != nil {
-		return nil, fmt.Errorf("open canonical badger store: %w", err)
-	}
-	return &CanonicalStore{db: db}, nil
 }
 
 // Close syncs and releases the canonical directory lock.

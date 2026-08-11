@@ -12,12 +12,12 @@ func TestProviderRecordsCallsAndUsesCallbacks(t *testing.T) {
 	t.Parallel()
 
 	scope := boyan.Scope{Key: "telegram:1:0", Kind: boyan.ScopeKindPersonal}
-	session := boyan.SessionRef{SessionID: "tg-1-0", AgentSessionID: "tg-1-0"}
-	turn, err := boyan.NewTurn(scope, session, "turn-1", time.Now().UTC(), "hello", "hi")
+	conversation := boyan.ConversationRef{ConversationID: "tg-1-0", AgentConversationID: "tg-1-0"}
+	turn, err := boyan.NewTurn(scope, conversation, "turn-1", time.Now().UTC(), "hello", "hi")
 	if err != nil {
 		t.Fatalf("NewTurn() error = %v", err)
 	}
-	boundary, err := boyan.NewBoundary(scope, session, "close-1", boyan.BoundaryReasonClose, time.Now().UTC())
+	boundary, err := boyan.NewBoundary(scope, conversation, "close-1", boyan.BoundaryReasonClose, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("NewBoundary() error = %v", err)
 	}

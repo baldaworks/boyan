@@ -9,9 +9,9 @@ import (
 
 func TestNewTurnBuildsStableStandaloneExport(t *testing.T) {
 	scope := memory.Scope{Key: "chat:scope-1", Kind: memory.ScopeKindPersonal}
-	session := memory.SessionRef{SessionID: "session-1", AgentSessionID: "agent-session-1"}
+	conversation := memory.ConversationRef{ConversationID: "conversation-1", AgentConversationID: "agent-conversation-1"}
 
-	turn, err := memory.NewTurn(scope, session, "turn-1", time.Date(2026, time.August, 10, 9, 0, 0, 0, time.UTC), "hello", "hi")
+	turn, err := memory.NewTurn(scope, conversation, "turn-1", time.Date(2026, time.August, 10, 9, 0, 0, 0, time.UTC), "hello", "hi")
 	if err != nil {
 		t.Fatalf("NewTurn() error = %v", err)
 	}

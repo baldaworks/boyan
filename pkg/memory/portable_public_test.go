@@ -15,14 +15,14 @@ func TestPublicPackageBuildsPortableTurn(t *testing.T) {
 		Key:  "telegram:1:0",
 		Kind: boyan.ScopeKindPersonal,
 	}
-	session := boyan.SessionRef{
-		SessionID:      "session-1",
-		AgentSessionID: "agent-session-1",
+	conversation := boyan.ConversationRef{
+		ConversationID:      "conversation-1",
+		AgentConversationID: "agent-conversation-1",
 	}
 
 	turn, err := boyan.NewTurn(
 		scope,
-		session,
+		conversation,
 		"turn-1",
 		time.Date(2026, time.August, 3, 0, 0, 0, 0, time.UTC),
 		"user message",
@@ -41,10 +41,10 @@ func TestPublicDerivedAtomRoundTrip(t *testing.T) {
 
 	scope := boyan.Scope{Key: "telegram:1:0", Kind: boyan.ScopeKindPersonal}
 	source := boyan.SourceRef{
-		Scope:        scope,
-		ExportID:     "export-1",
-		SessionID:    "session-1",
-		SourceTurnID: "turn-1",
+		Scope:          scope,
+		ExportID:       "export-1",
+		ConversationID: "conversation-1",
+		SourceTurnID:   "turn-1",
 	}
 	provenance := boyan.Provenance{RawSources: []boyan.SourceRef{source}}
 	itemID, err := boyan.AtomItemID(scope, boyan.AtomCategoryFact, "The project uses Go")
