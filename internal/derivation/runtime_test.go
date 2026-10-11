@@ -1,4 +1,4 @@
-package derivation
+package derivation //nolint:testpackage // Exercises eventRunner within the package.
 
 import (
 	"context"
@@ -28,15 +28,11 @@ func TestNewRuntimeComposesThroughPortableAppRuntime(t *testing.T) {
 			return fakeRunner{}, nil
 		},
 	)
-	if err != nil {
-		t.Fatalf("newRuntimeWithFactory() error = %v", err)
-	}
-	if err := runtime.Start(context.Background()); err != nil {
-		t.Fatalf("Runtime.Start() error = %v", err)
-	}
-	if err := runtime.Close(context.Background()); err != nil {
-		t.Fatalf("Runtime.Close() error = %v", err)
-	}
+	requireNoError(t, err, "newRuntimeWithFactory() error = %v")
+
+	requireNoError(t, runtime.Start(context.Background()), "Runtime.Start() error = %v")
+
+	requireNoError(t, runtime.Close(context.Background()), "Runtime.Close() error = %v")
 }
 
 func TestNewRuntimeRejectsPrewiredDerivationOwners(t *testing.T) {

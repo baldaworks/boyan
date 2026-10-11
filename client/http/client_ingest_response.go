@@ -12,12 +12,15 @@ import (
 func decodeResponse[T any](body io.Reader, dst *T) error {
 	decoder := json.NewDecoder(body)
 	decoder.DisallowUnknownFields()
+
 	if err := decoder.Decode(dst); err != nil {
 		return err
 	}
+
 	if err := decoder.Decode(new(struct{})); err != io.EOF {
 		return fmt.Errorf("response contained trailing data")
 	}
+
 	return nil
 }
 
@@ -30,6 +33,7 @@ func classifyStatus(status int, code memory.ErrorCode, class memory.ErrorClass) 
 			return memory.PermanentError(code, "http ingest request failed", nil)
 		}
 	}
+
 	switch status {
 	case stdhttp.StatusConflict:
 		return memory.RetryableError(memory.CodeConflict, "http ingest request failed", nil)

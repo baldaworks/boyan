@@ -22,7 +22,14 @@ type BoundaryIngestor interface {
 // TurnProcessor owns the canonical ordered-ingest commit step before projection
 // lag handling is applied.
 type TurnProcessor interface {
-	ProcessTurn(ctx context.Context, turn memory.Turn, derivation memory.DerivationRef) (memory.CanonicalMutationOutcome, error)
+	ProcessTurn(
+		ctx context.Context,
+		turn memory.Turn,
+		derivation memory.DerivationRef,
+	) (
+		memory.CanonicalMutationOutcome,
+		error,
+	)
 }
 
 // BoundaryProcessor applies the exact-scope boundary semantics before

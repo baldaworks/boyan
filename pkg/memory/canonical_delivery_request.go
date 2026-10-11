@@ -16,9 +16,13 @@ func (r DeliveryClaimRequest) Validate() error {
 	if err := r.Scope.Validate(); err != nil {
 		return err
 	}
-	if !isCanonicalID(r.LeaseOwner) || r.Now.IsZero() || !r.LeaseUntil.After(r.Now) || r.Limit == 0 || r.Limit > maxCanonicalDeliveryClaims {
+
+	if !isCanonicalID(r.LeaseOwner) || r.Now.IsZero() || !r.LeaseUntil.After(r.Now) ||
+		r.Limit == 0 ||
+		r.Limit > maxCanonicalDeliveryClaims {
 		return invalidDerived("delivery claim request is invalid")
 	}
+
 	return nil
 }
 
@@ -37,11 +41,15 @@ func (r DeliverySettlementRequest) Validate() error {
 	if err := r.Scope.Validate(); err != nil {
 		return err
 	}
-	if !isCanonicalID(r.DeliveryID) || !isCanonicalID(r.LeaseOwner) || r.CompletedAt.IsZero() {
+
+	if !isCanonicalID(r.DeliveryID) || !isCanonicalID(r.LeaseOwner) ||
+		r.CompletedAt.IsZero() {
 		return invalidDerived("delivery settlement request is invalid")
 	}
+
 	if r.Status != DeliveryStatusDelivered && r.Status != DeliveryStatusTerminal {
 		return invalidDerived("delivery settlement status is invalid")
 	}
+
 	return nil
 }

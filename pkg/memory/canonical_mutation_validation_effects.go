@@ -6,8 +6,10 @@ func validateCanonicalMutationLifecycle(events []LifecycleEvent) error {
 		if err := event.Validate(); err != nil {
 			return err
 		}
+
 		lifecycleIDs = append(lifecycleIDs, event.EventID)
 	}
+
 	return validateUniqueCanonicalIDs(lifecycleIDs, "canonical lifecycle event")
 }
 
@@ -17,8 +19,10 @@ func validateCanonicalMutationHeads(heads []ItemHead) error {
 		if err := head.Validate(); err != nil {
 			return err
 		}
+
 		headItemIDs = append(headItemIDs, head.ItemID)
 	}
+
 	return validateUniqueCanonicalIDs(headItemIDs, "canonical item head")
 }
 
@@ -28,8 +32,10 @@ func validateCanonicalMutationDelivery(delivery []DeliveryOutboxRecord) error {
 		if err := record.Validate(); err != nil {
 			return err
 		}
+
 		deliveryIDs = append(deliveryIDs, record.DeliveryID)
 	}
+
 	return validateUniqueCanonicalIDs(deliveryIDs, "canonical delivery outbox")
 }
 
@@ -39,7 +45,9 @@ func validateCanonicalMutationPayloads(payloads []CanonicalPayload) error {
 		if err := payload.Validate(); err != nil {
 			return err
 		}
+
 		payloadIDs = append(payloadIDs, payload.Ref.ID)
 	}
+
 	return validateUniqueCanonicalIDs(payloadIDs, "canonical payload")
 }

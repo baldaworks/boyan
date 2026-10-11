@@ -11,6 +11,7 @@ func (r *Runtime) IngestTurn(ctx context.Context, turn memory.Turn) error {
 	if r == nil || r.turn == nil {
 		return memory.PermanentError(memory.CodeDisabled, "boyan turn ingestion is unavailable", nil)
 	}
+
 	return r.turn.IngestTurn(ctx, turn)
 }
 
@@ -19,5 +20,6 @@ func (r *Runtime) ApplyBoundary(ctx context.Context, boundary memory.Boundary) e
 	if r == nil || r.boundary == nil {
 		return memory.PermanentError(memory.CodeDisabled, "boyan boundary ingestion is unavailable", nil)
 	}
+
 	return r.boundary.ApplyBoundary(ctx, boundary)
 }

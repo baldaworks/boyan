@@ -16,9 +16,11 @@ func (c *ProjectionCoordinator) loadOrCreateManifest(
 	if err != nil {
 		return ProjectionManifest{}, err
 	}
+
 	if found && manifest.GenerationID == generationID {
 		return manifest, nil
 	}
+
 	return ProjectionManifest{
 		Scope:        scope,
 		ProjectionID: projectionID,

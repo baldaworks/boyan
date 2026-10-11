@@ -2,7 +2,6 @@ package standaloneruntime
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	stdhttp "net/http"
 
@@ -23,43 +22,46 @@ func New(cfg Config) (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	service, err := newStandaloneService(cfg, logger)
 	if err != nil {
 		return nil, err
 	}
-	return &Runtime{
-		service: service,
-		handler: service.server.Handler,
-		mcp: mcp.New(mcp.Config{
-			Enabled:   true,
-			Searcher:  service.recall,
-			Tracer:    service.trace,
-			Forgetter: service.forget,
-		}),
-	}, nil
+
+	runtime := &Runtime{service: service, handler: service.server.Handler}
+	runtime.mcp = mcp.New(mcp.Config{Enabled: true, Searcher: runtime, Tracer: runtime, Forgetter: runtime})
+
+	return runtime, nil
 }
 
 func Run(ctx context.Context, cfg Config) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
 	runtime, err := New(cfg)
 	if err != nil {
 		return err
 	}
+
 	if err := runtime.Start(ctx); err != nil {
 		return err
 	}
+
 	waitErr := runtime.Wait(ctx)
 	if ctx.Err() != nil {
 		stopCtx, cancel := context.WithTimeout(context.Background(), cfg.HTTP.ShutdownTimeout)
 		defer cancel()
+
 		return runtime.Stop(stopCtx)
 	}
+
 	if waitErr != nil {
 		_ = runtime.Stop(context.Background())
+
 		return waitErr
 	}
+
 	return nil
 }
 
@@ -68,9 +70,11 @@ func (runtime *Runtime) Start(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
 	if runtime == nil || runtime.service == nil {
 		return fmt.Errorf("Boyan runtime is unavailable")
 	}
+
 	return runtime.service.Start(ctx)
 }
 
@@ -79,9 +83,11 @@ func (runtime *Runtime) Stop(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
 	if runtime == nil || runtime.service == nil {
 		return nil
 	}
+
 	return runtime.service.Stop(ctx)
 }
 
@@ -90,20 +96,20 @@ func (runtime *Runtime) Wait(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
 	if runtime == nil || runtime.service == nil {
 		return fmt.Errorf("Boyan runtime is unavailable")
 	}
+
 	if !runtime.service.startedState() {
 		return fmt.Errorf("Boyan runtime is not started")
 	}
+
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case err := <-runtime.service.done:
-		if err != nil && !errors.Is(err, stdhttp.ErrServerClosed) {
-			return err
-		}
-		return nil
+	case <-runtime.service.done:
+		return runtime.service.terminalResult()
 	}
 }
 
@@ -117,6 +123,7 @@ func (runtime *Runtime) Addr() string {
 	if runtime == nil || runtime.service == nil {
 		return ""
 	}
+
 	return runtime.service.address()
 }
 
@@ -125,6 +132,7 @@ func (runtime *Runtime) Handler() stdhttp.Handler {
 	if runtime == nil || runtime.handler == nil {
 		return stdhttp.NotFoundHandler()
 	}
+
 	return runtime.handler
 }
 
@@ -133,22 +141,49 @@ func (runtime *Runtime) MCP() *mcp.Service {
 	if runtime == nil {
 		return nil
 	}
+
 	return runtime.mcp
 }
 
 // IngestSequencedTurn applies one ordered turn ingest request.
-func (runtime *Runtime) IngestSequencedTurn(ctx context.Context, request memory.SequencedTurn) (memory.IngestOutcome, error) {
+func (runtime *Runtime) IngestSequencedTurn(
+	ctx context.Context,
+	request memory.SequencedTurn,
+) (
+	memory.IngestOutcome,
+	error,
+) {
 	if runtime == nil || runtime.service == nil {
 		return memory.IngestOutcome{}, fmt.Errorf("Boyan runtime is unavailable")
 	}
+
+	ctx, done, err := runtime.service.beginOperation(ctx)
+	if err != nil {
+		return memory.IngestOutcome{}, err
+	}
+	defer done()
+
 	return runtime.service.sequenced.IngestSequencedTurn(ctx, request)
 }
 
 // ApplySequencedBoundary applies one ordered boundary ingest request.
-func (runtime *Runtime) ApplySequencedBoundary(ctx context.Context, request memory.SequencedBoundary) (memory.IngestOutcome, error) {
+func (runtime *Runtime) ApplySequencedBoundary(
+	ctx context.Context,
+	request memory.SequencedBoundary,
+) (
+	memory.IngestOutcome,
+	error,
+) {
 	if runtime == nil || runtime.service == nil {
 		return memory.IngestOutcome{}, fmt.Errorf("Boyan runtime is unavailable")
 	}
+
+	ctx, done, err := runtime.service.beginOperation(ctx)
+	if err != nil {
+		return memory.IngestOutcome{}, err
+	}
+	defer done()
+
 	return runtime.service.sequenced.ApplySequencedBoundary(ctx, request)
 }
 
@@ -157,6 +192,13 @@ func (runtime *Runtime) Search(ctx context.Context, request memory.RecallRequest
 	if runtime == nil || runtime.service == nil {
 		return memory.RecallResponse{}, fmt.Errorf("Boyan runtime is unavailable")
 	}
+
+	ctx, done, err := runtime.service.beginOperation(ctx)
+	if err != nil {
+		return memory.RecallResponse{}, err
+	}
+	defer done()
+
 	return runtime.service.recall.Search(ctx, request)
 }
 
@@ -165,21 +207,54 @@ func (runtime *Runtime) Trace(ctx context.Context, request memory.TraceRequest) 
 	if runtime == nil || runtime.service == nil {
 		return memory.TraceResponse{}, fmt.Errorf("Boyan runtime is unavailable")
 	}
+
+	ctx, done, err := runtime.service.beginOperation(ctx)
+	if err != nil {
+		return memory.TraceResponse{}, err
+	}
+	defer done()
+
 	return runtime.service.trace.Trace(ctx, request)
 }
 
 // ForgetSource forgets one immutable source within one Boyan scope.
-func (runtime *Runtime) ForgetSource(ctx context.Context, command memory.ForgetSourceCommand) (memory.ForgetOutcome, error) {
+func (runtime *Runtime) ForgetSource(
+	ctx context.Context,
+	command memory.ForgetSourceCommand,
+) (
+	memory.ForgetOutcome,
+	error,
+) {
 	if runtime == nil || runtime.service == nil {
 		return memory.ForgetOutcome{}, fmt.Errorf("Boyan runtime is unavailable")
 	}
+
+	ctx, done, err := runtime.service.beginOperation(ctx)
+	if err != nil {
+		return memory.ForgetOutcome{}, err
+	}
+	defer done()
+
 	return runtime.service.forget.ForgetSource(ctx, command)
 }
 
 // ForgetScope forgets one exact Boyan scope.
-func (runtime *Runtime) ForgetScope(ctx context.Context, command memory.ForgetScopeCommand) (memory.ForgetOutcome, error) {
+func (runtime *Runtime) ForgetScope(
+	ctx context.Context,
+	command memory.ForgetScopeCommand,
+) (
+	memory.ForgetOutcome,
+	error,
+) {
 	if runtime == nil || runtime.service == nil {
 		return memory.ForgetOutcome{}, fmt.Errorf("Boyan runtime is unavailable")
 	}
+
+	ctx, done, err := runtime.service.beginOperation(ctx)
+	if err != nil {
+		return memory.ForgetOutcome{}, err
+	}
+	defer done()
+
 	return runtime.service.forget.ForgetScope(ctx, command)
 }

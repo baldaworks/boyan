@@ -23,7 +23,13 @@ type runtimeFactory interface {
 }
 
 type eventRunner interface {
-	Run(ctx context.Context, userID, stateID string, msg *genai.Content, cfg adkagent.RunConfig, opts ...runner.RunOption) iter.Seq2[*runEvent, error]
+	Run(
+		ctx context.Context,
+		userID, stateID string,
+		msg *genai.Content,
+		cfg adkagent.RunConfig,
+		opts ...runner.RunOption,
+	) iter.Seq2[*runEvent, error]
 }
 
 type builtRuntime struct {

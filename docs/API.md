@@ -21,6 +21,25 @@ It exports:
 The host API keeps transport wiring behind host methods and does not require
 `internal/*` imports by embedders.
 
+Construction acquires storage resources. Call `Stop` or `Close` even if `Start`
+was never called; failed startup also releases owned resources. A stopped host
+cannot restart: construct a new host. `Wait` observes cleanup completion for all
+concurrent and subsequent callers; canceling one wait does not consume that
+result. `Stop(ctx)` stops admission and cancels active operation contexts. If its
+deadline expires, it returns a typed `timeout` error while cleanup remains owned
+by the host. While the process stays alive, a later `Stop` or `Wait` can join that
+cleanup. Storage is released after active HTTP and embedded operations drain.
+
+## Scope contract
+
+Every ingest, recall, trace and forget request supplies an exact key and kind.
+Keys use `<channel_type>:<address_key>`, for example `telegram:123:0`. The channel
+is nonempty and lowercase, with no spaces, tabs, carriage returns or line feeds.
+The address is nonempty and has no
+leading or trailing whitespace. Extra colons in the address are allowed. The key
+has no leading or trailing whitespace. Kind must be `personal` or `group`; the
+same key with a different kind denotes a separate scope.
+
 The machine-readable contract for the deterministic HTTP surface lives at
 [`docs/openapi.yaml`](openapi.yaml).
 

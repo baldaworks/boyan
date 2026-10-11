@@ -11,10 +11,12 @@ func putCanonicalMutationEvidenceEdges(txn *badger.Txn, scope memory.Scope, revi
 		if err != nil {
 			return err
 		}
+
 		edge := badgerProvenanceEdge{ChildRevisionID: revision.RevisionID, ParentRevisionID: evidence.SourceID}
 		if err := putCanonicalImmutableRecord(txn, key, badgerRecordSourceRevision, edge); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }

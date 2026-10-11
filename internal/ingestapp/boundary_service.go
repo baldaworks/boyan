@@ -19,6 +19,7 @@ func NewBoundaryService(processor BoundaryExecutor, projection ProjectionSyncer)
 	if processor == nil {
 		return nil, memory.PermanentError(memory.CodeStoreFailure, "boundary processor is required", nil)
 	}
+
 	return &BoundaryService{processor: processor, projection: projection}, nil
 }
 
@@ -27,15 +28,19 @@ func (s *BoundaryService) ApplyBoundary(ctx context.Context, boundary memory.Bou
 	if s == nil || s.processor == nil {
 		return memory.PermanentError(memory.CodeDisabled, "boundary processor is unavailable", nil)
 	}
+
 	if err := boundary.Validate(); err != nil {
 		return err
 	}
+
 	if _, err := s.processor.ProcessBoundary(ctx, boundary); err != nil {
 		return err
 	}
+
 	if s.projection != nil {
 		return s.projection.Sync(ctx, boundary.Scope)
 	}
+
 	return nil
 }
 

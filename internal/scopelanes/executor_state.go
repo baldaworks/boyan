@@ -33,6 +33,7 @@ func NewExecutor(config Config) (*Executor, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return &Executor{
 		config:      normalized,
 		lanes:       make(map[string]*scopeLane),

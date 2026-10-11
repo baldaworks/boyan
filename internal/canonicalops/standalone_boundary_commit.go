@@ -6,25 +6,36 @@ import (
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
-func (s *CanonicalBoundaryStore) Commit(ctx context.Context, request memory.CommitRequest) (memory.OperationOutcome, error) {
+func (s *CanonicalBoundaryStore) Commit(
+	ctx context.Context,
+	request memory.CommitRequest,
+) (
+	memory.OperationOutcome,
+	error,
+) {
 	if err := request.Validate(); err != nil {
 		return memory.OperationOutcome{}, err
 	}
+
 	if len(request.Scenarios)+len(request.Profiles) == 0 {
 		return s.commitCanonicalOperation(ctx, request)
 	}
+
 	view, err := s.reader.LoadCanonicalBoundaryView(ctx, request.Scope)
 	if err != nil {
 		return memory.OperationOutcome{}, err
 	}
+
 	mutation, err := s.buildBoundaryMutation(ctx, request, view)
 	if err != nil {
 		return memory.OperationOutcome{}, err
 	}
+
 	outcome, err := s.store.ApplyCanonicalMutation(ctx, mutation)
 	if err != nil {
 		return memory.OperationOutcome{}, err
 	}
+
 	return memory.OperationOutcome{
 		SchemaVersion: memory.DerivedSchemaVersionV1,
 		OperationID:   request.OperationID,
@@ -35,8 +46,15 @@ func (s *CanonicalBoundaryStore) Commit(ctx context.Context, request memory.Comm
 	}, nil
 }
 
-func (s *CanonicalBoundaryStore) commitCanonicalOperation(ctx context.Context, request memory.CommitRequest) (memory.OperationOutcome, error) {
+func (s *CanonicalBoundaryStore) commitCanonicalOperation(
+	ctx context.Context,
+	request memory.CommitRequest,
+) (
+	memory.OperationOutcome,
+	error,
+) {
 	committedAt := operationCommittedAt(request)
+
 	outcome, err := s.store.CommitCanonicalOperation(ctx, memory.CanonicalOperationCommitRequest{
 		Scope:                request.Scope,
 		ExpectedScopeVersion: request.ExpectedScopeVersion,
@@ -47,6 +65,7 @@ func (s *CanonicalBoundaryStore) commitCanonicalOperation(ctx context.Context, r
 	if err != nil {
 		return memory.OperationOutcome{}, err
 	}
+
 	return memory.OperationOutcome{
 		SchemaVersion: memory.DerivedSchemaVersionV1,
 		OperationID:   request.OperationID,

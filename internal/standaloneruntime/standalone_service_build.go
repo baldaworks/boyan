@@ -11,6 +11,7 @@ func newStandaloneService(cfg Config, logger zerolog.Logger) (_ *standaloneServi
 	}
 
 	cleanups := standaloneCleanupStack{}
+
 	defer func() {
 		if err != nil {
 			cleanups.Close()
@@ -21,11 +22,14 @@ func newStandaloneService(cfg Config, logger zerolog.Logger) (_ *standaloneServi
 	if err != nil {
 		return nil, err
 	}
+
 	services, err := buildStandaloneAppServices(cfg, inputs.workingDir, storage, &cleanups)
 	if err != nil {
 		return nil, err
 	}
+
 	readiness := &standaloneReadinessReporter{maintenance: storage.maintenance}
+
 	server, err := newHTTPServer(
 		standaloneHTTPConfig{
 			Listen:         cfg.HTTP.Listen,
@@ -43,7 +47,10 @@ func newStandaloneService(cfg Config, logger zerolog.Logger) (_ *standaloneServi
 	if err != nil {
 		return nil, err
 	}
+
 	service := assembleStandaloneService(cfg, logger, inputs, storage, services, server)
+	server.Handler = service.operationHandler(server.Handler)
 	readiness.attach(service)
+
 	return service, nil
 }

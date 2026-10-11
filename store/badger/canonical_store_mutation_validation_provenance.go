@@ -10,8 +10,10 @@ func validateBadgerMutationProvenance(txn *badger.Txn, mutation memory.Canonical
 	for _, revision := range mutation.Revisions {
 		revisions[revision.RevisionID] = revision
 	}
+
 	if err := validateBadgerMutationParents(txn, mutation.Scope, mutation.Revisions, revisions); err != nil {
 		return err
 	}
+
 	return validateBadgerMutationProvenanceCycles(revisions)
 }

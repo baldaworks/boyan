@@ -15,6 +15,7 @@ func (h ItemHead) Validate() error {
 	if !isCanonicalID(h.ItemID) || !isCanonicalID(h.RevisionID) {
 		return invalidDerived("canonical item head is invalid")
 	}
+
 	return nil
 }
 

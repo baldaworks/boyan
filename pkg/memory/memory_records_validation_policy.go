@@ -4,8 +4,10 @@ func validateSensitivityRetention(sensitivity Sensitivity, retention RetentionCl
 	if sensitivity != SensitivityStandard && sensitivity != SensitivitySensitive {
 		return invalidDerived("unsupported memory sensitivity")
 	}
+
 	if retention != RetentionClassStandard && retention != RetentionClassEphemeral {
 		return invalidDerived("unsupported memory retention")
 	}
+
 	return nil
 }

@@ -1,4 +1,4 @@
-package badger
+package badger_test
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	boyan "github.com/baldaworks/boyan/pkg/memory"
+	canonicalbadger "github.com/baldaworks/boyan/store/badger"
 )
 
 // BenchmarkCanonicalStoreApplyCanonicalMutation100k records the fixed
@@ -20,18 +21,24 @@ func BenchmarkCanonicalStoreApplyCanonicalMutation100k(b *testing.B) {
 	if b.N != 1 {
 		b.Fatalf("run with -benchtime=1x so the benchmark performs exactly %d commits", commits)
 	}
-	store, err := OpenCanonicalStore(filepath.Join(b.TempDir(), "memory.badger"))
+
+	store, err := canonicalbadger.OpenCanonicalStore(filepath.Join(b.TempDir(), "memory.badger"))
 	if err != nil {
 		b.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
+
 	b.Cleanup(func() { _ = store.Close() })
 
 	ctx := context.Background()
 	scope := boyan.Scope{Key: "benchmark:canonical:100k", Kind: boyan.ScopeKindPersonal}
+
 	b.ResetTimer()
+
 	started := time.Now()
+
 	for index := 0; index < commits; index++ {
 		id := fmt.Sprintf("%06d", index)
+
 		mutation := canonicalRevisionMutation(
 			scope,
 			uint64(index),
@@ -42,6 +49,7 @@ func BenchmarkCanonicalStoreApplyCanonicalMutation100k(b *testing.B) {
 			b.Fatalf("ApplyCanonicalMutation(%d) error = %v", index, err)
 		}
 	}
+
 	b.StopTimer()
 	b.ReportMetric(float64(time.Since(started))/commits, "ns/commit")
 }
@@ -61,59 +69,102 @@ func BenchmarkCanonicalStoreApplyCanonicalMutation128Scopes(b *testing.B) {
 	if b.N != 1 {
 		b.Fatalf("run with -benchtime=1x so the benchmark performs exactly %d commits", commits)
 	}
-	store, err := OpenCanonicalStore(filepath.Join(b.TempDir(), "memory.badger"))
+
+	store, err := canonicalbadger.OpenCanonicalStore(filepath.Join(b.TempDir(), "memory.badger"))
 	if err != nil {
 		b.Fatalf("OpenCanonicalStore() error = %v", err)
 	}
+
 	b.Cleanup(func() { _ = store.Close() })
 
 	durations := make(chan time.Duration, commits)
 	errs := make(chan error, scopes)
+
 	var group sync.WaitGroup
+
 	b.ResetTimer()
+
 	for scopeIndex := 0; scopeIndex < scopes; scopeIndex++ {
 		count := basePerScope
 		if scopeIndex < extraScopes {
 			count++
 		}
+
 		group.Add(1)
 		go func(scopeIndex, count int) {
 			defer group.Done()
-			scope := boyan.Scope{Key: fmt.Sprintf("benchmark:canonical:scope:%03d", scopeIndex), Kind: boyan.ScopeKindPersonal}
-			for index := 0; index < count; index++ {
-				id := fmt.Sprintf("%03d-%06d", scopeIndex, index)
-				started := time.Now()
-				_, err := store.ApplyCanonicalMutation(context.Background(), canonicalRevisionMutation(scope, uint64(index), "operation-"+id, canonicalRevision("revision-"+id, "item-"+id)))
-				durations <- time.Since(started)
-				if err != nil {
-					errs <- fmt.Errorf("scope %d mutation %d: %w", scopeIndex, index, err)
-					return
-				}
-			}
+
+			benchmarkCanonicalScopeLane(store, scopeIndex, count, durations, errs)
 		}(scopeIndex, count)
 	}
+
 	group.Wait()
 	b.StopTimer()
 	close(errs)
+
 	for err := range errs {
 		b.Fatal(err)
 	}
+
 	close(durations)
+
+	reportCanonicalMutationDurations(b, durations, commits)
+}
+
+func reportCanonicalMutationDurations(b *testing.B, durations <-chan time.Duration, commits int) {
 	values := make([]time.Duration, 0, commits)
 	for duration := range durations {
 		values = append(values, duration)
 	}
+
 	if len(values) != commits {
 		b.Fatalf("completed mutations = %d, want %d", len(values), commits)
 	}
+
 	sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
-	b.ReportMetric(float64(values[percentileIndex(len(values), 0.95)])/float64(time.Millisecond), "apply_p95_ms")
-	b.ReportMetric(float64(values[percentileIndex(len(values), 0.99)])/float64(time.Millisecond), "apply_p99_ms")
+	b.ReportMetric(
+		float64(values[percentileIndex(len(values), 0.95)])/float64(time.Millisecond),
+		"apply_p95_ms",
+	)
+	b.ReportMetric(
+		float64(values[percentileIndex(len(values), 0.99)])/float64(time.Millisecond),
+		"apply_p99_ms",
+	)
 }
 
 func percentileIndex(length int, percentile float64) int {
 	if length <= 1 {
 		return 0
 	}
+
 	return int(float64(length-1) * percentile)
+}
+
+func benchmarkCanonicalScopeLane(
+	store *canonicalbadger.CanonicalStore,
+	scopeIndex,
+	count int,
+	durations chan<- time.Duration,
+	errs chan<- error,
+) {
+	scope := boyan.Scope{
+		Key:  fmt.Sprintf("benchmark:canonical:scope:%03d", scopeIndex),
+		Kind: boyan.ScopeKindPersonal,
+	}
+	for index := 0; index < count; index++ {
+		id := fmt.Sprintf("%03d-%06d", scopeIndex, index)
+		started := time.Now()
+		_, err := store.ApplyCanonicalMutation(
+			context.Background(),
+			canonicalRevisionMutation(scope, uint64(index), "operation-"+id, canonicalRevision("revision-"+id, "item-"+id)),
+		)
+
+		durations <- time.Since(started)
+
+		if err != nil {
+			errs <- fmt.Errorf("scope %d mutation %d: %w", scopeIndex, index, err)
+
+			return
+		}
+	}
 }

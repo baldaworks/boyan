@@ -7,5 +7,6 @@ func (r DerivationRef) Validate() error {
 			return invalidDerived("derivation fingerprint is required")
 		}
 	}
+
 	return nil
 }

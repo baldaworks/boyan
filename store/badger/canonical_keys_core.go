@@ -6,13 +6,21 @@ func badgerScopeKey(scope memory.Scope) ([]byte, error) {
 	if err := scope.Validate(); err != nil {
 		return nil, err
 	}
-	return memory.TupleKey(canonicalNamespace, canonicalVersion, badgerRecordScope, scope.Key, string(scope.Kind))
+
+	return memory.TupleKey(
+		canonicalNamespace,
+		canonicalVersion,
+		badgerRecordScope,
+		scope.Key,
+		string(scope.Kind),
+	)
 }
 
 func badgerOperationKey(scope memory.Scope, operationID string) ([]byte, error) {
 	if err := scope.Validate(); err != nil {
 		return nil, err
 	}
+
 	return canonicalKey(scope, badgerRecordOperation, operationID)
 }
 
@@ -24,6 +32,7 @@ func canonicalKey(scope memory.Scope, recordType string, id string) ([]byte, err
 	if err := scope.Validate(); err != nil {
 		return nil, err
 	}
+
 	return memory.TupleKey(canonicalNamespace, canonicalVersion, recordType, scope.Key, string(scope.Kind), id)
 }
 
@@ -31,5 +40,6 @@ func canonicalPrefix(scope memory.Scope, recordType string) ([]byte, error) {
 	if err := scope.Validate(); err != nil {
 		return nil, err
 	}
+
 	return memory.TupleKey(canonicalNamespace, canonicalVersion, recordType, scope.Key, string(scope.Kind))
 }

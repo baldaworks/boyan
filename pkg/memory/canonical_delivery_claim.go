@@ -30,6 +30,7 @@ func (c DeliveryClaim) Validate() error {
 	if !isCanonicalID(c.DeliveryID) {
 		return invalidDerived("delivery claim is invalid")
 	}
+
 	switch c.Status {
 	case DeliveryStatusPending, DeliveryStatusDelivered, DeliveryStatusTerminal:
 		if c.LeaseOwner != "" || c.LeaseUntil != nil {
@@ -42,6 +43,7 @@ func (c DeliveryClaim) Validate() error {
 	default:
 		return invalidDerived("delivery claim status is invalid")
 	}
+
 	return nil
 }
 

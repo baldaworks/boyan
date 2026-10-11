@@ -1,4 +1,6 @@
-package portableapp
+package portableapp_test
+
+import portableapp "github.com/baldaworks/boyan/internal/portableapp"
 
 import (
 	"context"
@@ -15,11 +17,13 @@ type lifecycleSpy struct {
 func (s *lifecycleSpy) Start(context.Context) error {
 	*s.log = append(*s.log, "start:"+s.name)
 	s.start = true
+
 	return nil
 }
 
 func (s *lifecycleSpy) Close(context.Context) error {
 	*s.log = append(*s.log, "close:"+s.name)
+
 	return nil
 }
 
@@ -27,24 +31,21 @@ func TestRuntimeStartsAndClosesLifecycleInOrder(t *testing.T) {
 	t.Parallel()
 
 	var log []string
+
 	first := &lifecycleSpy{name: "first", log: &log}
 	second := &lifecycleSpy{name: "second", log: &log}
-	runtime, err := NewRuntime(RuntimeConfig{Lifecycle: []Lifecycle{first, second}})
-	if err != nil {
-		t.Fatalf("NewRuntime() error = %v", err)
-	}
-	if err := runtime.Start(context.Background()); err != nil {
-		t.Fatalf("Start() error = %v", err)
-	}
-	if err := runtime.Start(context.Background()); err != nil {
-		t.Fatalf("idempotent Start() error = %v", err)
-	}
-	if err := runtime.Close(context.Background()); err != nil {
-		t.Fatalf("Close() error = %v", err)
-	}
-	if err := runtime.Close(context.Background()); err != nil {
-		t.Fatalf("idempotent Close() error = %v", err)
-	}
+
+	runtime, err := portableapp.NewRuntime(portableapp.RuntimeConfig{Lifecycle: []portableapp.Lifecycle{first, second}})
+	requireNoError(t, err, "NewRuntime() error = %v")
+
+	requireNoError(t, runtime.Start(context.Background()), "Start() error = %v")
+
+	requireNoError(t, runtime.Start(context.Background()), "idempotent Start() error = %v")
+
+	requireNoError(t, runtime.Close(context.Background()), "Close() error = %v")
+
+	requireNoError(t, runtime.Close(context.Background()), "idempotent Close() error = %v")
+
 	want := []string{"start:first", "start:second", "close:second", "close:first"}
 	if !reflect.DeepEqual(log, want) {
 		t.Fatalf("lifecycle log = %v, want %v", log, want)

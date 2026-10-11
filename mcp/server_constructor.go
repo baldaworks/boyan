@@ -6,5 +6,6 @@ import sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 func NewServer(cfg Config) (*sdkmcp.Server, error) {
 	server := sdkmcp.NewServer(serverImplementation(cfg.Implementation), cfg.ServerOptions)
 	New(cfg).RegisterTools(server)
+
 	return server, nil
 }

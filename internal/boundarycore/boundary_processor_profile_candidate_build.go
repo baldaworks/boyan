@@ -13,8 +13,10 @@ func (e *BoundaryProcessor) groundedProfileRevision(
 	if len(parents) > e.config.MaxSourcesPerRevision {
 		return Profile{}, limitExceeded("profile provenance exceeds the configured limit")
 	}
+
 	summary := normalizeDerivedText(candidate.Summary)
 	provenance := Provenance{ParentRevisions: parents}
+
 	revisionID, err := DerivedRevisionID(
 		boundary.Scope,
 		state.itemID,
@@ -26,6 +28,7 @@ func (e *BoundaryProcessor) groundedProfileRevision(
 	if err != nil {
 		return Profile{}, err
 	}
+
 	profile := Profile{
 		Meta: RevisionMeta{
 			SchemaVersion: DerivedSchemaVersionV1,
@@ -45,5 +48,6 @@ func (e *BoundaryProcessor) groundedProfileRevision(
 	if err := profile.Validate(); err != nil {
 		return Profile{}, err
 	}
+
 	return profile, nil
 }

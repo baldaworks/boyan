@@ -19,6 +19,7 @@ func NewTraceService(reader memory.CanonicalDerivedReader) (*TraceService, error
 	if reader == nil {
 		return nil, memory.PermanentError(memory.CodeStoreFailure, "trace reader is required", nil)
 	}
+
 	return &TraceService{reader: reader}, nil
 }
 
@@ -27,10 +28,12 @@ func (s *TraceService) Trace(ctx context.Context, request memory.TraceRequest) (
 	if s == nil || s.reader == nil {
 		return memory.TraceResponse{}, memory.PermanentError(memory.CodeDisabled, "trace service is unavailable", nil)
 	}
+
 	normalized, err := memory.NormalizeTraceRequest(request, memory.MaxTraceNodes)
 	if err != nil {
 		return memory.TraceResponse{}, err
 	}
+
 	return s.reader.Trace(ctx, normalized)
 }
 

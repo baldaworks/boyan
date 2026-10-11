@@ -8,7 +8,9 @@ func turnTextExceeds(turn memory.Turn, limit int) bool {
 		if len(message.Text) > remaining {
 			return true
 		}
+
 		remaining -= len(message.Text)
 	}
+
 	return false
 }

@@ -9,6 +9,7 @@ import (
 // IngestTurn implements TurnIngestor.
 func (p *TurnProcessor) IngestTurn(ctx context.Context, turn memory.Turn) error {
 	_, err := p.ProcessTurn(ctx, turn)
+
 	return err
 }
 

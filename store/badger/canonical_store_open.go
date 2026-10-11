@@ -17,22 +17,28 @@ func openWithConfig(directory string, config Config) (*CanonicalStore, error) {
 	if directory == "" {
 		return nil, fmt.Errorf("canonical badger directory is required")
 	}
+
 	if !config.SyncWrites {
 		config.SyncWrites = true
 	}
+
 	if !config.DetectConflicts {
 		config.DetectConflicts = true
 	}
+
 	if config.NumVersionsToKeep <= 0 {
 		config.NumVersionsToKeep = 1
 	}
+
 	options := badger.DefaultOptions(directory).
 		WithSyncWrites(config.SyncWrites).
 		WithDetectConflicts(config.DetectConflicts).
 		WithNumVersionsToKeep(config.NumVersionsToKeep)
+
 	db, err := badger.Open(options)
 	if err != nil {
 		return nil, fmt.Errorf("open canonical badger store: %w", err)
 	}
+
 	return &CanonicalStore{db: db}, nil
 }

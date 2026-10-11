@@ -19,5 +19,6 @@ func NewCanonicalForgetAdapter(store *badger.CanonicalStore) (*CanonicalForgetAd
 	if store == nil {
 		return nil, fmt.Errorf("canonical forget store is required")
 	}
+
 	return &CanonicalForgetAdapter{store: store}, nil
 }

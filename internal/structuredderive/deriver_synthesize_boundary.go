@@ -8,19 +8,29 @@ import (
 )
 
 // SynthesizeScenarios implements boundary scenario synthesis.
-func (d *Deriver) SynthesizeScenarios(ctx context.Context, request memory.ScenarioSynthesisRequest) ([]memory.ScenarioCandidate, error) {
+func (d *Deriver) SynthesizeScenarios(
+	ctx context.Context,
+	request memory.ScenarioSynthesisRequest,
+) (
+	[]memory.ScenarioCandidate,
+	error,
+) {
 	if err := d.available(); err != nil {
 		return nil, err
 	}
+
 	request.Derivation = normalizeDerivation(request.Derivation)
+
 	input, err := json.Marshal(request)
 	if err != nil {
 		return nil, memory.PermanentError(memory.CodeInvalidDerived, "encode scenario derivation request", err)
 	}
+
 	operationID, err := operationID(memory.OperationStageScenarios, request.Boundary.ExportID, request.Derivation)
 	if err != nil {
 		return nil, err
 	}
+
 	var output scenariosOutput
 	if err := d.invoke(ctx, StructuredInvocation{
 		OperationID:  operationID,
@@ -31,23 +41,34 @@ func (d *Deriver) SynthesizeScenarios(ctx context.Context, request memory.Scenar
 	}, &output); err != nil {
 		return nil, err
 	}
+
 	return output.Output, nil
 }
 
 // SynthesizeProfile implements exact-scope profile synthesis.
-func (d *Deriver) SynthesizeProfile(ctx context.Context, request memory.ProfileSynthesisRequest) (*memory.ProfileCandidate, error) {
+func (d *Deriver) SynthesizeProfile(
+	ctx context.Context,
+	request memory.ProfileSynthesisRequest,
+) (
+	*memory.ProfileCandidate,
+	error,
+) {
 	if err := d.available(); err != nil {
 		return nil, err
 	}
+
 	request.Derivation = normalizeDerivation(request.Derivation)
+
 	input, err := json.Marshal(request)
 	if err != nil {
 		return nil, memory.PermanentError(memory.CodeInvalidDerived, "encode profile derivation request", err)
 	}
+
 	operationID, err := operationID(memory.OperationStageProfile, request.Boundary.ExportID, request.Derivation)
 	if err != nil {
 		return nil, err
 	}
+
 	var output profileOutput
 	if err := d.invoke(ctx, StructuredInvocation{
 		OperationID:  operationID,
@@ -58,5 +79,6 @@ func (d *Deriver) SynthesizeProfile(ctx context.Context, request memory.ProfileS
 	}, &output); err != nil {
 		return nil, err
 	}
+
 	return &output.Output, nil
 }

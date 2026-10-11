@@ -27,6 +27,10 @@ state under one explicit state root.
 This repository already builds and runs locally. Remote publication and any
 downstream integration work are outside this standalone quick-start scope.
 
+Requests use exact scopes: a key such as `telegram:123:0` plus `personal` or
+`group`. See the [scope and lifecycle contracts](docs/API.md) and
+[upload, shutdown and projection operations](docs/OPERATIONS.md).
+
 ## Install and build
 
 Build the standalone binary locally:

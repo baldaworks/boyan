@@ -15,14 +15,17 @@ func (e *BoundaryProcessor) prepareBoundaryStage(
 	if err != nil {
 		return "", ScopeSnapshot{}, OperationOutcome{}, false, err
 	}
+
 	prior, found, err := e.lookupBoundaryStage(ctx, boundary.Scope, stage, operationID)
 	if err != nil || found {
 		return operationID, ScopeSnapshot{}, prior, found, err
 	}
+
 	snapshot, err := e.loadBoundarySnapshot(ctx, boundary.Scope)
 	if err != nil {
 		return "", ScopeSnapshot{}, OperationOutcome{}, false, err
 	}
+
 	return operationID, snapshot, OperationOutcome{}, false, nil
 }
 
@@ -38,18 +41,23 @@ func (e *BoundaryProcessor) lookupBoundaryStage(
 		Stage:         stage,
 		Scope:         scope,
 	}
+
 	prior, err := e.store.LookupOperation(ctx, lookup)
 	if err != nil {
 		return OperationOutcome{}, false, boundaryStoreFailure(ctx, err)
 	}
+
 	if err := checkBoundaryContext(ctx); err != nil {
 		return OperationOutcome{}, false, err
 	}
+
 	if err := prior.Validate(lookup); err != nil {
 		return OperationOutcome{}, false, err
 	}
+
 	if prior.Found {
 		return cloneOperationOutcome(prior.Outcome), true, nil
 	}
+
 	return OperationOutcome{}, false, nil
 }

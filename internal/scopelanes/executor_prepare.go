@@ -15,18 +15,23 @@ func prepareScopeLaneWork(
 	if executor == nil {
 		return "", scopeLaneWork{}, memory.PermanentError(memory.CodeDisabled, "scope lane executor is unavailable", nil)
 	}
+
 	if ctx == nil {
 		return "", scopeLaneWork{}, memory.PermanentError(memory.CodeInvalidDerived, "scope lane context is required", nil)
 	}
+
 	if err := ctx.Err(); err != nil {
 		return "", scopeLaneWork{}, memory.RetryableError(memory.CodeTimeout, "scope lane context ended", err)
 	}
+
 	if err := scope.Validate(); err != nil {
 		return "", scopeLaneWork{}, err
 	}
+
 	if run == nil {
 		return "", scopeLaneWork{}, memory.PermanentError(memory.CodeInvalidDerived, "scope lane work is required", nil)
 	}
+
 	return scopeLaneKey(scope), scopeLaneWork{ctx: ctx, run: run, done: make(chan error, 1)}, nil
 }
 

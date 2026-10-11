@@ -5,16 +5,21 @@ func (g *BleveGeneration) Close() error {
 	if g == nil {
 		return nil
 	}
+
 	g.mu.Lock()
 	defer g.mu.Unlock()
+
 	if g.closed {
 		return nil
 	}
+
 	g.closed = true
-	if g.index == nil {
+	if g.index == nil || g.borrowed {
 		return nil
 	}
+
 	err := g.index.Close()
 	g.index = nil
+
 	return err
 }

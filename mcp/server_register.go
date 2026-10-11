@@ -7,5 +7,6 @@ func RegisterTools(server *sdkmcp.Server, cfg Config) {
 	if server == nil {
 		return
 	}
+
 	New(cfg).RegisterTools(server)
 }

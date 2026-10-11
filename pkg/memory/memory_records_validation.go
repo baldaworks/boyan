@@ -9,9 +9,11 @@ func (i MemoryItem) Validate() error {
 	if !isCanonicalID(i.ItemID) {
 		return invalidDerived("memory item id is required")
 	}
+
 	if err := i.Scope.Validate(); err != nil {
 		return err
 	}
+
 	switch i.Kind {
 	case MemoryKindState:
 		if !isCanonicalID(string(i.MemoryKey)) {
@@ -24,6 +26,7 @@ func (i MemoryItem) Validate() error {
 	default:
 		return invalidDerived("unsupported memory kind")
 	}
+
 	return nil
 }
 
@@ -32,11 +35,15 @@ func (t Temporal) Validate() error {
 	if t.ObservedAt.IsZero() {
 		return invalidDerived("observed time is required")
 	}
+
 	if t.ValidFrom != nil && t.ValidUntil != nil && t.ValidUntil.Before(*t.ValidFrom) {
 		return invalidDerived("valid interval is inverted")
 	}
-	if len(t.TemporalText) > maxMemoryTextBytes || strings.TrimSpace(t.TemporalText) != t.TemporalText {
+
+	if len(t.TemporalText) > maxMemoryTextBytes ||
+		strings.TrimSpace(t.TemporalText) != t.TemporalText {
 		return invalidDerived("temporal text is invalid")
 	}
+
 	return nil
 }

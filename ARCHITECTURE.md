@@ -208,15 +208,29 @@ writer access.
 Badger is authoritative. Bleve is never returned directly to callers without
 canonical hydration through the recall or trace path.
 
+Clean projection generations resume from their durable watermark. Unchanged
+syncs leave the generation and checkpoint untouched; updates apply new changes.
+Dirty, missing, incompatible or retention-floor-invalid indexes rebuild from
+canonical active state and replay changes committed during the scan. Exact-scope
+synchronization serializes ingest, repair and forget-triggered projection work.
+Physical retention keeps active and at most one previous generation per scope,
+while preserving durable references and in-flight builders. Startup reconciles
+committed marker switches before removing abandoned generations.
+
 The projection can lag and be repaired, but canonical state remains safe and
 authoritative. Readiness checks canonical maintenance diagnostics before
 accepting work.
 
 ## Scope isolation
 
-Scope keys are opaque exact identifiers supplied by the host. Boyan does not
-parse host-specific locator formats and does not implement inheritance,
-fallback, or cross-scope promotion.
+Scope keys are exact canonical locators supplied by the host in
+`<channel_type>:<address_key>` form, for example `telegram:123:0`. The channel
+must be nonempty and lowercase, with no spaces, tabs, carriage returns or line feeds. The address must be
+nonempty with no leading or trailing whitespace; additional colons are allowed.
+The entire key must have no leading or trailing whitespace. Scope kind is
+explicitly `personal` or `group`; the pair of key and kind defines isolation.
+Boyan validates this shape without resolving host-specific address semantics.
+It does not implement inheritance, fallback, or cross-scope promotion.
 
 All ingest, search, trace, and forget paths stay within one exact scope.
 

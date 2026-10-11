@@ -12,5 +12,6 @@ func appendUniqueRevisionRef(refs []memory.RevisionRef, ref memory.RevisionRef) 
 			return refs
 		}
 	}
+
 	return append(refs, ref)
 }

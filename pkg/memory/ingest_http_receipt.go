@@ -4,6 +4,7 @@ func IngestReceiptFromOutcome(outcome IngestOutcome) (IngestReceipt, error) {
 	if err := outcome.Validate(); err != nil {
 		return IngestReceipt{}, err
 	}
+
 	receipt := IngestReceipt{
 		SchemaVersion:  IngestReceiptSchemaVersionV1,
 		ExportID:       outcome.ExportID,
@@ -16,8 +17,10 @@ func IngestReceiptFromOutcome(outcome IngestOutcome) (IngestReceipt, error) {
 	if len(receipt.OperationIDs) == 1 {
 		receipt.OperationID = receipt.OperationIDs[0]
 	}
+
 	if err := receipt.Validate(); err != nil {
 		return IngestReceipt{}, err
 	}
+
 	return receipt, nil
 }

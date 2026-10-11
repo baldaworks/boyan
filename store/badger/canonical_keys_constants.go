@@ -28,3 +28,19 @@ const (
 	badgerRecordIngestSequence            = "ingest-sequence"
 	badgerRecordIngestCursor              = "ingest-cursor"
 )
+
+const (
+	maxCanonicalLogicalBatchSize             = 4096
+	maxCanonicalRestorePendingWrites         = 4096
+	maxCanonicalForgetScrubIDs               = 4096
+	canonicalSequenceBytes                   = 8
+	canonicalTupleLengthBytes                = 2
+	canonicalScopeComponents                 = 3
+	canonicalRecordComponents                = 4
+	canonicalEdgeComponents                  = 5
+	canonicalLogicalScannerBufferBytes       = 64 * 1024
+	maxCanonicalTraceSourceMessages          = 32
+	messageRoleOrderOther                    = 2
+	provenanceVisiting                 uint8 = 1
+	provenanceVisited                  uint8 = 2
+)

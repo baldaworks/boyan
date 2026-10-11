@@ -10,6 +10,7 @@ func MarshalRecordEnvelope(recordType string, payload []byte) ([]byte, error) {
 	if !isCanonicalID(recordType) || len(payload) == 0 {
 		return nil, invalidDerived("record envelope is invalid")
 	}
+
 	digest := sha256.Sum256(payload)
 	envelope := RecordEnvelope{
 		SchemaVersion: MemorySchemaVersion,
@@ -17,5 +18,6 @@ func MarshalRecordEnvelope(recordType string, payload []byte) ([]byte, error) {
 		PayloadSHA256: hex.EncodeToString(digest[:]),
 		Payload:       payload,
 	}
+
 	return marshalEnvelope(envelope), nil
 }

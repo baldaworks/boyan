@@ -12,8 +12,10 @@ func writeCanonicalLogicalJSON(writer io.Writer, value any) error {
 	if err != nil {
 		return err
 	}
+
 	line = append(line, '\n')
 	_, err = writer.Write(line)
+
 	return err
 }
 
@@ -22,5 +24,6 @@ func marshalCanonicalLogicalJSON(value any) ([]byte, error) {
 	if err != nil {
 		return nil, memory.PermanentError(memory.CodeInvalidDerived, "encode canonical logical export record", err)
 	}
+
 	return line, nil
 }

@@ -15,9 +15,11 @@ func validateStructuredInvocationRequest(request structuredderive.StructuredInvo
 	if len(request.InputJSON) > memory.MaxDerivedTurnTextBytes {
 		return memory.PermanentError(memory.CodeLimitExceeded, "Boyan derivation input exceeds the limit", nil)
 	}
+
 	if strings.TrimSpace(request.OutputSchema) == "" {
 		return memory.PermanentError(memory.CodeInvalidDerived, "Boyan derivation output schema is required", nil)
 	}
+
 	return nil
 }
 
@@ -26,6 +28,7 @@ func marshalStructuredInvocationInput(request structuredderive.StructuredInvocat
 	if err != nil {
 		return nil, memory.PermanentError(memory.CodeInvalidDerived, "encode Boyan derivation input", err)
 	}
+
 	return genai.NewContentFromText(string(envelope), genai.RoleUser), nil
 }
 
@@ -34,10 +37,13 @@ func validateStructuredInvocationOutput(ctx context.Context, output string, maxB
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return nil, memory.RetryableError(memory.CodeTimeout, "Boyan derivation timed out", nil)
 		}
+
 		return nil, memory.RetryableError(memory.CodeModelFailure, "Boyan derivation produced no output", nil)
 	}
+
 	if len(output) > maxBytes {
 		return nil, memory.PermanentError(memory.CodeLimitExceeded, "Boyan derivation output exceeds the limit", nil)
 	}
+
 	return []byte(output), nil
 }

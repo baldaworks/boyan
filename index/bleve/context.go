@@ -10,6 +10,7 @@ func canonicalContextError(ctx context.Context) error {
 	if ctx == nil {
 		return memory.PermanentError(memory.CodeInvalidDerived, "context is required", nil)
 	}
+
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

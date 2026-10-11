@@ -13,6 +13,7 @@ func stableCanonicalFingerprint(kind string, value any) string {
 	if err != nil {
 		return stableCanonicalID(kind, "marshal-error")
 	}
+
 	return stableCanonicalID(kind, string(data))
 }
 
@@ -22,6 +23,7 @@ func stableCanonicalID(parts ...string) string {
 		hash.Write([]byte{0})
 		hash.Write([]byte(part))
 	}
+
 	return "boyan-canonicalops:" + hex.EncodeToString(hash.Sum(nil))
 }
 

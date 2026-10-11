@@ -8,5 +8,6 @@ func NewCanonicalReader(store *CanonicalStore) (*CanonicalReader, error) {
 	if store == nil {
 		return nil, memory.PermanentError(memory.CodeStoreFailure, "canonical reader store is required", nil)
 	}
+
 	return &CanonicalReader{store: store}, nil
 }

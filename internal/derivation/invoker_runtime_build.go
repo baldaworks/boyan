@@ -13,13 +13,16 @@ func (i *Invoker) buildRuntime(ctx context.Context) (*builtRuntime, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	agent, err := i.factory.Build(ctx, req)
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return nil, memory.RetryableError(memory.CodeTimeout, "build Boyan derivation runtime timed out", nil)
 		}
+
 		return nil, memory.RetryableError(memory.CodeModelFailure, "build Boyan derivation runtime", nil)
 	}
+
 	return &builtRuntime{
 		agent:      agent,
 		stateStore: newRunStateStore(),

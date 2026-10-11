@@ -5,12 +5,15 @@ func appendUniqueStrings(values []string, next []string) []string {
 	for _, value := range values {
 		seen[value] = struct{}{}
 	}
+
 	for _, value := range next {
 		if _, exists := seen[value]; exists {
 			continue
 		}
+
 		seen[value] = struct{}{}
 		values = append(values, value)
 	}
+
 	return values
 }

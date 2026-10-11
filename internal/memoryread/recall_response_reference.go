@@ -7,11 +7,14 @@ func recallReference(record memory.RecallRecord, score memory.RecallScore) memor
 	if len(evidence) > memory.MaxRecallEvidence {
 		evidence = evidence[:memory.MaxRecallEvidence]
 	}
+
 	var category *memory.AtomCategory
+
 	if record.Category != nil {
 		copyOfCategory := *record.Category
 		category = &copyOfCategory
 	}
+
 	return memory.RecallReference{
 		SchemaVersion:  memory.RecallSchemaVersionV1,
 		Trust:          memory.ReferenceTrustUntrusted,

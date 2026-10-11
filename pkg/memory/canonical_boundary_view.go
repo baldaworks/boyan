@@ -15,14 +15,17 @@ func (v CanonicalBoundaryView) Validate() error {
 	if err := v.Snapshot.Validate(MaxSnapshotItems); err != nil {
 		return err
 	}
+
 	for legacy, canonical := range v.LegacyToCanonical {
 		if err := legacy.Validate(); err != nil {
 			return err
 		}
+
 		if err := canonical.Validate(); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 

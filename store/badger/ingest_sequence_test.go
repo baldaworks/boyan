@@ -1,4 +1,4 @@
-package badger
+package badger_test
 
 import (
 	"context"
@@ -7,54 +7,44 @@ import (
 	"testing"
 
 	boyan "github.com/baldaworks/boyan/pkg/memory"
+	canonicalbadger "github.com/baldaworks/boyan/store/badger"
 )
 
 func TestCanonicalStorePersistsIngestSequenceReplay(t *testing.T) {
-	store, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "canonical.badger"))
-	if err != nil {
-		t.Fatalf("OpenCanonicalStore() error = %v", err)
-	}
+	store := openCanonicalTestStore(t, filepath.Join(t.TempDir(), "canonical.badger"))
+
 	t.Cleanup(func() { _ = store.Close() })
 
 	record := testIngestSequenceRecord(1)
 	if err := store.SaveIngestSequence(context.Background(), record); err != nil {
 		t.Fatalf("SaveIngestSequence() error = %v", err)
 	}
+
 	if err := store.SaveIngestSequence(context.Background(), record); err != nil {
 		t.Fatalf("SaveIngestSequence(replay) error = %v", err)
 	}
 
-	cursor, found, err := store.LoadLatestIngestSequence(context.Background(), record.ProducerID, record.Scope)
-	if err != nil || !found {
-		t.Fatalf("LoadLatestIngestSequence() = %+v, found=%v, error=%v", cursor, found, err)
-	}
-	if cursor.Latest != 1 {
-		t.Fatalf("cursor latest = %d, want 1", cursor.Latest)
-	}
-
-	got, found, err := store.LoadIngestSequence(context.Background(), record.ProducerID, record.Scope, record.Sequence)
-	if err != nil || !found {
-		t.Fatalf("LoadIngestSequence() = %+v, found=%v, error=%v", got, found, err)
-	}
-	if !reflect.DeepEqual(got, record) {
-		t.Fatalf("stored record = %+v, want %+v", got, record)
-	}
+	assertCanonicalIngestReplay(t, store, record)
 
 	second := testIngestSequenceRecord(2)
 	if err := store.SaveIngestSequence(context.Background(), second); err != nil {
 		t.Fatalf("SaveIngestSequence(second) error = %v", err)
 	}
-	cursor, found, err = store.LoadLatestIngestSequence(context.Background(), second.ProducerID, second.Scope)
+
+	cursor, found, err := store.LoadLatestIngestSequence(context.Background(), second.ProducerID, second.Scope)
 	if err != nil || !found || cursor.Latest != 2 {
-		t.Fatalf("LoadLatestIngestSequence(after second) = %+v, found=%v, error=%v", cursor, found, err)
+		t.Fatalf(
+			"LoadLatestIngestSequence(after second) = %+v, found=%v, error=%v",
+			cursor,
+			found,
+			err,
+		)
 	}
 }
 
 func TestCanonicalStoreRejectsConflictingOrSkippedIngestSequence(t *testing.T) {
-	store, err := OpenCanonicalStore(filepath.Join(t.TempDir(), "canonical.badger"))
-	if err != nil {
-		t.Fatalf("OpenCanonicalStore() error = %v", err)
-	}
+	store := openCanonicalTestStore(t, filepath.Join(t.TempDir(), "canonical.badger"))
+
 	t.Cleanup(func() { _ = store.Close() })
 
 	first := testIngestSequenceRecord(1)
@@ -64,6 +54,7 @@ func TestCanonicalStoreRejectsConflictingOrSkippedIngestSequence(t *testing.T) {
 
 	conflict := testIngestSequenceRecord(1)
 	conflict.Fingerprint = "ingest-fingerprint-conflict"
+
 	conflict.Outcome.Fingerprint = conflict.Fingerprint
 	if err := store.SaveIngestSequence(context.Background(), conflict); !hasStateCode(err, boyan.CodeConflict) {
 		t.Fatalf("SaveIngestSequence(conflict) error = %v, want conflict", err)
@@ -77,33 +68,35 @@ func TestCanonicalStoreRejectsConflictingOrSkippedIngestSequence(t *testing.T) {
 
 func TestCanonicalStoreRestoresIngestSequenceAfterReopen(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "canonical.badger")
-	store, err := OpenCanonicalStore(path)
-	if err != nil {
-		t.Fatalf("OpenCanonicalStore() error = %v", err)
-	}
+
+	store := openCanonicalTestStore(t, path)
+
 	record := testIngestSequenceRecord(1)
 	if err := store.SaveIngestSequence(context.Background(), record); err != nil {
 		t.Fatalf("SaveIngestSequence() error = %v", err)
 	}
-	if err := store.Close(); err != nil {
-		t.Fatalf("Close() error = %v", err)
-	}
 
-	reopened, err := OpenCanonicalStore(path)
-	if err != nil {
-		t.Fatalf("OpenCanonicalStore(reopen) error = %v", err)
-	}
+	closeCanonicalTestStore(t, store)
+
+	reopened := openCanonicalTestStore(t, path)
+
 	t.Cleanup(func() { _ = reopened.Close() })
 
 	cursor, found, err := reopened.LoadLatestIngestSequence(context.Background(), record.ProducerID, record.Scope)
 	if err != nil || !found || cursor.Latest != 1 {
-		t.Fatalf("LoadLatestIngestSequence(after reopen) = %+v, found=%v, error=%v", cursor, found, err)
+		t.Fatalf(
+			"LoadLatestIngestSequence(after reopen) = %+v, found=%v, error=%v",
+			cursor,
+			found,
+			err,
+		)
 	}
 }
 
 func testIngestSequenceRecord(sequence uint64) boyan.IngestSequenceRecord {
 	scope := boyan.Scope{Key: "telegram:ingest-sequence", Kind: boyan.ScopeKindPersonal}
 	fingerprint := "ingest-fingerprint"
+
 	return boyan.IngestSequenceRecord{
 		SchemaVersion: boyan.IngestSequenceSchemaVersionV1,
 		ProducerID:    "producer-1",
@@ -124,5 +117,31 @@ func testIngestSequenceRecord(sequence uint64) boyan.IngestSequenceRecord {
 			ScopeVersion:   sequence,
 			ScopeChangeSeq: sequence,
 		},
+	}
+}
+
+func assertCanonicalIngestReplay(
+	t *testing.T,
+	store *canonicalbadger.CanonicalStore,
+	record boyan.IngestSequenceRecord,
+) {
+	t.Helper()
+
+	cursor, found, err := store.LoadLatestIngestSequence(context.Background(), record.ProducerID, record.Scope)
+	if err != nil || !found {
+		t.Fatalf("LoadLatestIngestSequence() = %+v, found=%v, error=%v", cursor, found, err)
+	}
+
+	if cursor.Latest != 1 {
+		t.Fatalf("cursor latest = %d, want 1", cursor.Latest)
+	}
+
+	got, found, err := store.LoadIngestSequence(context.Background(), record.ProducerID, record.Scope, record.Sequence)
+	if err != nil || !found {
+		t.Fatalf("LoadIngestSequence() = %+v, found=%v, error=%v", got, found, err)
+	}
+
+	if !reflect.DeepEqual(got, record) {
+		t.Fatalf("stored record = %+v, want %+v", got, record)
 	}
 }

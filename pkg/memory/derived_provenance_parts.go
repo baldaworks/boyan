@@ -8,13 +8,27 @@ import (
 func canonicalProvenanceParts(provenance Provenance) []string {
 	raw := slices.Clone(provenance.RawSources)
 	slices.SortFunc(raw, func(left, right SourceRef) int {
-		leftParts := []string{left.Scope.Key, string(left.Scope.Kind), left.ExportID, left.ConversationID, left.SourceTurnID}
-		rightParts := []string{right.Scope.Key, string(right.Scope.Kind), right.ExportID, right.ConversationID, right.SourceTurnID}
+		leftParts := []string{
+			left.Scope.Key,
+			string(left.Scope.Kind),
+			left.ExportID,
+			left.ConversationID,
+			left.SourceTurnID,
+		}
+
+		rightParts := []string{
+			right.Scope.Key,
+			string(right.Scope.Kind),
+			right.ExportID,
+			right.ConversationID,
+			right.SourceTurnID,
+		}
 		for index := range leftParts {
 			if order := cmp.Compare(leftParts[index], rightParts[index]); order != 0 {
 				return order
 			}
 		}
+
 		return 0
 	})
 
@@ -23,6 +37,7 @@ func canonicalProvenanceParts(provenance Provenance) []string {
 		if order := cmp.Compare(left.ItemID, right.ItemID); order != 0 {
 			return order
 		}
+
 		return cmp.Compare(left.RevisionID, right.RevisionID)
 	})
 
@@ -37,8 +52,10 @@ func canonicalProvenanceParts(provenance Provenance) []string {
 			source.SourceTurnID,
 		)
 	}
+
 	for _, parent := range parents {
 		parts = append(parts, "parent", parent.ItemID, parent.RevisionID)
 	}
+
 	return parts
 }

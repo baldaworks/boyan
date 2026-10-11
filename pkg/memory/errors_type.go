@@ -18,13 +18,16 @@ func (e *Error) Error() string {
 	if e == nil {
 		return ""
 	}
+
 	message := strings.TrimSpace(e.Message)
 	if message == "" {
 		message = string(e.Code)
 	}
+
 	if e.Cause == nil {
 		return message
 	}
+
 	return fmt.Sprintf("%s: %v", message, e.Cause)
 }
 
@@ -33,6 +36,7 @@ func (e *Error) Unwrap() error {
 	if e == nil {
 		return nil
 	}
+
 	return e.Cause
 }
 

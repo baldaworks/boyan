@@ -43,18 +43,24 @@ func newSequencedIngestRuntimeWithParts(
 	if sequences == nil || canonical == nil {
 		return nil, memory.PermanentError(memory.CodeStoreFailure, "sequenced ingest dependencies are required", nil)
 	}
+
 	if turnProcessor == nil && boundaryProcessor == nil {
 		return nil, memory.PermanentError(memory.CodeDisabled, "sequenced ingest requires at least one capability", nil)
 	}
+
 	lanes, err := scopelanes.NewExecutor(config.Lanes)
 	if err != nil {
 		return nil, err
 	}
+
 	retryDelay := normalizeSequencedProjectionRetryDelay(config)
+
 	runtime := &SequencedIngestRuntime{sequences: sequences, canonical: canonical, lanes: lanes}
 	if err := applySequencedTurnParts(runtime, turnProcessor, derivation, turnProjection, retryDelay); err != nil {
 		return nil, err
 	}
+
 	applySequencedBoundaryParts(runtime, boundaryProcessor, boundaryProjection, retryDelay)
+
 	return runtime, nil
 }

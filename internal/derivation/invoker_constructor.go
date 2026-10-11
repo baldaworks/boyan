@@ -16,9 +16,11 @@ func newInvokerWithFactory(cfg Config, factory runtimeFactory, makeRunner runner
 	if err := cfg.validateWithFactory(factory); err != nil {
 		return nil, err
 	}
+
 	if makeRunner == nil {
 		return nil, fmt.Errorf("boyan derivation runner builder is required")
 	}
+
 	return &Invoker{
 		factory:    factory,
 		runner:     makeRunner,

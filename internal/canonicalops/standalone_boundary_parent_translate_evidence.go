@@ -12,7 +12,9 @@ func buildBoundaryParentEvidenceSets(
 		if err != nil {
 			return nil, err
 		}
+
 		evidenceSets[revisionID] = evidence
 	}
+
 	return evidenceSets, nil
 }

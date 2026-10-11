@@ -8,10 +8,12 @@ func New(cfg Config) *Service {
 	if timeout <= 0 {
 		timeout = DefaultTimeout
 	}
+
 	now := cfg.Now
 	if now == nil {
 		now = time.Now
 	}
+
 	return &Service{
 		enabled:   cfg.Enabled,
 		searcher:  cfg.Searcher,

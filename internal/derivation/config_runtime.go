@@ -13,6 +13,7 @@ func (c Config) maxOutputBytes() int {
 	if c.MaxOutputBytes > 0 {
 		return c.MaxOutputBytes
 	}
+
 	return structuredderive.DefaultDerivationMaxOutputBytes
 }
 
@@ -20,6 +21,7 @@ func (c Config) timeout() time.Duration {
 	if c.Timeout > 0 {
 		return c.Timeout
 	}
+
 	return structuredderive.DefaultDerivationTimeout
 }
 

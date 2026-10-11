@@ -5,10 +5,12 @@ func normalizeSemanticCandidate(candidate SemanticCandidate) (string, string, []
 	if err != nil {
 		return "", "", nil, err
 	}
+
 	predicate, err := canonicalSemanticPart(candidate.Predicate)
 	if err != nil {
 		return "", "", nil, err
 	}
+
 	qualifiers := make([]string, len(candidate.Qualifiers))
 	for index, qualifier := range candidate.Qualifiers {
 		qualifiers[index], err = canonicalSemanticPart(qualifier)
@@ -16,5 +18,6 @@ func normalizeSemanticCandidate(candidate SemanticCandidate) (string, string, []
 			return "", "", nil, err
 		}
 	}
+
 	return subject, predicate, qualifiers, nil
 }

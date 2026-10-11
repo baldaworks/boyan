@@ -8,21 +8,38 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func (s *Service) forgetSource(ctx context.Context, _ *sdkmcp.CallToolRequest, in forgetSourceServiceInput) (*sdkmcp.CallToolResult, ForgetOutput, error) {
+func (s *Service) forgetSource(
+	ctx context.Context,
+	_ *sdkmcp.CallToolRequest,
+	in forgetSourceServiceInput,
+) (
+	*sdkmcp.CallToolResult,
+	ForgetOutput,
+	error,
+) {
 	scope, err := parseScopeInput(in.ScopeInput)
 	if err != nil {
-		return s.forgetFailure(ForgetSourceToolName, classifyErrorCode(err, memory.CodeInvalidScope), publicErrorMessage(err))
+		return s.forgetFailure(
+			ForgetSourceToolName,
+			classifyErrorCode(err, memory.CodeInvalidScope),
+			publicErrorMessage(err),
+		)
 	}
+
 	if s == nil || !s.enabled {
 		return s.forgetFailure(ForgetSourceToolName, memory.CodeDisabled, messageDisabled)
 	}
+
 	if s.forgetter == nil {
 		return s.forgetFailure(ForgetSourceToolName, memory.CodeUnavailable, messageUnavailable)
 	}
+
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
 	forgottenAt := s.now().UTC()
+
 	command := memory.ForgetSourceCommand{
 		SchemaVersion: memory.DerivedSchemaVersionV1,
 		Source: memory.SourceRef{
@@ -34,21 +51,22 @@ func (s *Service) forgetSource(ctx context.Context, _ *sdkmcp.CallToolRequest, i
 		ForgottenAt: forgottenAt,
 	}
 	if err := command.Validate(); err != nil {
-		return s.forgetFailure(ForgetSourceToolName, classifyErrorCode(err, memory.CodeInvalidDerived), publicErrorMessage(err))
+		return s.forgetFailure(
+			ForgetSourceToolName,
+			classifyErrorCode(err, memory.CodeInvalidDerived),
+			publicErrorMessage(err),
+		)
 	}
+
 	forgetCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
+
 	outcome, err := s.forgetter.ForgetSource(forgetCtx, command)
 	if err != nil {
 		code := classifyProviderError(forgetCtx, err)
+
 		return s.forgetFailure(ForgetSourceToolName, code, publicErrorMessageForCode(code))
 	}
-	if err := outcome.Validate(); err != nil {
-		code := classifyErrorCode(err, memory.CodePermanent)
-		return s.forgetFailure(ForgetSourceToolName, code, publicErrorMessageForCode(code))
-	}
-	if outcome.Scope != scope {
-		return s.forgetFailure(ForgetSourceToolName, memory.CodeScopeViolation, messageScopeViolation)
-	}
-	return nil, forgetSuccess(outcome, forgottenAt), nil
+
+	return s.completeForget(ForgetSourceToolName, scope, outcome, forgottenAt)
 }

@@ -15,15 +15,22 @@ type standaloneAppServices struct {
 	forget    *memoryops.ForgetService
 }
 
-func buildStandaloneAppServices(cfg Config, workingDir string, storage *standaloneStorage, cleanups *standaloneCleanupStack) (*standaloneAppServices, error) {
+func buildStandaloneAppServices(
+	cfg Config,
+	workingDir string,
+	storage *standaloneStorage,
+	cleanups *standaloneCleanupStack,
+) (*standaloneAppServices, error) {
 	invoker, sequenced, err := buildStandaloneIngestServices(cfg, workingDir, storage, cleanups)
 	if err != nil {
 		return nil, err
 	}
+
 	recall, trace, forget, err := buildStandaloneReadServices(storage)
 	if err != nil {
 		return nil, err
 	}
+
 	return &standaloneAppServices{
 		invoker:   invoker,
 		sequenced: sequenced,

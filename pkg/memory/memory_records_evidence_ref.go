@@ -22,6 +22,7 @@ func NewEvidenceRef(
 	if !isCanonicalID(sourceID) || !isCanonicalID(messageID) {
 		return EvidenceRef{}, invalidDerived("evidence source or message id is invalid")
 	}
+
 	if !utf8.ValidString(text) ||
 		startByte >= endByte ||
 		endByte > uint32(len(text)) ||
@@ -29,7 +30,9 @@ func NewEvidenceRef(
 		!utf8Boundary(text, endByte) {
 		return EvidenceRef{}, invalidDerived("evidence byte span is invalid")
 	}
+
 	digest := sha256.Sum256([]byte(text))
+
 	evidence := EvidenceRef{
 		SourceID:      sourceID,
 		MessageID:     messageID,
@@ -42,6 +45,7 @@ func NewEvidenceRef(
 	if err := evidence.Validate(); err != nil {
 		return EvidenceRef{}, err
 	}
+
 	return evidence, nil
 }
 
@@ -49,5 +53,6 @@ func utf8Boundary(text string, offset uint32) bool {
 	if offset == 0 || int(offset) == len(text) {
 		return true
 	}
+
 	return int(offset) < len(text) && utf8.RuneStart(text[offset])
 }

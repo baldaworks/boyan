@@ -6,7 +6,15 @@ import (
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
-func buildSearchRequest(in searchServiceInput, scope memory.Scope, query string, limit int) (memory.RecallRequest, error) {
+func buildSearchRequest(
+	in searchServiceInput,
+	scope memory.Scope,
+	query string,
+	limit int,
+) (
+	memory.RecallRequest,
+	error,
+) {
 	return memory.NormalizeRecallRequest(memory.RecallRequest{
 		SchemaVersion:     memory.RecallSchemaVersionV1,
 		Scope:             scope,

@@ -6,9 +6,11 @@ func normalizeCanonicalLogicalBatchSize(batchSize int) (int, error) {
 	if batchSize <= 0 {
 		batchSize = defaultCanonicalImportBatch
 	}
-	if batchSize > 4096 {
+
+	if batchSize > maxCanonicalLogicalBatchSize {
 		return 0, memory.PermanentError(memory.CodeLimitExceeded, "canonical logical batch size is too large", nil)
 	}
+
 	return batchSize, nil
 }
 
@@ -17,9 +19,12 @@ func readCanonicalLogicalExportHeader(scan *canonicalLogicalImportScanner) error
 	if err := scan.readJSON(&header); err != nil {
 		return err
 	}
-	if header.SchemaVersion != canonicalLogicalExportSchema || header.Kind != canonicalLogicalHeaderKind {
+
+	if header.SchemaVersion != canonicalLogicalExportSchema ||
+		header.Kind != canonicalLogicalHeaderKind {
 		return memory.PermanentError(memory.CodeInvalidDerived, "canonical logical export header is invalid", nil)
 	}
+
 	return nil
 }
 
@@ -30,5 +35,6 @@ func readCanonicalLogicalExportKind(scan *canonicalLogicalImportScanner, line []
 	if err := scan.unmarshal(line, &kind); err != nil {
 		return "", err
 	}
+
 	return kind.Kind, nil
 }

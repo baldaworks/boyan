@@ -1,6 +1,7 @@
 package standaloneruntime
 
 import (
+	"context"
 	stdhttp "net/http"
 	"sync"
 
@@ -31,10 +32,15 @@ type standaloneService struct {
 	forget      *memoryops.ForgetService
 	server      *stdhttp.Server
 
-	mu       sync.Mutex
-	starting bool
-	started  bool
-	closing  bool
-	serving  error
-	done     chan error
+	lifecycle        sync.Mutex
+	operations       sync.WaitGroup
+	shutdownContext  context.Context
+	cancelOperations context.CancelFunc
+	mu               sync.Mutex
+	starting         bool
+	started          bool
+	closing          bool
+	serving          error
+	done             chan struct{}
+	terminal         error
 }

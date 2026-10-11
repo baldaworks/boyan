@@ -14,6 +14,7 @@ func normalizeTraceRoot(in traceServiceInput) (memory.RevisionRef, error) {
 	if err := root.Validate(); err != nil {
 		return memory.RevisionRef{}, err
 	}
+
 	return root, nil
 }
 

@@ -22,13 +22,20 @@ type BoundaryProcessor struct {
 
 // NewBoundaryProcessor constructs the memory-owned boundary application
 // service with package hard limits and the supplied derivation identity.
-func NewBoundaryProcessor(store BoundaryStore, scenarios ScenarioSynthesizer, profiles ProfileSynthesizer, derivation DerivationRef) (*BoundaryProcessor, error) {
+func NewBoundaryProcessor(
+	store BoundaryStore,
+	scenarios ScenarioSynthesizer,
+	profiles ProfileSynthesizer,
+	derivation DerivationRef,
+) (*BoundaryProcessor, error) {
 	if store == nil || scenarios == nil || profiles == nil {
 		return nil, PermanentError(CodeStoreFailure, "boundary processor dependencies are required", nil)
 	}
+
 	if err := derivation.Validate(); err != nil {
 		return nil, err
 	}
+
 	return &BoundaryProcessor{
 		store:               store,
 		scenarioSynthesizer: scenarios,

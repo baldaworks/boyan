@@ -12,9 +12,11 @@ func reconciliationID(kind string, parts ...string) string {
 	hash := sha256.New()
 	writeHashPart(hash, memory.MemorySchemaVersion)
 	writeHashPart(hash, kind)
+
 	for _, part := range parts {
 		writeHashPart(hash, part)
 	}
+
 	return memory.StableID(kind, hash.Sum(nil))
 }
 

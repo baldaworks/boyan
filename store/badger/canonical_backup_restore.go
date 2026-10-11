@@ -16,24 +16,31 @@ func (s *CanonicalStore) RestoreCanonicalBackup(ctx context.Context, source io.R
 	if err := validateCanonicalMaintenance(ctx, source); err != nil {
 		return err
 	}
+
 	if s == nil {
 		return memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
+
 	maxPendingWrites, err := normalizeBadgerRestorePendingWrites(maxPendingWrites)
 	if err != nil {
 		return err
 	}
+
 	s.maintenanceMu.Lock()
 	defer s.maintenanceMu.Unlock()
+
 	if s.db == nil {
 		return memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
+
 	if err := s.db.Load(source, maxPendingWrites); err != nil {
 		return canonicalStoreError("restore canonical backup", err)
 	}
+
 	if err := checkCanonicalMaintenanceContext(ctx); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -41,8 +48,10 @@ func normalizeBadgerRestorePendingWrites(maxPendingWrites int) (int, error) {
 	if maxPendingWrites <= 0 {
 		maxPendingWrites = defaultBadgerRestorePendingWrites
 	}
-	if maxPendingWrites > 4096 {
+
+	if maxPendingWrites > maxCanonicalRestorePendingWrites {
 		return 0, memory.PermanentError(memory.CodeLimitExceeded, "canonical restore pending-write bound is too large", nil)
 	}
+
 	return maxPendingWrites, nil
 }

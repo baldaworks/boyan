@@ -1,4 +1,4 @@
-package projectionsync
+package projectionsync //nolint:testpackage // Exercises shared private test fixtures within the package.
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 
 type retentionProjectionStore struct {
 	boundedProjectionStore
+
 	floor uint64
 }
 
@@ -18,6 +19,7 @@ func (s *retentionProjectionStore) LoadProjectionRetentionFloor(context.Context,
 
 type retentionProjectionApplier struct {
 	projectionApplier
+
 	rebuilt bool
 	view    BoundedProjectionView
 }
@@ -25,6 +27,7 @@ type retentionProjectionApplier struct {
 func (a *retentionProjectionApplier) Rebuild(_ context.Context, _ Scope, _ string, view BoundedProjectionView) error {
 	a.rebuilt = true
 	a.view = view
+
 	return nil
 }
 
@@ -36,17 +39,25 @@ type batchRetentionProjectionApplier struct {
 func (a *batchRetentionProjectionApplier) BeginProjectionRebuild(context.Context, Scope, string) error {
 	a.batchCount = 0
 	a.itemIDs = nil
+
 	return nil
 }
 
-func (a *batchRetentionProjectionApplier) ApplyProjectionRebuildBatch(_ context.Context, _ Scope, _ string, view BoundedProjectionView) error {
+func (a *batchRetentionProjectionApplier) ApplyProjectionRebuildBatch(
+	_ context.Context,
+	_ Scope,
+	_ string,
+	view BoundedProjectionView,
+) error {
 	if len(view.Active) > 1 {
 		return errors.New("rebuild batch exceeded configured bound")
 	}
+
 	a.batchCount++
 	for _, active := range view.Active {
 		a.itemIDs = append(a.itemIDs, active.Item.ItemID)
 	}
+
 	return nil
 }
 

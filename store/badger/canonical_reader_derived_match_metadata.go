@@ -7,6 +7,7 @@ func derivedRecordLegacyKind(record memory.RecallRecord) memory.DerivedKind {
 	if record.LegacyKind != nil {
 		legacyKind = *record.LegacyKind
 	}
+
 	return legacyKind
 }
 
@@ -15,5 +16,6 @@ func derivedRecordCategory(record memory.RecallRecord) memory.AtomCategory {
 	if record.Category != nil {
 		category = *record.Category
 	}
+
 	return category
 }

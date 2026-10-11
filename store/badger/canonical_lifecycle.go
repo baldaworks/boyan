@@ -41,19 +41,28 @@ func NewCanonicalMaintenance(store *CanonicalStore, config CanonicalMaintenanceC
 	if store == nil {
 		return nil, memory.PermanentError(memory.CodeStoreFailure, "canonical maintenance store is required", nil)
 	}
+
 	interval := config.ValueLogGCInterval
 	if interval == 0 {
 		interval = defaultCanonicalGCInterval
 	}
+
 	if interval <= 0 {
 		return nil, memory.PermanentError(memory.CodeInvalidDerived, "canonical maintenance interval must be positive", nil)
 	}
+
 	ratio := config.DiscardRatio
 	if ratio == 0 {
 		ratio = defaultCanonicalDiscard
 	}
+
 	if ratio <= 0 || ratio >= 1 {
-		return nil, memory.PermanentError(memory.CodeInvalidDerived, "canonical maintenance discard ratio must be between zero and one", nil)
+		return nil, memory.PermanentError(
+			memory.CodeInvalidDerived,
+			"canonical maintenance discard ratio must be between zero and one",
+			nil,
+		)
 	}
+
 	return &CanonicalMaintenance{store: store, interval: interval, ratio: ratio}, nil
 }

@@ -14,25 +14,32 @@ func (e *BoundaryProcessor) ProcessBoundary(ctx context.Context, boundary Bounda
 	if e == nil {
 		return partial, invalidDerived("boundary processor is required")
 	}
+
 	if err := checkBoundaryContext(ctx); err != nil {
 		return partial, err
 	}
+
 	if err := boundary.Validate(); err != nil {
 		return partial, err
 	}
 
 	scenarios, err := e.processScenarioStage(ctx, boundary)
+
 	partial.Scenarios = scenarios
 	if err != nil {
 		return partial, err
 	}
+
 	profile, err := e.processProfileStage(ctx, boundary)
+
 	partial.Profile = profile
 	if err != nil {
 		return partial, err
 	}
+
 	if err := partial.Validate(); err != nil {
 		return partial, err
 	}
+
 	return partial, nil
 }

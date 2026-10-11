@@ -20,6 +20,7 @@ func activeAtoms(atoms []memory.Atom) []memory.Atom {
 			active = append(active, atom)
 		}
 	}
+
 	return cloneAtoms(active)
 }
 
@@ -30,6 +31,7 @@ func activeScenarios(scenarios []memory.Scenario) []memory.Scenario {
 			active = append(active, scenario)
 		}
 	}
+
 	return cloneScenarios(active)
 }
 
@@ -40,5 +42,6 @@ func activeProfiles(profiles []memory.Profile) []memory.Profile {
 			active = append(active, profile)
 		}
 	}
+
 	return cloneProfiles(active)
 }

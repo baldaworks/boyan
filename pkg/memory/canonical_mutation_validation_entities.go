@@ -6,11 +6,14 @@ func validateCanonicalMutationSources(scope Scope, sources []CanonicalSourceReco
 		if err := source.Validate(); err != nil {
 			return err
 		}
+
 		if source.Scope != scope {
 			return invalidDerived("canonical source scope does not match mutation")
 		}
+
 		sourceIDs = append(sourceIDs, source.SourceID)
 	}
+
 	return validateUniqueCanonicalIDs(sourceIDs, "canonical source")
 }
 
@@ -20,8 +23,10 @@ func validateCanonicalMutationMessages(messages []MessageRecord) error {
 		if err := message.Validate(); err != nil {
 			return err
 		}
+
 		messageIDs = append(messageIDs, message.MessageID)
 	}
+
 	return validateUniqueCanonicalIDs(messageIDs, "canonical message")
 }
 
@@ -31,11 +36,14 @@ func validateCanonicalMutationItems(scope Scope, items []MemoryItem) error {
 		if err := item.Validate(); err != nil {
 			return err
 		}
+
 		if item.Scope != scope {
 			return invalidDerived("canonical item scope does not match mutation")
 		}
+
 		itemIDs = append(itemIDs, item.ItemID)
 	}
+
 	return validateUniqueCanonicalIDs(itemIDs, "canonical item")
 }
 
@@ -45,7 +53,9 @@ func validateCanonicalMutationRevisions(revisions []MemoryRevision) error {
 		if err := revision.Validate(); err != nil {
 			return err
 		}
+
 		revisionIDs = append(revisionIDs, revision.RevisionID)
 	}
+
 	return validateUniqueCanonicalIDs(revisionIDs, "canonical revision")
 }

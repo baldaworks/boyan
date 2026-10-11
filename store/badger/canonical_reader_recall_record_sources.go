@@ -15,7 +15,9 @@ func populateRecallRecordSources(scope memory.Scope, view canonicalRecallView, r
 	for _, evidence := range view.revision.Evidence {
 		record.SourceIDs = appendUnique(record.SourceIDs, evidence.SourceID)
 	}
+
 	record.SourceRefs = append([]memory.SourceRef(nil), view.sourceRefs...)
 	record.ConversationIDs = append([]string(nil), view.conversations...)
+
 	return nil
 }

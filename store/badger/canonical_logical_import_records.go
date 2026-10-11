@@ -12,9 +12,11 @@ func normalizeCanonicalLogicalImportBatchSize(batchSize int) (int, error) {
 	if batchSize <= 0 {
 		batchSize = defaultCanonicalImportBatch
 	}
-	if batchSize > 4096 {
+
+	if batchSize > maxCanonicalLogicalBatchSize {
 		return 0, memory.PermanentError(memory.CodeLimitExceeded, "canonical logical import batch size is too large", nil)
 	}
+
 	return batchSize, nil
 }
 
@@ -25,16 +27,20 @@ func (s *CanonicalStore) importCanonicalLogicalRecords(
 	progress func(CanonicalLogicalImportProgress) error,
 ) (CanonicalLogicalExportSummary, error) {
 	var imported uint64
+
 	summary, err := ScanCanonicalLogicalExport(ctx, source, batchSize, func(records []CanonicalLogicalExportRecord) error {
 		if err := s.importCanonicalLogicalBatch(records); err != nil {
 			return err
 		}
+
 		imported += uint64(len(records))
+
 		return reportCanonicalLogicalImportProgress(progress, imported)
 	})
 	if err != nil {
 		return CanonicalLogicalExportSummary{}, err
 	}
+
 	return summary, nil
 }
 
@@ -45,6 +51,7 @@ func (s *CanonicalStore) importCanonicalLogicalBatch(records []CanonicalLogicalE
 	if err != nil {
 		return canonicalStoreError("import canonical logical records", err)
 	}
+
 	return nil
 }
 
@@ -52,5 +59,6 @@ func reportCanonicalLogicalImportProgress(progress func(CanonicalLogicalImportPr
 	if progress == nil {
 		return nil
 	}
+
 	return progress(CanonicalLogicalImportProgress{ImportedRecords: imported})
 }

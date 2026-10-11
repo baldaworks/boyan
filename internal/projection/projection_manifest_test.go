@@ -1,4 +1,4 @@
-package projection
+package projection //nolint:testpackage // Exercises shared private test fixtures within the package.
 
 import (
 	"testing"
@@ -15,9 +15,8 @@ func TestProjectionManifestValidation(t *testing.T) {
 		Status:       ProjectionGenerationBuilding,
 		UpdatedAt:    time.Date(2026, time.August, 6, 0, 0, 0, 0, time.UTC),
 	}
-	if err := manifest.Validate(); err != nil {
-		t.Fatalf("Validate() error = %v", err)
-	}
+	requireNoError(t, manifest.Validate(), "Validate() error = %v")
+
 	manifest.Status = "unknown"
 	if err := manifest.Validate(); err == nil {
 		t.Fatal("Validate() error = nil for unknown status")

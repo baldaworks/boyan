@@ -17,36 +17,46 @@ func buildRecallSearchClauses(request memory.RecallRequest) []query.Query {
 	} {
 		clauses = append(clauses, recallSearchTermQuery(filter.value, filter.field))
 	}
+
 	if request.Kind != nil {
 		clauses = append(clauses, recallSearchTermQuery(string(*request.Kind), bleveFieldKind))
 	}
+
 	if request.Category != nil {
 		clauses = append(clauses, recallSearchTermQuery(string(*request.Category), bleveFieldCategory))
 	}
+
 	if request.MemoryKey != "" {
 		clauses = append(clauses, recallSearchTermQuery(string(request.MemoryKey), bleveFieldMemoryKey))
 	}
+
 	if request.SourceID != "" {
 		clauses = append(clauses, recallSearchTermQuery(request.SourceID, bleveFieldSourceIDs))
 	}
+
 	if request.ConversationID != "" {
 		clauses = append(clauses, recallSearchTermQuery(request.ConversationID, bleveFieldConversationIDs))
 	}
+
 	return clauses
 }
 
 func buildRecallSearchTextQueries(text string) []query.Query {
-	textQueries := make([]query.Query, 0, 3)
-	for _, field := range []string{bleveFieldTextStandard, bleveFieldTextRussian, bleveFieldTextEnglish} {
+	fields := []string{bleveFieldTextStandard, bleveFieldTextRussian, bleveFieldTextEnglish}
+	textQueries := make([]query.Query, 0, len(fields))
+
+	for _, field := range fields {
 		textQuery := bleve.NewMatchQuery(text)
 		textQuery.SetField(field)
 		textQueries = append(textQueries, textQuery)
 	}
+
 	return textQueries
 }
 
 func recallSearchTermQuery(value, field string) query.Query {
 	term := bleve.NewTermQuery(value)
 	term.SetField(field)
+
 	return term
 }

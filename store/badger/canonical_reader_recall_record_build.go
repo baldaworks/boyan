@@ -18,6 +18,7 @@ type recallRecordCompatibility struct {
 func buildRecallRecord(scope memory.Scope, view canonicalRecallView, text []byte) memory.RecallRecord {
 	compat := buildRecallRecordCompatibility(scope, view.item.Kind, text)
 	category := compat.category
+
 	return memory.RecallRecord{
 		Scope:             scope,
 		ItemID:            view.item.ItemID,

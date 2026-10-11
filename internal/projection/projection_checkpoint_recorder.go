@@ -18,6 +18,7 @@ func NewScopeCheckpointRecorder(store ScopeCheckpointStore) (*ScopeCheckpointRec
 	if store == nil {
 		return nil, fmt.Errorf("scope checkpoint store is required")
 	}
+
 	return &ScopeCheckpointRecorder{store: store}, nil
 }
 
@@ -25,26 +26,46 @@ func (r *ScopeCheckpointRecorder) Record(ctx context.Context, checkpoint ScopeCh
 	if r == nil || r.store == nil {
 		return fmt.Errorf("scope checkpoint recorder is required")
 	}
+
 	if err := checkpoint.Validate(); err != nil {
 		return err
 	}
+
 	prior, found, err := r.store.LoadScopeCheckpoint(ctx, checkpoint.Scope, checkpoint.Kind)
 	if err != nil {
 		return err
 	}
+
 	if found {
-		if err := prior.Validate(); err != nil {
+		replay, err := validateCheckpointProgress(prior, checkpoint)
+		if err != nil || replay {
 			return err
 		}
-		if prior.Scope != checkpoint.Scope || prior.Kind != checkpoint.Kind {
-			return PermanentError(CodeScopeViolation, "scope checkpoint ownership changed", nil)
-		}
-		if checkpoint.ScopeVersion < prior.ScopeVersion || checkpoint.ChangeSeq < prior.ChangeSeq || checkpoint.OccurredAt.Before(prior.OccurredAt) {
-			return PermanentError(CodeConflict, "scope checkpoint moved backwards", nil)
-		}
-		if checkpoint.ScopeVersion == prior.ScopeVersion && checkpoint.ChangeSeq == prior.ChangeSeq && checkpoint.CheckpointID == prior.CheckpointID {
-			return nil
-		}
 	}
+
 	return r.store.SaveScopeCheckpoint(ctx, checkpoint)
+}
+
+func validateCheckpointProgress(prior, checkpoint ScopeCheckpoint) (bool, error) {
+	if err := prior.Validate(); err != nil {
+		return false, err
+	}
+
+	if prior.Scope != checkpoint.Scope || prior.Kind != checkpoint.Kind {
+		return false, PermanentError(CodeScopeViolation, "scope checkpoint ownership changed", nil)
+	}
+
+	if checkpoint.ScopeVersion < prior.ScopeVersion ||
+		checkpoint.ChangeSeq < prior.ChangeSeq ||
+		checkpoint.OccurredAt.Before(prior.OccurredAt) {
+		return false, PermanentError(CodeConflict, "scope checkpoint moved backwards", nil)
+	}
+
+	if checkpoint.ScopeVersion == prior.ScopeVersion &&
+		checkpoint.ChangeSeq == prior.ChangeSeq &&
+		checkpoint.CheckpointID == prior.CheckpointID {
+		return true, nil
+	}
+
+	return false, nil
 }

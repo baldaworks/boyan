@@ -16,24 +16,35 @@ func (r *CanonicalReader) loadTraceNode(
 	if err != nil {
 		return traceNode{}, nil, err
 	}
+
 	if !found {
 		return traceNode{}, nil, memory.PermanentError(memory.CodeForgotten, "canonical trace revision is unavailable", nil)
 	}
+
 	if revisionID == request.Root.RevisionID && view.item.ItemID != request.Root.ItemID {
-		return traceNode{}, nil, memory.PermanentError(memory.CodeScopeViolation, "canonical trace root item does not match", nil)
+		return traceNode{}, nil, memory.PermanentError(
+			memory.CodeScopeViolation,
+			"canonical trace root item does not match",
+			nil,
+		)
 	}
+
 	text, err := r.store.LoadPayload(ctx, view.revision.Payload)
 	if err != nil {
 		return traceNode{}, nil, err
 	}
+
 	if compatibility, ok := canonicalCompatibilityPayload(text, request.Scope); ok {
 		view.compat = &compatibility
 	}
+
 	if err := r.loadTraceSources(ctx, request.Scope, view, sourcesByRef); err != nil {
 		return traceNode{}, nil, err
 	}
+
 	if len(view.sourceRefs) == 0 {
 		return traceNode{}, nil, memory.PermanentError(memory.CodeForgotten, "canonical trace provenance is unavailable", nil)
 	}
+
 	return traceNode{view: view, text: text}, view.revision.Parents, nil
 }

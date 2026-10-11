@@ -13,9 +13,11 @@ func (i *Invoker) Invoke(ctx context.Context, request structuredderive.Structure
 	if ctx == nil {
 		return nil, memory.PermanentError(memory.CodeInvalidDerived, "Boyan derivation context is required", nil)
 	}
+
 	if err := validateStructuredInvocationRequest(request); err != nil {
 		return nil, err
 	}
+
 	invokeCtx, cancel := context.WithTimeout(ctx, i.timeout)
 	defer cancel()
 
@@ -23,6 +25,7 @@ func (i *Invoker) Invoke(ctx context.Context, request structuredderive.Structure
 	if err != nil {
 		return nil, err
 	}
+
 	if runtime == nil || runtime.agent == nil {
 		return nil, memory.PermanentError(memory.CodeModelFailure, "Boyan derivation agent is unavailable", nil)
 	}
@@ -31,10 +34,12 @@ func (i *Invoker) Invoke(ctx context.Context, request structuredderive.Structure
 	if err != nil {
 		return nil, err
 	}
+
 	runStateID, err := i.prepareRunState(invokeCtx, runtime, request)
 	if err != nil {
 		return nil, err
 	}
+
 	defer func() {
 		deleteRunState(context.Background(), runtime.stateStore, runtime.appName, runStateID)
 	}()
@@ -43,6 +48,7 @@ func (i *Invoker) Invoke(ctx context.Context, request structuredderive.Structure
 	if err != nil {
 		return nil, err
 	}
+
 	output, err := collectRunnerOutput(
 		invokeCtx,
 		run.Run(
@@ -56,5 +62,6 @@ func (i *Invoker) Invoke(ctx context.Context, request structuredderive.Structure
 	if err != nil {
 		return nil, err
 	}
+
 	return validateStructuredInvocationOutput(invokeCtx, output, i.maxBytes)
 }

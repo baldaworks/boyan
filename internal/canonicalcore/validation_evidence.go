@@ -8,10 +8,13 @@ func validateEvidenceRefs(evidence []memory.EvidenceRef) error {
 		if err := ref.Validate(); err != nil {
 			return err
 		}
+
 		if _, exists := seen[ref]; exists {
 			return invalidDerived("memory evidence contains a duplicate reference")
 		}
+
 		seen[ref] = struct{}{}
 	}
+
 	return nil
 }

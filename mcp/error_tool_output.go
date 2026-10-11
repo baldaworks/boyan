@@ -7,6 +7,7 @@ import (
 
 func (s *Service) searchFailure(code memory.ErrorCode, message string) (*sdkmcp.CallToolResult, SearchOutput, error) {
 	result, outcome := s.failureForTool(SearchToolName, code, message)
+
 	return result, SearchOutput{
 		ToolOutcome:        outcome,
 		Results:            []Reference{},
@@ -17,6 +18,7 @@ func (s *Service) searchFailure(code memory.ErrorCode, message string) (*sdkmcp.
 
 func (s *Service) traceFailure(code memory.ErrorCode, message string) (*sdkmcp.CallToolResult, TraceOutput, error) {
 	result, outcome := s.failureForTool(TraceToolName, code, message)
+
 	return result, TraceOutput{
 		ToolOutcome:        outcome,
 		Revisions:          []memory.SearchHit{},
@@ -26,8 +28,17 @@ func (s *Service) traceFailure(code memory.ErrorCode, message string) (*sdkmcp.C
 	}, nil
 }
 
-func (s *Service) forgetFailure(toolName string, code memory.ErrorCode, message string) (*sdkmcp.CallToolResult, ForgetOutput, error) {
+func (s *Service) forgetFailure(
+	toolName string,
+	code memory.ErrorCode,
+	message string,
+) (
+	*sdkmcp.CallToolResult,
+	ForgetOutput,
+	error,
+) {
 	result, outcome := s.failureForTool(toolName, code, message)
+
 	return result, ForgetOutput{
 		ToolOutcome: outcome,
 		Notice:      "No forget mutation was acknowledged.",

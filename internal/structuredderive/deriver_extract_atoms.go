@@ -10,19 +10,29 @@ import (
 // ExtractAtoms implements the legacy atom model port while hosts migrate to
 // canonical semantic extraction. It remains here as a pure application
 // adapter; the host-specific provider is only a StructuredInvoker.
-func (d *Deriver) ExtractAtoms(ctx context.Context, request memory.AtomExtractionRequest) ([]memory.AtomCandidate, error) {
+func (d *Deriver) ExtractAtoms(
+	ctx context.Context,
+	request memory.AtomExtractionRequest,
+) (
+	[]memory.AtomCandidate,
+	error,
+) {
 	if err := d.available(); err != nil {
 		return nil, err
 	}
+
 	request.Derivation = normalizeDerivation(request.Derivation)
+
 	input, err := json.Marshal(request)
 	if err != nil {
 		return nil, memory.PermanentError(memory.CodeInvalidDerived, "encode atom derivation request", err)
 	}
+
 	operationID, err := operationID(memory.OperationStageAtoms, request.Turn.ExportID, request.Derivation)
 	if err != nil {
 		return nil, err
 	}
+
 	var output atomsOutput
 	if err := d.invoke(ctx, StructuredInvocation{
 		OperationID:  operationID,
@@ -33,5 +43,6 @@ func (d *Deriver) ExtractAtoms(ctx context.Context, request memory.AtomExtractio
 	}, &output); err != nil {
 		return nil, err
 	}
+
 	return output.Output, nil
 }

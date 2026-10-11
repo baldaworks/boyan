@@ -12,7 +12,9 @@ func normalizeDeniedIDs(ids []string, kind string) (map[string]struct{}, error) 
 		if strings.TrimSpace(id) != id || id == "" {
 			return nil, memory.PermanentError(memory.CodeInvalidDerived, "canonical forget "+kind+" identity is invalid", nil)
 		}
+
 		denied[id] = struct{}{}
 	}
+
 	return denied, nil
 }

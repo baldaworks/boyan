@@ -7,8 +7,10 @@ func resolveRuntimeDerivation(config RuntimeConfig) (memory.DerivationRef, error
 	if derivation == (memory.DerivationRef{}) {
 		derivation = memory.LegacyDerivationRef()
 	}
+
 	if err := derivation.Validate(); err != nil {
 		return memory.DerivationRef{}, err
 	}
+
 	return derivation, nil
 }

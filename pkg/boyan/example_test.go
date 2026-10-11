@@ -39,12 +39,14 @@ func ExampleNewHost() {
 	host, err := boyan.NewHost(ctx, config)
 	if err != nil {
 		fmt.Println(false)
+
 		return
 	}
 	defer func() { _ = host.Close() }()
 
 	if err := host.Start(ctx); err != nil {
 		fmt.Println(false)
+
 		return
 	}
 

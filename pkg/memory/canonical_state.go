@@ -27,6 +27,7 @@ func (s ScopeState) Validate() error {
 	if s.SchemaVersion != CanonicalSchemaVersionV1 {
 		return invalidDerived("canonical scope state schema version is invalid")
 	}
+
 	return s.Scope.Validate()
 }
 
@@ -35,10 +36,12 @@ func (c ScopeChange) Validate() error {
 	if c.Sequence == 0 || !isCanonicalID(c.OperationID) || c.OccurredAt.IsZero() {
 		return invalidDerived("scope change is invalid")
 	}
+
 	for _, revisionID := range c.RevisionIDs {
 		if !isCanonicalID(revisionID) {
 			return invalidDerived("scope change revision is invalid")
 		}
 	}
+
 	return nil
 }

@@ -23,18 +23,24 @@ func newRuntimeWithFactory(
 	if runtimeCfg.Extractor != nil {
 		return nil, fmt.Errorf("boyan derivation runtime requires Extractor to be unset")
 	}
+
 	if runtimeCfg.StructuredInvoker != nil {
 		return nil, fmt.Errorf("boyan derivation runtime requires StructuredInvoker to be unset")
 	}
+
 	invoker, err := newInvokerWithFactory(cfg, factory, makeRunner)
 	if err != nil {
 		return nil, err
 	}
+
 	runtimeCfg.StructuredInvoker = invoker
+
 	runtime, err := portableapp.NewRuntime(runtimeCfg)
 	if err != nil {
 		_ = invoker.Close(context.Background())
+
 		return nil, err
 	}
+
 	return runtime, nil
 }

@@ -1,4 +1,4 @@
-package derivation
+package derivation //nolint:testpackage // Exercises shared private test fixtures within the package.
 
 import (
 	"testing"
@@ -22,9 +22,7 @@ func TestConfigValidateAcceptsBuildableProviderWithoutReasoningOverride(t *testi
 		ProviderID: "memory",
 		WorkingDir: t.TempDir(),
 	}
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("Config.Validate() error = %v", err)
-	}
+	requireNoError(t, cfg.Validate(), "Config.Validate() error = %v")
 }
 
 func TestConfigValidateRejectsMissingProvider(t *testing.T) {

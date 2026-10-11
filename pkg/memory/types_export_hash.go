@@ -11,9 +11,11 @@ func stableExportID(kind string, parts ...string) string {
 	hash := sha256.New()
 	_, _ = hash.Write([]byte(SchemaVersionV1))
 	writeHashPart(hash, kind)
+
 	for _, part := range parts {
 		writeHashPart(hash, part)
 	}
+
 	return fmt.Sprintf("boyan:v1:%s:%s", kind, hex.EncodeToString(hash.Sum(nil)))
 }
 

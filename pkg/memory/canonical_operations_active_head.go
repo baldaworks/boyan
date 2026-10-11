@@ -13,11 +13,14 @@ func (r ActiveHeadScanRequest) Validate() error {
 	if err := r.Scope.Validate(); err != nil {
 		return err
 	}
+
 	if r.AfterItemID != "" && !isCanonicalID(r.AfterItemID) {
 		return invalidDerived("canonical active-head cursor is invalid")
 	}
+
 	if r.Limit == 0 || r.Limit > MaxCanonicalReadRecords {
 		return limitExceeded("canonical active-head scan limit is invalid")
 	}
+
 	return nil
 }

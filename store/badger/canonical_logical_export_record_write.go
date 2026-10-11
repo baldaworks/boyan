@@ -14,15 +14,19 @@ func writeCanonicalLogicalExportRecord(writer *bufio.Writer, digest hash.Hash, i
 	if err != nil || !exportable {
 		return exportable, err
 	}
+
 	line, err := marshalCanonicalLogicalJSON(record)
 	if err != nil {
 		return false, err
 	}
+
 	line = append(line, '\n')
 	if _, err := writer.Write(line); err != nil {
 		return false, err
 	}
+
 	_, _ = digest.Write(line)
+
 	return true, nil
 }
 
@@ -31,17 +35,25 @@ func canonicalLogicalExportRecord(item *badger.Item) (CanonicalLogicalExportReco
 	if err != nil {
 		return CanonicalLogicalExportRecord{}, false, fmt.Errorf("decode canonical key %x: %w", item.Key(), err)
 	}
+
 	if !isExportableCanonicalRecordType(components[0]) {
 		return CanonicalLogicalExportRecord{}, false, nil
 	}
+
 	envelope, err := item.ValueCopy(nil)
 	if err != nil {
 		return CanonicalLogicalExportRecord{}, false, err
 	}
+
 	decoded, err := memory.UnmarshalRecordEnvelope(envelope)
 	if err != nil || decoded.RecordType != components[0] {
-		return CanonicalLogicalExportRecord{}, false, memory.PermanentError(memory.CodeStoreFailure, "canonical logical export found an invalid record", err)
+		return CanonicalLogicalExportRecord{}, false, memory.PermanentError(
+			memory.CodeStoreFailure,
+			"canonical logical export found an invalid record",
+			err,
+		)
 	}
+
 	return CanonicalLogicalExportRecord{
 		Kind:       canonicalLogicalRecordKind,
 		RecordType: components[0],

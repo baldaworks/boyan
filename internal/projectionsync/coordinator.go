@@ -19,12 +19,25 @@ type ProjectionCoordinator struct {
 }
 
 // NewProjectionCoordinator wires portable canonical and projection ports.
-func NewProjectionCoordinator(canonical CanonicalStore, checkpoints ProjectionCheckpointStore, applier ProjectionApplier, batchSize uint32) (*ProjectionCoordinator, error) {
+func NewProjectionCoordinator(
+	canonical CanonicalStore,
+	checkpoints ProjectionCheckpointStore,
+	applier ProjectionApplier,
+	batchSize uint32,
+) (*ProjectionCoordinator, error) {
 	if canonical == nil || checkpoints == nil || applier == nil {
 		return nil, fmt.Errorf("canonical store, projection checkpoints, and applier are required")
 	}
+
 	if batchSize == 0 || batchSize > maxCanonicalReadRecords {
 		return nil, fmt.Errorf("projection batch size must be between 1 and %d", maxCanonicalReadRecords)
 	}
-	return &ProjectionCoordinator{canonical: canonical, checkpoints: checkpoints, applier: applier, batchSize: batchSize, now: time.Now}, nil
+
+	return &ProjectionCoordinator{
+		canonical:   canonical,
+		checkpoints: checkpoints,
+		applier:     applier,
+		batchSize:   batchSize,
+		now:         time.Now,
+	}, nil
 }

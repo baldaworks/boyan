@@ -10,6 +10,7 @@ func canonicalReaderContext(ctx context.Context) error {
 	if ctx == nil {
 		return memory.PermanentError(memory.CodeInvalidDerived, "canonical reader context is required", nil)
 	}
+
 	select {
 	case <-ctx.Done():
 		return memory.RetryableError(memory.CodeTimeout, "canonical reader context ended", ctx.Err())
@@ -20,5 +21,6 @@ func canonicalReaderContext(ctx context.Context) error {
 
 func isCanonicalMissing(err error) bool {
 	code, _, ok := memory.ClassifyError(err)
+
 	return ok && (code == memory.CodeNotFound || code == memory.CodeForgotten)
 }

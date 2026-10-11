@@ -31,6 +31,7 @@ func TestPublicPackageBuildsPortableTurn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("boyan.NewTurn() error = %v", err)
 	}
+
 	if err := turn.Validate(); err != nil {
 		t.Fatalf("Turn.Validate() error = %v", err)
 	}
@@ -47,10 +48,12 @@ func TestPublicDerivedAtomRoundTrip(t *testing.T) {
 		SourceTurnID:   "turn-1",
 	}
 	provenance := boyan.Provenance{RawSources: []boyan.SourceRef{source}}
+
 	itemID, err := boyan.AtomItemID(scope, boyan.AtomCategoryFact, "The project uses Go")
 	if err != nil {
 		t.Fatalf("boyan.AtomItemID() error = %v", err)
 	}
+
 	revisionID, err := boyan.DerivedRevisionID(
 		scope,
 		itemID,
@@ -66,6 +69,7 @@ func TestPublicDerivedAtomRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("boyan.DerivedRevisionID() error = %v", err)
 	}
+
 	want := boyan.Atom{
 		Meta: boyan.RevisionMeta{
 			SchemaVersion: boyan.DerivedSchemaVersionV1,
@@ -83,14 +87,23 @@ func TestPublicDerivedAtomRoundTrip(t *testing.T) {
 		Text:     "The project uses Go",
 		Relation: boyan.CandidateRelationNew,
 	}
+
+	assertPublicAtomRoundTrip(t, want)
+}
+
+func assertPublicAtomRoundTrip(t *testing.T, want boyan.Atom) {
+	t.Helper()
+
 	payload, err := json.Marshal(want)
 	if err != nil {
 		t.Fatalf("json.Marshal() error = %v", err)
 	}
+
 	var got boyan.Atom
 	if err := json.Unmarshal(payload, &got); err != nil {
 		t.Fatalf("json.Unmarshal() error = %v", err)
 	}
+
 	if err := got.Validate(); err != nil {
 		t.Fatalf("round-tripped Atom.Validate() error = %v", err)
 	}

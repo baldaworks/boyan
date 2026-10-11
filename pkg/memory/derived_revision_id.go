@@ -13,27 +13,28 @@ func DerivedRevisionID(
 	if err := scope.Validate(); err != nil {
 		return "", err
 	}
+
 	if !isCanonicalID(itemID) {
 		return "", invalidDerived("derived item id is required")
 	}
+
 	if !isCanonicalID(operationID) {
 		return "", invalidDerived("derived operation id is required")
 	}
+
 	if len(contentParts) == 0 {
 		return "", invalidDerived("derived revision content is required")
 	}
 
-	normalizedParts := make([]string, len(contentParts))
-	for index, part := range contentParts {
-		normalized, err := validateDerivedText("derived revision content", part)
-		if err != nil {
-			return "", err
-		}
-		normalizedParts[index] = normalized
+	normalizedParts, err := normalizeDerivedRevisionContent(contentParts)
+	if err != nil {
+		return "", err
 	}
+
 	if err := provenance.Validate(scope); err != nil {
 		return "", err
 	}
+
 	if supersedes != nil {
 		if err := supersedes.Validate(); err != nil {
 			return "", err
@@ -42,9 +43,25 @@ func DerivedRevisionID(
 
 	parts := []string{scope.Key, string(scope.Kind), itemID, operationID}
 	parts = append(parts, normalizedParts...)
+
 	parts = append(parts, canonicalProvenanceParts(provenance)...)
 	if supersedes != nil {
 		parts = append(parts, "supersedes", supersedes.ItemID, supersedes.RevisionID)
 	}
+
 	return derivedStableID("revision", parts...), nil
+}
+
+func normalizeDerivedRevisionContent(contentParts []string) ([]string, error) {
+	normalizedParts := make([]string, len(contentParts))
+	for index, part := range contentParts {
+		normalized, err := validateDerivedText("derived revision content", part)
+		if err != nil {
+			return nil, err
+		}
+
+		normalizedParts[index] = normalized
+	}
+
+	return normalizedParts, nil
 }

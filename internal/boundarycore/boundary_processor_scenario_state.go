@@ -16,24 +16,30 @@ func loadScenarioGroundingState(snapshot ScopeSnapshot) (scenarioGroundingState,
 		activeItems:     make(map[string]RevisionRef),
 		maxRevision:     make(map[string]uint64),
 	}
+
 	for _, atom := range snapshot.Atoms {
 		if atom.Meta.State == RevisionStateActive {
 			state.activeAtoms[revisionRef(atom.Meta)] = struct{}{}
 		}
 	}
+
 	for _, scenario := range snapshot.Scenarios {
 		ref := revisionRef(scenario.Meta)
 		if scenario.Meta.Revision > state.maxRevision[scenario.Meta.ItemID] {
 			state.maxRevision[scenario.Meta.ItemID] = scenario.Meta.Revision
 		}
+
 		if scenario.Meta.State != RevisionStateActive {
 			continue
 		}
+
 		state.activeScenarios[ref] = scenario
 		if _, exists := state.activeItems[scenario.Meta.ItemID]; exists {
 			return scenarioGroundingState{}, invalidDerived("Store snapshot contains multiple active revisions for one scenario")
 		}
+
 		state.activeItems[scenario.Meta.ItemID] = ref
 	}
+
 	return state, nil
 }

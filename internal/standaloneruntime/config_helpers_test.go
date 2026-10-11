@@ -1,4 +1,4 @@
-package standaloneruntime
+package standaloneruntime //nolint:testpackage // Exercises shared private test fixtures within the package.
 
 import (
 	"path/filepath"
@@ -22,6 +22,7 @@ func testDerivationRuntimeConfig() runtimeconfig.RuntimeConfig {
 
 func testStandaloneConfig(t *testing.T) Config {
 	t.Helper()
+
 	return Config{
 		StateDir: filepath.Join(t.TempDir(), "boyan-state"),
 		Log: LogConfig{

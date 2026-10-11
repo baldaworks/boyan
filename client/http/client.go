@@ -29,17 +29,21 @@ func New(cfg Config) (*Client, error) {
 	if baseURL == "" {
 		return nil, memory.PermanentError(memory.CodeInvalidDerived, "client base URL is required", nil)
 	}
+
 	parsed, err := url.Parse(baseURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return nil, memory.PermanentError(memory.CodeInvalidDerived, "client base URL is invalid", err)
 	}
+
 	httpClient := cfg.Client
 	if httpClient == nil {
 		timeout := cfg.Timeout
 		if timeout <= 0 {
 			timeout = defaultClientTimeout
 		}
+
 		httpClient = &stdhttp.Client{Timeout: timeout}
 	}
+
 	return &Client{base: parsed, client: httpClient}, nil
 }

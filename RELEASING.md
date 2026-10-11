@@ -28,6 +28,9 @@ Before treating a change as releaseable locally, run:
 go test ./...
 go test -race ./...
 go build ./...
+go tool golangci-lint run ./...
+go tool go-arch-lint check --project-path .
+go mod verify
 git diff --check
 ```
 
@@ -38,7 +41,6 @@ lint path stays versioned with the repository.
 
 ```bash
 go list -deps ./...
-go tool golangci-lint run ./...
 ```
 
 The dependency graph must not introduce legacy integration-only dependencies.
@@ -65,5 +67,7 @@ them.
 1. CLI help is coherent for `boyan` and `boyan serve`.
 2. `boyan.example.yaml` matches the actual loader keys.
 3. README, API, architecture, and operations docs match the current binary.
-4. Local verification passes.
-5. No legacy integration-only dependency is introduced.
+4. Local verification passes, including lint and architecture checks.
+5. Runtime regressions cover MCP streaming, bounded uploads, repeated waits,
+   resource release, incremental sync, recovery and generation retention.
+6. No legacy integration-only dependency is introduced.

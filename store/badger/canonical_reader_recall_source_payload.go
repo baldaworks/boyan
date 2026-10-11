@@ -20,17 +20,27 @@ type canonicalTurnSourcePayload struct {
 // validated v1 SourceRecord payload emitted by the migration adapter.
 func canonicalSourceRef(payload []byte, scope memory.Scope, sourceID string) (memory.SourceRef, string, bool) {
 	var source memory.SourceRecord
-	if err := json.Unmarshal(payload, &source); err == nil && source.Ref.Scope == scope && source.Ref.ConversationID != "" {
+	if err := json.Unmarshal(payload, &source); err == nil && source.Ref.Scope == scope &&
+		source.Ref.ConversationID != "" {
 		return source.Ref, source.Ref.ConversationID, true
 	}
+
 	var turn canonicalTurnSourcePayload
-	if err := json.Unmarshal(payload, &turn); err != nil || turn.ExportID == "" || turn.ConversationID == "" || turn.SourceTurnID == "" {
+	if err := json.Unmarshal(payload, &turn); err != nil || turn.ExportID == "" || turn.ConversationID == "" ||
+		turn.SourceTurnID == "" {
 		return memory.SourceRef{}, "", false
 	}
-	ref := memory.SourceRef{Scope: scope, ExportID: turn.ExportID, ConversationID: turn.ConversationID, SourceTurnID: turn.SourceTurnID}
+
+	ref := memory.SourceRef{
+		Scope:          scope,
+		ExportID:       turn.ExportID,
+		ConversationID: turn.ConversationID,
+		SourceTurnID:   turn.SourceTurnID,
+	}
 	if ref.Validate() != nil || sourceID == "" {
 		return memory.SourceRef{}, "", false
 	}
+
 	return ref, turn.ConversationID, true
 }
 

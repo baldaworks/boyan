@@ -9,23 +9,33 @@ import (
 // ScrubCanonicalForget removes only payload blobs already protected by the
 // logical deny markers. Structural records, identities, and tombstone markers
 // remain available for audit and replay-safe rejection.
-func (s *CanonicalStore) ScrubCanonicalForget(ctx context.Context, scope memory.Scope, sourceIDs []string, revisionIDs []string) error {
+func (s *CanonicalStore) ScrubCanonicalForget(
+	ctx context.Context,
+	scope memory.Scope,
+	sourceIDs []string,
+	revisionIDs []string,
+) error {
 	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
+
 	if err := scope.Validate(); err != nil {
 		return err
 	}
-	if len(sourceIDs) > 4096 || len(revisionIDs) > 4096 {
+
+	if len(sourceIDs) > maxCanonicalForgetScrubIDs || len(revisionIDs) > maxCanonicalForgetScrubIDs {
 		return memory.PermanentError(memory.CodeLimitExceeded, "canonical forget scrub bound exceeded", nil)
 	}
+
 	if s == nil {
 		return memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
+
 	deniedSources, err := normalizeDeniedIDs(sourceIDs, "source")
 	if err != nil {
 		return err
 	}
+
 	deniedRevisions, err := normalizeDeniedIDs(revisionIDs, "revision")
 	if err != nil {
 		return err
@@ -35,13 +45,20 @@ func (s *CanonicalStore) ScrubCanonicalForget(ctx context.Context, scope memory.
 	if err != nil {
 		return err
 	}
+
 	if scrubOverflow {
 		return memory.PermanentError(memory.CodeLimitExceeded, "canonical forget scrub payload bound exceeded", nil)
 	}
+
+	return s.deleteForgetPayloads(ctx, refs)
+}
+
+func (s *CanonicalStore) deleteForgetPayloads(ctx context.Context, refs []memory.PayloadRef) error {
 	for _, ref := range refs {
 		if err := s.DeletePayload(ctx, ref); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }

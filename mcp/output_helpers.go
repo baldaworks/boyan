@@ -26,10 +26,12 @@ func copyRecallReferences(results []memory.RecallReference) []Reference {
 			ScopeChangeSeq: result.ScopeChangeSeq,
 		})
 	}
+
 	return out
 }
 
 func floatPointer(value float64) *float64 {
 	copyOfValue := value
+
 	return &copyOfValue
 }

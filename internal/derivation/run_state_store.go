@@ -24,6 +24,7 @@ func createRunState(ctx context.Context, store runStateStore, appName, stateID s
 		UserID:    defaultDerivationUser,
 		SessionID: stateID,
 	})
+
 	return err
 }
 
@@ -41,6 +42,7 @@ func getRunState(ctx context.Context, store runStateStore, appName, stateID stri
 		UserID:    defaultDerivationUser,
 		SessionID: stateID,
 	})
+
 	return err
 }
 

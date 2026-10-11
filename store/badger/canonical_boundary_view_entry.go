@@ -14,11 +14,14 @@ func canonicalBoundaryEntry(scope memory.Scope, record memory.RecallRecord) (can
 	if err != nil {
 		return canonicalBoundaryEntryView{}, err
 	}
+
 	kind := canonicalBoundaryKind(record)
+
 	operationID, err := canonicalBoundaryOperationID(scope, record, kind)
 	if err != nil {
 		return canonicalBoundaryEntryView{}, err
 	}
+
 	switch kind {
 	case memory.DerivedKindScenario:
 		return canonicalBoundaryScenario(scope, record, provenance, operationID)

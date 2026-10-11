@@ -4,6 +4,7 @@ import memory "github.com/baldaworks/boyan/pkg/memory"
 
 func cloneOperationOutcome(outcome memory.OperationOutcome) memory.OperationOutcome {
 	outcome.Revisions = append([]memory.RevisionRef(nil), outcome.Revisions...)
+
 	return outcome
 }
 
@@ -13,6 +14,7 @@ func cloneCommitRequest(request memory.CommitRequest) memory.CommitRequest {
 	request.Scenarios = cloneScenarios(request.Scenarios)
 	request.Profiles = cloneProfiles(request.Profiles)
 	request.Transitions = append([]memory.RevisionTransition(nil), request.Transitions...)
+
 	return request
 }
 
@@ -21,6 +23,7 @@ func cloneScopeSnapshot(snapshot memory.ScopeSnapshot) memory.ScopeSnapshot {
 	snapshot.Atoms = cloneAtoms(snapshot.Atoms)
 	snapshot.Scenarios = cloneScenarios(snapshot.Scenarios)
 	snapshot.Profiles = cloneProfiles(snapshot.Profiles)
+
 	return snapshot
 }
 
@@ -33,6 +36,7 @@ func cloneAtoms(atoms []memory.Atom) []memory.Atom {
 			cloned[index].RelatedRevision = &ref
 		}
 	}
+
 	return cloned
 }
 
@@ -41,6 +45,7 @@ func cloneScenarios(scenarios []memory.Scenario) []memory.Scenario {
 	for index := range cloned {
 		cloned[index].Meta = cloneRevisionMeta(cloned[index].Meta)
 	}
+
 	return cloned
 }
 
@@ -49,21 +54,25 @@ func cloneProfiles(profiles []memory.Profile) []memory.Profile {
 	for index := range cloned {
 		cloned[index].Meta = cloneRevisionMeta(cloned[index].Meta)
 	}
+
 	return cloned
 }
 
 func cloneRevisionMeta(meta memory.RevisionMeta) memory.RevisionMeta {
 	meta.Provenance.RawSources = append([]memory.SourceRef(nil), meta.Provenance.RawSources...)
+
 	meta.Provenance.ParentRevisions = append([]memory.RevisionRef(nil), meta.Provenance.ParentRevisions...)
 	if meta.Supersedes != nil {
 		ref := *meta.Supersedes
 		meta.Supersedes = &ref
 	}
+
 	return meta
 }
 
 func cloneTurn(turn memory.Turn) memory.Turn {
 	turn.Messages = append([]memory.Message(nil), turn.Messages...)
+
 	return turn
 }
 
@@ -74,10 +83,12 @@ func cloneSources(sources []memory.SourceRecord) []memory.SourceRecord {
 			turn := cloneTurn(*cloned[index].Turn)
 			cloned[index].Turn = &turn
 		}
+
 		if cloned[index].ForgottenAt != nil {
 			forgottenAt := *cloned[index].ForgottenAt
 			cloned[index].ForgottenAt = &forgottenAt
 		}
 	}
+
 	return cloned
 }

@@ -18,26 +18,38 @@ func (r ProjectionViewRequest) Normalize() (ProjectionViewRequest, error) {
 	if err := r.Scope.Validate(); err != nil {
 		return ProjectionViewRequest{}, err
 	}
+
 	if r.ActiveAfterItemID != "" && !isCanonicalID(r.ActiveAfterItemID) {
 		return ProjectionViewRequest{}, invalidDerived("projection active cursor is invalid")
 	}
+
+	out := r.withDefaultLimits()
+
+	for _, limit := range []uint32{out.ActiveLimit, out.RecentLimit, out.ChangedLimit} {
+		if limit > MaxCanonicalReadRecords {
+			return ProjectionViewRequest{}, limitExceeded("projection view limit exceeds the canonical read bound")
+		}
+	}
+
+	return out, nil
+}
+
+func (r ProjectionViewRequest) withDefaultLimits() ProjectionViewRequest {
 	out := r
 	if out.ActiveLimit == 0 {
 		out.ActiveLimit = defaultProjectionActiveLimit
 	}
+
 	if out.ActiveOnly {
 		out.RecentLimit = 0
 		out.ChangedLimit = 0
 	} else if out.RecentLimit == 0 {
 		out.RecentLimit = defaultProjectionRecentLimit
 	}
+
 	if !out.ActiveOnly && out.ChangedLimit == 0 {
 		out.ChangedLimit = defaultProjectionChangedLimit
 	}
-	for _, limit := range []uint32{out.ActiveLimit, out.RecentLimit, out.ChangedLimit} {
-		if limit > MaxCanonicalReadRecords {
-			return ProjectionViewRequest{}, limitExceeded("projection view limit exceeds the canonical read bound")
-		}
-	}
-	return out, nil
+
+	return out
 }

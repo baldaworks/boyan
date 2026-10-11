@@ -26,6 +26,7 @@ func (s *CanonicalStore) DB() *badger.DB {
 	if s == nil {
 		return nil
 	}
+
 	return s.db
 }
 

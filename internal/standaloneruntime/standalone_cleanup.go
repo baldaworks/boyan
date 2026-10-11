@@ -14,5 +14,6 @@ func (s *standaloneCleanupStack) Close() {
 	for index := len(s.funcs) - 1; index >= 0; index-- {
 		s.funcs[index]()
 	}
+
 	s.funcs = nil
 }

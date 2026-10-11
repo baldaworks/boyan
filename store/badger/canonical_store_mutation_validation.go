@@ -13,6 +13,7 @@ func validateBadgerMutationReferences(txn *badger.Txn, mutation memory.Canonical
 	for _, item := range mutation.Items {
 		items[item.ItemID] = struct{}{}
 	}
+
 	revisions := make(map[string]struct{}, len(mutation.Revisions))
 	for _, revision := range mutation.Revisions {
 		revisions[revision.RevisionID] = struct{}{}
@@ -22,6 +23,15 @@ func validateBadgerMutationReferences(txn *badger.Txn, mutation memory.Canonical
 			}
 		}
 	}
+
+	return validateBadgerMutationRevisionReferences(txn, mutation, revisions)
+}
+
+func validateBadgerMutationRevisionReferences(
+	txn *badger.Txn,
+	mutation memory.CanonicalMutation,
+	revisions map[string]struct{},
+) error {
 	for _, lifecycle := range mutation.Lifecycle {
 		if _, exists := revisions[lifecycle.RevisionID]; !exists {
 			if err := badgerCanonicalRecordExists(txn, mutation.Scope, badgerRecordRevision, lifecycle.RevisionID); err != nil {
@@ -29,6 +39,7 @@ func validateBadgerMutationReferences(txn *badger.Txn, mutation memory.Canonical
 			}
 		}
 	}
+
 	for _, head := range mutation.Heads {
 		if _, exists := revisions[head.RevisionID]; !exists {
 			if err := badgerCanonicalRecordExists(txn, mutation.Scope, badgerRecordRevision, head.RevisionID); err != nil {
@@ -36,6 +47,7 @@ func validateBadgerMutationReferences(txn *badger.Txn, mutation memory.Canonical
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -44,10 +56,12 @@ func badgerCanonicalRecordExists(txn *badger.Txn, scope memory.Scope, recordType
 	if err != nil {
 		return err
 	}
+
 	if _, err := txn.Get(key); errors.Is(err, badger.ErrKeyNotFound) {
 		return memory.PermanentError(memory.CodeConflict, "canonical record reference does not exist", nil)
 	} else if err != nil {
 		return err
 	}
+
 	return nil
 }

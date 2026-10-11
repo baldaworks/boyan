@@ -14,6 +14,7 @@ func (e *BoundaryProcessor) groundScenarioCandidate(
 	if err != nil {
 		return Scenario{}, nil, err
 	}
+
 	supersedes, parents, transitions, err := resolveScenarioCandidateParents(
 		itemID,
 		state,
@@ -23,11 +24,13 @@ func (e *BoundaryProcessor) groundScenarioCandidate(
 	if err != nil {
 		return Scenario{}, nil, err
 	}
+
 	if len(parents) > e.config.MaxSourcesPerRevision {
 		return Scenario{}, nil, limitExceeded("scenario provenance exceeds the configured limit")
 	}
 
 	provenance := Provenance{ParentRevisions: parents}
+
 	revisionID, err := DerivedRevisionID(
 		boundary.Scope,
 		itemID,
@@ -39,19 +42,16 @@ func (e *BoundaryProcessor) groundScenarioCandidate(
 	if err != nil {
 		return Scenario{}, nil, err
 	}
+
 	scenario := Scenario{
 		Meta: RevisionMeta{
-			SchemaVersion: DerivedSchemaVersionV1,
-			Kind:          DerivedKindScenario,
-			ItemID:        itemID,
-			RevisionID:    revisionID,
-			Revision:      state.maxRevision[itemID] + 1,
-			OperationID:   operationID,
-			Scope:         boundary.Scope,
-			State:         RevisionStateActive,
-			Provenance:    provenance,
-			CreatedAt:     boundary.OccurredAt,
-			Supersedes:    supersedes,
+			SchemaVersion: DerivedSchemaVersionV1, Kind: DerivedKindScenario,
+			ItemID: itemID, RevisionID: revisionID,
+			Revision:    state.maxRevision[itemID] + 1,
+			OperationID: operationID, Scope: boundary.Scope,
+			State: RevisionStateActive, Provenance: provenance,
+			CreatedAt:  boundary.OccurredAt,
+			Supersedes: supersedes,
 		},
 		TopicKey: topicKey,
 		Title:    title,
@@ -60,5 +60,6 @@ func (e *BoundaryProcessor) groundScenarioCandidate(
 	if err := scenario.Validate(); err != nil {
 		return Scenario{}, nil, err
 	}
+
 	return scenario, transitions, nil
 }

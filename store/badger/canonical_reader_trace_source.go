@@ -6,13 +6,20 @@ import (
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
-func (r *CanonicalReader) loadSourceRecord(ctx context.Context, scope memory.Scope, ref memory.SourceRef, sourceID string) (memory.SourceRecord, error) {
-	if r == nil || r.store == nil || r.store.db == nil {
+func (r *CanonicalReader) loadSourceRecord(
+	ctx context.Context,
+	scope memory.Scope,
+	ref memory.SourceRef,
+	sourceID string,
+) (memory.SourceRecord, error) {
+	if !r.hasOpenStore() {
 		return memory.SourceRecord{}, memory.PermanentError(memory.CodeStoreFailure, "canonical reader store is closed", nil)
 	}
+
 	if err := ref.Validate(); err != nil {
 		return memory.SourceRecord{}, err
 	}
+
 	source, err := r.loadCanonicalTraceSource(scope, sourceID)
 	if err != nil {
 		return memory.SourceRecord{}, err
@@ -26,12 +33,15 @@ func (r *CanonicalReader) loadSourceRecord(ctx context.Context, scope memory.Sco
 			return memory.SourceRecord{}, err
 		}
 	}
+
 	payload, err := r.store.LoadPayload(ctx, source.Payload)
 	if err != nil {
 		return memory.SourceRecord{}, err
 	}
+
 	if record, ok, err := migratedTraceSourceRecord(payload, scope); ok || err != nil {
 		return record, err
 	}
+
 	return r.nativeTraceSourceRecord(ctx, scope, ref, source, payload)
 }

@@ -11,9 +11,11 @@ func putCanonicalMutationPayloads(txn *badger.Txn, payloads []memory.CanonicalPa
 		if err != nil {
 			return err
 		}
+
 		if err := putCanonicalImmutableRecord(txn, key, badgerRecordPayload, payload.Data); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }

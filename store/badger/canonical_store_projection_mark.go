@@ -11,18 +11,23 @@ func (s *CanonicalStore) MarkProjectionDirty(ctx context.Context, manifest memor
 	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
+
 	if err := manifest.Validate(); err != nil {
 		return err
 	}
+
 	manifest.Status = memory.ProjectionGenerationDirty
+
 	key, err := badgerProjectionManifestKey(manifest.Scope, manifest.ProjectionID, manifest.GenerationID)
 	if err != nil {
 		return err
 	}
+
 	if err := s.db.Update(func(txn *badger.Txn) error {
 		return putCanonicalRecord(txn, key, badgerRecordProjectionManifest, manifest)
 	}); err != nil {
 		return canonicalStoreError("mark projection generation dirty", err)
 	}
+
 	return nil
 }

@@ -10,7 +10,16 @@ import (
 // provenance scans only; they do not choose cascade order or retry policy.
 type CanonicalSourceForgetStore interface {
 	DenySource(ctx context.Context, scope Scope, sourceID string, deniedAt time.Time) error
-	SourceRevisionBatch(ctx context.Context, scope Scope, sourceID, afterRevisionID string, limit uint32) ([]string, string, error)
+	SourceRevisionBatch(
+		ctx context.Context,
+		scope Scope,
+		sourceID, afterRevisionID string,
+		limit uint32,
+	) (
+		[]string,
+		string,
+		error,
+	)
 	DenyRevision(ctx context.Context, scope Scope, revisionID string, deniedAt time.Time) error
 }
 
@@ -18,8 +27,26 @@ type CanonicalSourceForgetStore interface {
 // by a scope forget. Implementations return deterministic cursors and never
 // expose payload bytes.
 type CanonicalForgetEnumerator interface {
-	ListCanonicalSourceRefs(ctx context.Context, scope Scope, afterSourceID string, limit uint32) ([]SourceRef, string, error)
-	ListCanonicalRevisionRefs(ctx context.Context, scope Scope, afterRevisionID string, limit uint32) ([]RevisionRef, string, error)
+	ListCanonicalSourceRefs(
+		ctx context.Context,
+		scope Scope,
+		afterSourceID string,
+		limit uint32,
+	) (
+		[]SourceRef,
+		string,
+		error,
+	)
+	ListCanonicalRevisionRefs(
+		ctx context.Context,
+		scope Scope,
+		afterRevisionID string,
+		limit uint32,
+	) (
+		[]RevisionRef,
+		string,
+		error,
+	)
 }
 
 // CanonicalSourceIdentityResolver maps a public source reference to its
@@ -34,6 +61,15 @@ type CanonicalSourceIdentityResolver interface {
 // production canonical owner implements it so retries return the exact prior
 // outcome.
 type CanonicalForgetOutcomeStore interface {
-	LoadCanonicalForgetOutcome(ctx context.Context, scope Scope, operationID string, kind ForgetKind) (ForgetOutcome, bool, error)
+	LoadCanonicalForgetOutcome(
+		ctx context.Context,
+		scope Scope,
+		operationID string,
+		kind ForgetKind,
+	) (
+		ForgetOutcome,
+		bool,
+		error,
+	)
 	CommitCanonicalForget(ctx context.Context, request CanonicalForgetCommitRequest) (ForgetOutcome, error)
 }

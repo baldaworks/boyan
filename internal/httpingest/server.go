@@ -33,16 +33,20 @@ func NewHandler(cfg Config) (stdhttp.Handler, error) {
 	if cfg.Turns == nil || cfg.Boundaries == nil {
 		return nil, memory.PermanentError(memory.CodeDisabled, "http ingest capabilities are required", nil)
 	}
+
 	if cfg.MaxBodyBytes <= 0 {
 		cfg.MaxBodyBytes = defaultMaxBodyBytes
 	}
+
 	if cfg.RequestTimeout <= 0 {
 		cfg.RequestTimeout = defaultRequestTimeout
 	}
+
 	mux := stdhttp.NewServeMux()
 	mux.HandleFunc("/livez", livezHandler)
 	mux.HandleFunc("/readyz", readyzHandler(cfg.Ready, cfg.RequestTimeout))
 	mux.HandleFunc("/v1/ingest/turns", turnIngestHandler(cfg))
 	mux.HandleFunc("/v1/ingest/boundaries", boundaryIngestHandler(cfg))
+
 	return mux, nil
 }

@@ -12,12 +12,14 @@ func checkDeniedRevision(txn *badger.Txn, scope memory.Scope, revisionID string)
 	if err != nil {
 		return err
 	}
+
 	var denied badgerDeniedRevision
 	if err := getCanonicalRecord(txn, deniedKey, badgerRecordDeniedRevision, &denied); err == nil {
 		return errCanonicalDenied
 	} else if !errors.Is(err, badger.ErrKeyNotFound) {
 		return err
 	}
+
 	return nil
 }
 
@@ -26,11 +28,13 @@ func checkDeniedSource(txn *badger.Txn, scope memory.Scope, sourceID string) err
 	if err != nil {
 		return err
 	}
+
 	var deniedSource badgerDeniedSource
 	if err := getCanonicalRecord(txn, deniedSourceKey, badgerRecordDeniedSource, &deniedSource); err == nil {
 		return errCanonicalDenied
 	} else if !errors.Is(err, badger.ErrKeyNotFound) {
 		return err
 	}
+
 	return nil
 }

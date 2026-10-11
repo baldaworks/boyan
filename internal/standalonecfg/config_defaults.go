@@ -16,6 +16,7 @@ func setApplicationDefaults(loader *viper.Viper, cfg Config) {
 	loader.SetDefault("http.request_timeout", cfg.HTTP.RequestTimeout)
 	loader.SetDefault("http.shutdown_timeout", cfg.HTTP.ShutdownTimeout)
 	loader.SetDefault("http.max_body_bytes", cfg.HTTP.MaxBodyBytes)
+	loader.SetDefault("derivation.provider", cfg.Derivation.Provider)
 	loader.SetDefault("derivation.working_dir", cfg.Derivation.WorkingDir)
 	loader.SetDefault("derivation.timeout", cfg.Derivation.Timeout)
 	loader.SetDefault("derivation.max_output_bytes", cfg.Derivation.MaxOutputBytes)

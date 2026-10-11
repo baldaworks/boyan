@@ -17,10 +17,17 @@ type RecallService struct {
 
 // NewRecallService constructs bounded canonical recall.  A nil projection is
 // valid and selects the bounded canonical-tail fallback.
-func NewRecallService(canonical memory.RecallCanonicalReader, projection memory.RecallProjection) (*RecallService, error) {
+func NewRecallService(
+	canonical memory.RecallCanonicalReader,
+	projection memory.RecallProjection,
+) (
+	*RecallService,
+	error,
+) {
 	if canonical == nil {
 		return nil, memory.PermanentError(memory.CodeStoreFailure, "recall canonical reader is required", nil)
 	}
+
 	return &RecallService{canonical: canonical, projection: projection, now: time.Now}, nil
 }
 

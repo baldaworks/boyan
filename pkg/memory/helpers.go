@@ -14,10 +14,13 @@ func validateUniqueCanonicalIDs(ids []string, name string) error {
 		if !isCanonicalID(id) {
 			return invalidDerived(name + " identity is invalid")
 		}
+
 		if _, exists := seen[id]; exists {
 			return invalidDerived(name + " identity is duplicated")
 		}
+
 		seen[id] = struct{}{}
 	}
+
 	return nil
 }

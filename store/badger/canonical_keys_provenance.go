@@ -6,12 +6,29 @@ func badgerProvenanceKey(scope memory.Scope, recordType, revisionID, relatedRevi
 	if err := scope.Validate(); err != nil {
 		return nil, err
 	}
-	return memory.TupleKey(canonicalNamespace, canonicalVersion, recordType, scope.Key, string(scope.Kind), revisionID, relatedRevisionID)
+
+	return memory.TupleKey(
+		canonicalNamespace,
+		canonicalVersion,
+		recordType,
+		scope.Key,
+		string(scope.Kind),
+		revisionID,
+		relatedRevisionID,
+	)
 }
 
 func badgerProvenancePrefix(scope memory.Scope, recordType, revisionID string) ([]byte, error) {
 	if err := scope.Validate(); err != nil {
 		return nil, err
 	}
-	return memory.TupleKey(canonicalNamespace, canonicalVersion, recordType, scope.Key, string(scope.Kind), revisionID)
+
+	return memory.TupleKey(
+		canonicalNamespace,
+		canonicalVersion,
+		recordType,
+		scope.Key,
+		string(scope.Kind),
+		revisionID,
+	)
 }

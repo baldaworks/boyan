@@ -1,4 +1,4 @@
-package projection
+package projection //nolint:testpackage // Exercises shared private test fixtures within the package.
 
 import (
 	"context"
@@ -13,15 +13,27 @@ type memoryCheckpointStore struct {
 	found      bool
 }
 
-func (s *memoryCheckpointStore) LoadScopeCheckpoint(context.Context, Scope, ScopeCheckpointKind) (ScopeCheckpoint, bool, error) {
+func (s *memoryCheckpointStore) LoadScopeCheckpoint(
+	context.Context,
+	Scope,
+	ScopeCheckpointKind,
+) (
+	ScopeCheckpoint,
+	bool,
+	error,
+) {
 	return s.checkpoint, s.found, nil
 }
 
 func (s *memoryCheckpointStore) SaveScopeCheckpoint(_ context.Context, checkpoint ScopeCheckpoint) error {
-	if s.found && (checkpoint.ScopeVersion < s.checkpoint.ScopeVersion || checkpoint.ChangeSeq < s.checkpoint.ChangeSeq) {
+	if s.found &&
+		(checkpoint.ScopeVersion < s.checkpoint.ScopeVersion ||
+			checkpoint.ChangeSeq < s.checkpoint.ChangeSeq) {
 		return errCheckpointBackwards
 	}
+
 	s.checkpoint = checkpoint
 	s.found = true
+
 	return nil
 }

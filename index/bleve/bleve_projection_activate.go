@@ -22,36 +22,51 @@ func (p *BleveRecallProjection) ActivateGenerationForScope(ctx context.Context, 
 	if err := scope.Validate(); err != nil {
 		return err
 	}
+
 	return p.activateGeneration(ctx, scope, id, true)
 }
 
-func (p *BleveRecallProjection) activateGeneration(ctx context.Context, scope memory.Scope, id string, scoped bool) error {
+func (p *BleveRecallProjection) activateGeneration(
+	ctx context.Context,
+	scope memory.Scope,
+	id string,
+	scoped bool,
+) error {
 	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
+
 	if p == nil || !validBleveGenerationID(id) {
 		return memory.PermanentError(memory.CodeInvalidDerived, "bleve activation is invalid", nil)
 	}
+
 	p.mu.RLock()
 	root := p.root
 	p.mu.RUnlock()
+
 	index, err := openCommittedBleveGeneration(root, id)
 	if err != nil {
 		return memory.PermanentError(memory.CodeConflict, "bleve generation is not durably committed", err)
 	}
+
 	markerPath := filepath.Join(root, bleveActiveGenerationFile)
+
 	scopeKey := ""
 	if scoped {
 		scopeKey = projectionScopeKey(scope)
 		markerPath = filepath.Join(root, bleveScopedActivePrefix+scopeKey)
 	}
+
 	if err := writeActiveGenerationMarker(markerPath, id); err != nil {
 		_ = index.Close()
+
 		return err
 	}
+
 	previous := p.swapActiveGeneration(scopeKey, id, index, scoped)
 	if previous != nil {
 		return previous.Close()
 	}
+
 	return nil
 }

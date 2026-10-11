@@ -14,15 +14,19 @@ func serverImplementation(impl *sdkmcp.Implementation) *sdkmcp.Implementation {
 			Version: defaultServerVersion,
 		}
 	}
+
 	copyOfImpl := *impl
 	if strings.TrimSpace(copyOfImpl.Name) == "" {
 		copyOfImpl.Name = defaultServerName
 	}
+
 	if strings.TrimSpace(copyOfImpl.Title) == "" {
 		copyOfImpl.Title = defaultServerTitle
 	}
+
 	if strings.TrimSpace(copyOfImpl.Version) == "" {
 		copyOfImpl.Version = defaultServerVersion
 	}
+
 	return &copyOfImpl
 }

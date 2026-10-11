@@ -11,6 +11,7 @@ func (r *Runtime) ForgetSource(ctx context.Context, command memory.ForgetSourceC
 	if r == nil || r.forget == nil {
 		return memory.ForgetOutcome{}, memory.PermanentError(memory.CodeDisabled, "boyan forget is unavailable", nil)
 	}
+
 	return r.forget.ForgetSource(ctx, command)
 }
 
@@ -19,5 +20,6 @@ func (r *Runtime) ForgetScope(ctx context.Context, command memory.ForgetScopeCom
 	if r == nil || r.forget == nil {
 		return memory.ForgetOutcome{}, memory.PermanentError(memory.CodeDisabled, "boyan forget is unavailable", nil)
 	}
+
 	return r.forget.ForgetScope(ctx, command)
 }

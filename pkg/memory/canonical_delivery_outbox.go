@@ -17,5 +17,6 @@ func (d DeliveryOutboxRecord) Validate() error {
 	if !isCanonicalID(d.DeliveryID) || !isCanonicalID(d.OperationID) || d.CreatedAt.IsZero() {
 		return invalidDerived("delivery outbox record is invalid")
 	}
+
 	return d.PayloadRef.Validate()
 }

@@ -16,6 +16,7 @@ func (m *CanonicalMaintenance) run(ctx context.Context, done chan struct{}) {
 		m.done = nil
 		m.mu.Unlock()
 	}()
+
 	for {
 		select {
 		case <-ticker.C:
@@ -37,7 +38,9 @@ func (m *CanonicalMaintenance) LastError() error {
 	if m == nil {
 		return nil
 	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	return m.lastErr
 }

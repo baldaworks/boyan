@@ -6,7 +6,16 @@ func badgerProjectionManifestKey(scope memory.Scope, projectionID, generationID 
 	if err := scope.Validate(); err != nil {
 		return nil, err
 	}
-	return memory.TupleKey(canonicalNamespace, canonicalVersion, badgerRecordProjectionManifest, scope.Key, string(scope.Kind), projectionID, generationID)
+
+	return memory.TupleKey(
+		canonicalNamespace,
+		canonicalVersion,
+		badgerRecordProjectionManifest,
+		scope.Key,
+		string(scope.Kind),
+		projectionID,
+		generationID,
+	)
 }
 
 func badgerProjectionRetentionKey(scope memory.Scope, projectionID string) ([]byte, error) {

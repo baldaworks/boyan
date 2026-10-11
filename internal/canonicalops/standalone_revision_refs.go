@@ -7,6 +7,7 @@ func revisionIDs(refs []memory.RevisionRef) []string {
 	for _, ref := range refs {
 		ids = append(ids, ref.RevisionID)
 	}
+
 	return ids
 }
 
@@ -14,6 +15,8 @@ func cloneOptionalRef(ref *memory.RevisionRef) *memory.RevisionRef {
 	if ref == nil {
 		return nil
 	}
+
 	copyOf := *ref
+
 	return &copyOf
 }

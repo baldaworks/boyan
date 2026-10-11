@@ -12,6 +12,7 @@ func bleveDocument(document memory.RecallProjectionDocument) bleveRecallDocument
 	if document.Category != nil {
 		category = string(*document.Category)
 	}
+
 	return bleveRecallDocument{
 		SchemaVersion:   BleveRecallProjectionSchema,
 		ScopeKey:        document.Scope.Key,

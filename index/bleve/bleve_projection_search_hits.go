@@ -12,6 +12,7 @@ func recallProjectionHits(searchHits search.DocumentMatchCollection) ([]memory.R
 		if err != nil {
 			return nil, err
 		}
+
 		hits = append(hits, memory.RecallProjectionHit{
 			Scope:          metadata.Scope,
 			ItemID:         metadata.ItemID,
@@ -21,5 +22,6 @@ func recallProjectionHits(searchHits search.DocumentMatchCollection) ([]memory.R
 			ScopeChangeSeq: metadata.ScopeChangeSeq,
 		})
 	}
+
 	return hits, nil
 }

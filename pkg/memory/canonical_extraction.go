@@ -16,9 +16,11 @@ func (r CanonicalExtractionRequest) Validate() error {
 	if r.SchemaVersion != CanonicalSchemaVersionV1 {
 		return invalidDerived("canonical extraction schema version is invalid")
 	}
+
 	if err := r.Derivation.Validate(); err != nil {
 		return err
 	}
+
 	return r.Turn.Validate()
 }
 
@@ -36,8 +38,18 @@ func CanonicalSemanticOperationID(exportID string, derivation DerivationRef) (st
 	if !isCanonicalID(exportID) {
 		return "", invalidDerived("canonical extraction export id is required")
 	}
+
 	if err := derivation.Validate(); err != nil {
 		return "", err
 	}
-	return reconciliationID("operation", "canonical-semantics", exportID, derivation.Pipeline, derivation.Policy, derivation.Prompt, derivation.Model), nil
+
+	return reconciliationID(
+		"operation",
+		"canonical-semantics",
+		exportID,
+		derivation.Pipeline,
+		derivation.Policy,
+		derivation.Prompt,
+		derivation.Model,
+	), nil
 }

@@ -17,14 +17,17 @@ func (r *CanonicalReader) nativeTraceSourceRecord(
 	if err != nil {
 		return memory.SourceRecord{}, err
 	}
+
 	messages, err := r.loadSourceMessages(ctx, scope, source.SourceID)
 	if err != nil {
 		return memory.SourceRecord{}, err
 	}
+
 	turn, err := nativeTraceTurn(scope, source.SourceID, turnPayload, messages)
 	if err != nil {
 		return memory.SourceRecord{}, err
 	}
+
 	record := memory.SourceRecord{
 		SchemaVersion: memory.DerivedSchemaVersionV1,
 		Ref:           ref,
@@ -34,5 +37,6 @@ func (r *CanonicalReader) nativeTraceSourceRecord(
 	if err := record.Validate(); err != nil {
 		return memory.SourceRecord{}, err
 	}
+
 	return record, nil
 }

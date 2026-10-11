@@ -11,13 +11,16 @@ func (e *BoundaryProcessor) groundProfileRevision(
 	if err := e.validateProfileCandidateGrounding(state, candidate); err != nil {
 		return Profile{}, nil, err
 	}
+
 	supersedes, parents, transitions, err := resolveProfileCandidateParents(state, candidate)
 	if err != nil {
 		return Profile{}, nil, err
 	}
+
 	profile, err := e.groundedProfileRevision(boundary, operationID, state, candidate, supersedes, parents)
 	if err != nil {
 		return Profile{}, nil, err
 	}
+
 	return profile, transitions, nil
 }

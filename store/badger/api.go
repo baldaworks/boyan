@@ -26,5 +26,6 @@ func Open(directory string, configs ...Config) (*Store, error) {
 	if len(configs) > 0 {
 		config = configs[0]
 	}
+
 	return openWithConfig(directory, config)
 }

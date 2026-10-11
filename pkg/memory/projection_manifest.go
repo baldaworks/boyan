@@ -32,11 +32,17 @@ func (m ProjectionManifest) Validate() error {
 	if err := m.Scope.Validate(); err != nil {
 		return err
 	}
-	if !isCanonicalID(m.ProjectionID) || !isCanonicalID(m.GenerationID) || m.UpdatedAt.IsZero() {
+
+	if !isCanonicalID(m.ProjectionID) || !isCanonicalID(m.GenerationID) ||
+		m.UpdatedAt.IsZero() {
 		return invalidDerived("projection manifest identity is invalid")
 	}
+
 	switch m.Status {
-	case ProjectionGenerationBuilding, ProjectionGenerationDirty, ProjectionGenerationActive, ProjectionGenerationSuperseded:
+	case ProjectionGenerationBuilding,
+		ProjectionGenerationDirty,
+		ProjectionGenerationActive,
+		ProjectionGenerationSuperseded:
 		return nil
 	default:
 		return invalidDerived("projection manifest status is invalid")

@@ -2,7 +2,11 @@ package badger
 
 import memory "github.com/baldaworks/boyan/pkg/memory"
 
-func canonicalDerivedReference(record memory.RecallRecord, legacyKind memory.DerivedKind, category memory.AtomCategory) (memory.DerivedReference, bool) {
+func canonicalDerivedReference(
+	record memory.RecallRecord,
+	legacyKind memory.DerivedKind,
+	category memory.AtomCategory,
+) (memory.DerivedReference, bool) {
 	provenance := memory.Provenance{ParentRevisions: append([]memory.RevisionRef(nil), record.LegacyParents...)}
 	if legacyKind == memory.DerivedKindAtom || record.LegacyKind == nil {
 		if len(record.SourceRefs) > 0 {
@@ -18,13 +22,16 @@ func canonicalDerivedReference(record memory.RecallRecord, legacyKind memory.Der
 			}
 		}
 	}
+
 	if err := provenance.Validate(record.Scope); err != nil {
 		return memory.DerivedReference{}, false
 	}
+
 	itemID, revisionID := record.ItemID, record.RevisionID
 	if record.LegacyKind != nil {
 		itemID, revisionID = record.LegacyItemID, record.LegacyRevisionID
 	}
+
 	ref := memory.DerivedReference{
 		SchemaVersion: memory.DerivedSchemaVersionV1,
 		Trust:         memory.ReferenceTrustUntrusted,
@@ -44,9 +51,11 @@ func canonicalDerivedReference(record memory.RecallRecord, legacyKind memory.Der
 	if legacyKind != memory.DerivedKindAtom {
 		ref.Category = nil
 	}
+
 	if err := ref.Validate(); err != nil {
 		return memory.DerivedReference{}, false
 	}
+
 	return ref, true
 }
 
@@ -54,5 +63,6 @@ func firstConversation(values []string) string {
 	if len(values) == 0 {
 		return "conversation-unknown"
 	}
+
 	return values[0]
 }

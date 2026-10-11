@@ -7,16 +7,24 @@ func existingBoundaryItems(view memory.CanonicalBoundaryView) map[string]struct{
 	for _, scenario := range view.Snapshot.Scenarios {
 		existingItems[scenario.Meta.ItemID] = struct{}{}
 	}
+
 	for _, profile := range view.Snapshot.Profiles {
 		existingItems[profile.Meta.ItemID] = struct{}{}
 	}
+
 	return existingItems
 }
 
-func ensureBoundaryItem(existingItems map[string]struct{}, items *[]memory.MemoryItem, scope memory.Scope, itemID string) {
+func ensureBoundaryItem(
+	existingItems map[string]struct{},
+	items *[]memory.MemoryItem,
+	scope memory.Scope,
+	itemID string,
+) {
 	if _, exists := existingItems[itemID]; exists {
 		return
 	}
+
 	*items = append(*items, memory.MemoryItem{
 		ItemID:    itemID,
 		Scope:     scope,

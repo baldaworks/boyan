@@ -11,11 +11,24 @@ func (a *BleveCanonicalApplier) Activate(ctx context.Context, scope memory.Scope
 	generation := a.generations[generationID]
 	delete(a.generations, generationID)
 	a.mu.Unlock()
+
 	if generation == nil {
 		return memory.PermanentError(memory.CodeStoreFailure, "bleve generation is not initialized", nil)
 	}
+
 	if err := generation.Close(); err != nil {
 		return err
 	}
-	return a.projection.ActivateGenerationForScope(ctx, scope, generationID)
+
+	if generation.borrowed {
+		return nil
+	}
+
+	if !generation.borrowed {
+		if err := a.projection.ActivateGenerationForScope(ctx, scope, generationID); err != nil {
+			return err
+		}
+	}
+
+	return a.ReconcileProjection(ctx)
 }

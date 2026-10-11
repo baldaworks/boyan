@@ -10,11 +10,21 @@ import (
 func TestRunContextHelpListsStandaloneCommands(t *testing.T) {
 	t.Parallel()
 
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	if err := runContext(context.Background(), []string{"--help"}, &stdout, &stderr); err != nil {
-		t.Fatalf("runContext(--help) error = %v", err)
-	}
+	var (
+		stdout bytes.Buffer
+		stderr bytes.Buffer
+	)
+	requireNoError(
+		t,
+		runContext(
+			context.Background(),
+			[]string{"--help"},
+			&stdout,
+			&stderr,
+		),
+		"runContext(--help) error = %v",
+	)
+
 	output := stdout.String()
 	for _, needle := range []string{"serve", "standalone local service"} {
 		if !strings.Contains(output, needle) {
@@ -26,11 +36,24 @@ func TestRunContextHelpListsStandaloneCommands(t *testing.T) {
 func TestServeCommandHelpExposesLoopbackFlags(t *testing.T) {
 	t.Parallel()
 
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	if err := runContext(context.Background(), []string{"serve", "--help"}, &stdout, &stderr); err != nil {
-		t.Fatalf("runContext(serve --help) error = %v", err)
-	}
+	var (
+		stdout bytes.Buffer
+		stderr bytes.Buffer
+	)
+	requireNoError(
+		t,
+		runContext(
+			context.Background(),
+			[]string{
+				"serve",
+				"--help",
+			},
+			&stdout,
+			&stderr,
+		),
+		"runContext(serve --help) error = %v",
+	)
+
 	output := stdout.String()
 	for _, needle := range []string{"/livez", "/mcp", "--listen", "--state-dir"} {
 		if !strings.Contains(output, needle) {

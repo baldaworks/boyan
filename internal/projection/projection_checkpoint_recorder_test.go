@@ -1,4 +1,4 @@
-package projection
+package projection //nolint:testpackage // Exercises shared private test fixtures within the package.
 
 import (
 	"context"
@@ -11,10 +11,10 @@ import (
 func TestScopeCheckpointRecorderIsIdempotentAndMonotonic(t *testing.T) {
 	scope := Scope{Key: "telegram:checkpoint", Kind: ScopeKindPersonal}
 	store := &memoryCheckpointStore{}
+
 	recorder, err := NewScopeCheckpointRecorder(store)
-	if err != nil {
-		t.Fatalf("NewScopeCheckpointRecorder() error = %v", err)
-	}
+	requireNoError(t, err, "NewScopeCheckpointRecorder() error = %v")
+
 	checkpoint := ScopeCheckpoint{
 		SchemaVersion: ScopeCheckpointSchemaVersion,
 		Scope:         scope,
@@ -25,14 +25,13 @@ func TestScopeCheckpointRecorderIsIdempotentAndMonotonic(t *testing.T) {
 		OccurredAt:    checkpointTime(2),
 		UpdatedAt:     checkpointTime(2),
 	}
-	if err := recorder.Record(context.Background(), checkpoint); err != nil {
-		t.Fatalf("Record() error = %v", err)
-	}
-	if err := recorder.Record(context.Background(), checkpoint); err != nil {
-		t.Fatalf("Record(replay) error = %v", err)
-	}
+	requireNoError(t, recorder.Record(context.Background(), checkpoint), "Record() error = %v")
+
+	requireNoError(t, recorder.Record(context.Background(), checkpoint), "Record(replay) error = %v")
+
 	checkpoint.CheckpointID = "turn-0"
 	checkpoint.ScopeVersion = 1
+
 	checkpoint.ChangeSeq = 1
 	if err := recorder.Record(context.Background(), checkpoint); err == nil {
 		t.Fatalf("Record(backwards) error = %v, want conflict", err)

@@ -1,4 +1,4 @@
-package projectionsync
+package projectionsync //nolint:testpackage // Exercises shared private test fixtures within the package.
 
 import (
 	"context"
@@ -22,17 +22,18 @@ func TestProjectionCoordinatorRebuildsWhenRetentionFloorPassesWatermark(t *testi
 		Watermark: 1, UpdatedAt: projectionViewTime(1),
 	}, found: true}
 	applier := &retentionProjectionApplier{}
+
 	coordinator, err := NewProjectionCoordinator(canonical, checkpoints, applier, 2)
-	if err != nil {
-		t.Fatalf("NewProjectionCoordinator() error = %v", err)
-	}
+	requireNoError(t, err, "NewProjectionCoordinator() error = %v")
+
 	manifest, err := coordinator.Sync(context.Background(), scope, "bleve", "generation-1")
-	if err != nil {
-		t.Fatalf("Sync() error = %v", err)
-	}
-	if !applier.rebuilt || manifest.Status != ProjectionGenerationActive || manifest.Watermark != 3 {
+	requireNoError(t, err, "Sync() error = %v")
+
+	if !applier.rebuilt || manifest.Status != ProjectionGenerationActive ||
+		manifest.Watermark != 3 {
 		t.Fatalf("manifest = %+v, rebuilt = %t", manifest, applier.rebuilt)
 	}
+
 	if len(applier.view.Active) != 1 || applier.view.Active[0].Item.ItemID != "item-1" {
 		t.Fatalf("rebuilt view = %#v", applier.view)
 	}
@@ -58,20 +59,21 @@ func TestProjectionCoordinatorStreamsLargeRetentionRebuildInBoundedBatches(t *te
 	}
 	checkpoints := &projectionCheckpointStore{}
 	applier := &batchRetentionProjectionApplier{}
+
 	coordinator, err := NewProjectionCoordinator(store, checkpoints, applier, 1)
-	if err != nil {
-		t.Fatalf("NewProjectionCoordinator() error = %v", err)
-	}
+	requireNoError(t, err, "NewProjectionCoordinator() error = %v")
+
 	manifest, err := coordinator.Sync(context.Background(), scope, "bleve", "generation-1")
-	if err != nil {
-		t.Fatalf("Sync() error = %v", err)
-	}
+	requireNoError(t, err, "Sync() error = %v")
+
 	if manifest.Status != ProjectionGenerationActive || manifest.Watermark != 4 {
 		t.Fatalf("manifest = %+v", manifest)
 	}
+
 	if got, want := applier.batchCount, 3; got != want {
 		t.Fatalf("rebuild batch count = %d, want %d", got, want)
 	}
+
 	if len(applier.itemIDs) != 3 {
 		t.Fatalf("rebuilt item IDs = %#v", applier.itemIDs)
 	}

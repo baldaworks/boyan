@@ -6,5 +6,6 @@ func buildRuntimeForget(config RuntimeConfig, project ProjectionSyncer) (Forgett
 	if config.Forget == nil {
 		return nil, nil
 	}
+
 	return memoryops.NewForgetServiceWithProjection(config.Forget, project)
 }

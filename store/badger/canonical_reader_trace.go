@@ -11,13 +11,16 @@ func (r *CanonicalReader) Trace(ctx context.Context, request memory.TraceRequest
 	if err := canonicalReaderContext(ctx); err != nil {
 		return memory.TraceResponse{}, err
 	}
+
 	normalized, err := memory.NormalizeTraceRequest(request, memory.MaxTraceNodes)
 	if err != nil {
 		return memory.TraceResponse{}, err
 	}
+
 	graph, err := r.loadTraceGraph(ctx, normalized)
 	if err != nil {
 		return memory.TraceResponse{}, err
 	}
+
 	return buildTraceResponse(normalized, graph)
 }

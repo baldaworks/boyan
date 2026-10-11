@@ -17,15 +17,18 @@ func putCanonicalMutationCoreRecords(
 			return err
 		}
 	}
+
 	for _, message := range messages {
 		if err := putBadgerCanonicalRecord(txn, scope, badgerRecordMessage, message.MessageID, message); err != nil {
 			return err
 		}
 	}
+
 	for _, item := range items {
 		if err := putBadgerCanonicalRecord(txn, scope, badgerRecordItem, item.ItemID, item); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }

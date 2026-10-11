@@ -17,6 +17,7 @@ func writeCanonicalForgetOutcome(
 	if err != nil {
 		return err
 	}
+
 	change := memory.ScopeChange{
 		Sequence:    state.ChangeSeq,
 		OperationID: request.OperationID,
@@ -25,12 +26,15 @@ func writeCanonicalForgetOutcome(
 	for _, revision := range request.Revisions {
 		change.RevisionIDs = append(change.RevisionIDs, revision.RevisionID)
 	}
+
 	if err := putCanonicalRecord(txn, changeKey, badgerRecordChange, change); err != nil {
 		return err
 	}
+
 	if err := putCanonicalRecord(txn, scopeKey, badgerRecordScope, state); err != nil {
 		return err
 	}
+
 	return putCanonicalRecord(txn, key, badgerRecordForgetOutcome, badgerCanonicalForgetOutcome{
 		Fingerprint: request.Fingerprint,
 		Outcome:     outcome,

@@ -11,6 +11,7 @@ func (r *Runtime) Search(ctx context.Context, request memory.RecallRequest) (mem
 	if r == nil || r.recall == nil {
 		return memory.RecallResponse{}, memory.PermanentError(memory.CodeDisabled, "boyan recall is unavailable", nil)
 	}
+
 	return r.recall.Search(ctx, request)
 }
 
@@ -19,5 +20,6 @@ func (r *Runtime) Trace(ctx context.Context, request memory.TraceRequest) (memor
 	if r == nil || r.trace == nil {
 		return memory.TraceResponse{}, memory.PermanentError(memory.CodeDisabled, "boyan trace is unavailable", nil)
 	}
+
 	return r.trace.Trace(ctx, request)
 }

@@ -5,12 +5,15 @@ func (c AtomCandidate) Validate() error {
 	if err := c.Category.Validate(); err != nil {
 		return err
 	}
+
 	if _, err := validateDerivedText("atom candidate text", c.Text); err != nil {
 		return err
 	}
+
 	if err := c.Relation.Validate(); err != nil {
 		return err
 	}
+
 	switch c.Relation {
 	case CandidateRelationNew:
 		if c.Target != nil {
@@ -20,9 +23,11 @@ func (c AtomCandidate) Validate() error {
 		if c.Target == nil {
 			return invalidDerived("related atom candidate requires a target")
 		}
+
 		if err := c.Target.Validate(); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }

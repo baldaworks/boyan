@@ -14,5 +14,6 @@ func buildRuntimeTurnProcessor(
 	if config.CanonicalStore == nil || extractor == nil {
 		return nil, nil
 	}
+
 	return ingestapp.NewTurnProcessor(config.CanonicalStore, extractor, config.Policy, derivation, project)
 }

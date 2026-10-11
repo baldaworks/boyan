@@ -23,10 +23,12 @@ func (p *CanonicalTurnProcessor) appendCanonicalTurnSource(mutation *CanonicalMu
 	if err != nil {
 		return "", PermanentError(CodeInvalidDerived, "encode canonical source payload", err)
 	}
+
 	sourcePayloadRecord, sourceRef, err := p.payload(canonicalPayloadID("source", sourceID), sourcePayload)
 	if err != nil {
 		return "", err
 	}
+
 	mutation.Sources = []CanonicalSourceRecord{{
 		SourceID:    sourceID,
 		Scope:       turn.Scope,
@@ -35,5 +37,6 @@ func (p *CanonicalTurnProcessor) appendCanonicalTurnSource(mutation *CanonicalMu
 		Payload:     sourceRef,
 	}}
 	mutation.Payloads = append(mutation.Payloads, sourcePayloadRecord)
+
 	return sourceID, nil
 }

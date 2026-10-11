@@ -17,14 +17,18 @@ func (s *CanonicalStore) ExportCanonicalLogical(ctx context.Context, destination
 	if err := validateCanonicalMaintenance(ctx, destination); err != nil {
 		return err
 	}
+
 	if s == nil {
 		return memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
+
 	s.maintenanceMu.Lock()
 	defer s.maintenanceMu.Unlock()
+
 	if s.db == nil {
 		return memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
+
 	writer := bufio.NewWriter(destination)
 	if err := writeCanonicalLogicalJSON(writer, CanonicalLogicalExportHeader{
 		SchemaVersion: canonicalLogicalExportSchema,
@@ -32,11 +36,14 @@ func (s *CanonicalStore) ExportCanonicalLogical(ctx context.Context, destination
 	}); err != nil {
 		return err
 	}
+
 	hash := sha256.New()
+
 	count, err := s.exportCanonicalLogicalRecords(ctx, writer, hash)
 	if err != nil {
 		return canonicalStoreError("export canonical logical records", err)
 	}
+
 	footer := CanonicalLogicalExportFooter{
 		SchemaVersion: canonicalLogicalExportSchema,
 		Kind:          canonicalLogicalFooterKind,
@@ -46,5 +53,6 @@ func (s *CanonicalStore) ExportCanonicalLogical(ctx context.Context, destination
 	if err := writeCanonicalLogicalJSON(writer, footer); err != nil {
 		return err
 	}
+
 	return writer.Flush()
 }

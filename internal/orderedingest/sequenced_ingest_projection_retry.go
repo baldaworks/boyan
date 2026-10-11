@@ -9,5 +9,6 @@ func normalizeSequencedProjectionRetryDelay(config SequencedIngestConfig) time.D
 	if retryDelay <= 0 {
 		return defaultProjectionRepairRetryDelay
 	}
+
 	return retryDelay
 }

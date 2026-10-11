@@ -20,5 +20,6 @@ func normalizedTerminalStatus(turn Turn) TurnTerminalStatus {
 	if strings.TrimSpace(string(turn.TerminalStatus)) == "" {
 		return TurnTerminalStatusSuccess
 	}
+
 	return turn.TerminalStatus
 }

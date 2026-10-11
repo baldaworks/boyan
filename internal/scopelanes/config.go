@@ -21,11 +21,15 @@ func (c Config) normalized() (Config, error) {
 	if out.MaxConcurrentScopes <= 0 {
 		out.MaxConcurrentScopes = defaultMaxConcurrentScopeLanes
 	}
+
 	if out.MaxQueuedPerScope <= 0 {
 		out.MaxQueuedPerScope = defaultMaxQueuedPerScopeLane
 	}
-	if out.MaxConcurrentScopes > maxConcurrentScopeLanes || out.MaxQueuedPerScope > maxQueuedPerScopeLane {
+
+	if out.MaxConcurrentScopes > maxConcurrentScopeLanes ||
+		out.MaxQueuedPerScope > maxQueuedPerScopeLane {
 		return Config{}, memory.PermanentError(memory.CodeLimitExceeded, "scope lane limits exceed safe bounds", nil)
 	}
+
 	return out, nil
 }

@@ -13,6 +13,7 @@ func buildCanonicalMutationOutcome(
 	for _, revision := range mutation.Revisions {
 		outcome.RevisionIDs = append(outcome.RevisionIDs, revision.RevisionID)
 	}
+
 	return outcome
 }
 
@@ -30,16 +31,20 @@ func writeCanonicalMutationOutcome(
 		OccurredAt:  mutation.Operation.CommittedAt,
 		RevisionIDs: outcome.RevisionIDs,
 	}
+
 	changeKey, err := badgerScopeChangeKey(mutation.Scope, change.Sequence)
 	if err != nil {
 		return err
 	}
+
 	if err := putCanonicalRecord(txn, changeKey, badgerRecordChange, change); err != nil {
 		return err
 	}
+
 	if err := putCanonicalRecord(txn, scopeKey, badgerRecordScope, state); err != nil {
 		return err
 	}
+
 	return putCanonicalRecord(txn, operationKey, badgerRecordOperation, badgerCanonicalOperation{
 		Fingerprint: mutation.Operation.Fingerprint,
 		Outcome:     outcome,

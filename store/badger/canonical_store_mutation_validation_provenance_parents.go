@@ -18,10 +18,12 @@ func validateBadgerMutationParents(
 			if _, exists := staged[parentID]; exists {
 				continue
 			}
+
 			parentKey, err := canonicalKey(scope, badgerRecordRevision, parentID)
 			if err != nil {
 				return err
 			}
+
 			if _, err := txn.Get(parentKey); errors.Is(err, badger.ErrKeyNotFound) {
 				return memory.PermanentError(memory.CodeConflict, "canonical provenance parent does not exist", nil)
 			} else if err != nil {
@@ -29,5 +31,6 @@ func validateBadgerMutationParents(
 			}
 		}
 	}
+
 	return nil
 }

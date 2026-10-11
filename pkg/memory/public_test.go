@@ -11,16 +11,26 @@ func TestNewTurnBuildsStableStandaloneExport(t *testing.T) {
 	scope := memory.Scope{Key: "chat:scope-1", Kind: memory.ScopeKindPersonal}
 	conversation := memory.ConversationRef{ConversationID: "conversation-1", AgentConversationID: "agent-conversation-1"}
 
-	turn, err := memory.NewTurn(scope, conversation, "turn-1", time.Date(2026, time.August, 10, 9, 0, 0, 0, time.UTC), "hello", "hi")
+	turn, err := memory.NewTurn(
+		scope,
+		conversation,
+		"turn-1",
+		time.Date(2026, time.August, 10, 9, 0, 0, 0, time.UTC),
+		"hello",
+		"hi",
+	)
 	if err != nil {
 		t.Fatalf("NewTurn() error = %v", err)
 	}
+
 	if err := turn.Validate(); err != nil {
 		t.Fatalf("turn.Validate() error = %v", err)
 	}
+
 	if turn.Scope != scope {
 		t.Fatalf("turn.Scope = %+v, want %+v", turn.Scope, scope)
 	}
+
 	if turn.SourceID == "" {
 		t.Fatal("turn.SourceID is empty")
 	}
@@ -46,9 +56,11 @@ func TestIngestReceiptFromOutcome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IngestReceiptFromOutcome() error = %v", err)
 	}
+
 	if err := receipt.Validate(); err != nil {
 		t.Fatalf("receipt.Validate() error = %v", err)
 	}
+
 	if receipt.OperationID != "operation-1" {
 		t.Fatalf("receipt.OperationID = %q, want %q", receipt.OperationID, "operation-1")
 	}

@@ -1,4 +1,6 @@
-package canonicalcore
+package canonicalcore_test
+
+import canonicalcore "github.com/baldaworks/boyan/internal/canonicalcore"
 
 import (
 	"testing"
@@ -7,10 +9,15 @@ import (
 )
 
 func TestNewCanonicalTurnProcessorRequiresAllCutoverPorts(t *testing.T) {
-	if _, err := NewCanonicalTurnProcessor(nil, nil, PolicyRegistry{Version: "policy-v1"}); err == nil {
+	if _, err := canonicalcore.NewCanonicalTurnProcessor(nil, nil, PolicyRegistry{Version: "policy-v1"}); err == nil {
 		t.Fatal("NewCanonicalTurnProcessor() accepted missing ports")
 	}
-	if _, err := NewCanonicalTurnProcessor(testCanonicalStore{}, testCanonicalExtractor{}, PolicyRegistry{}); err == nil {
+
+	if _, err := canonicalcore.NewCanonicalTurnProcessor(
+		testCanonicalStore{},
+		testCanonicalExtractor{},
+		PolicyRegistry{},
+	); err == nil {
 		t.Fatal("NewCanonicalTurnProcessor() accepted empty policy version")
 	}
 }

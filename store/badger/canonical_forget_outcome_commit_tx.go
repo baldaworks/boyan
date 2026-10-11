@@ -19,8 +19,13 @@ func (s *CanonicalStore) commitCanonicalForgetOutcome(
 	if err != nil {
 		return memory.ForgetOutcome{}, err
 	}
+
 	if state.Version != request.ExpectedScopeVersion {
-		return memory.ForgetOutcome{}, memory.RetryableError(memory.CodeConflict, "canonical forget scope version changed", nil)
+		return memory.ForgetOutcome{}, memory.RetryableError(
+			memory.CodeConflict,
+			"canonical forget scope version changed",
+			nil,
+		)
 	}
 
 	state.Version++
@@ -30,14 +35,17 @@ func (s *CanonicalStore) commitCanonicalForgetOutcome(
 	if err := outcome.Validate(); err != nil {
 		return memory.ForgetOutcome{}, err
 	}
+
 	if err := writeCanonicalForgetOutcome(txn, request, key, scopeKey, state, outcome); err != nil {
 		return memory.ForgetOutcome{}, err
 	}
+
 	if s.beforeCanonicalMutationCommit != nil {
 		if err := s.beforeCanonicalMutationCommit(); err != nil {
 			return memory.ForgetOutcome{}, err
 		}
 	}
+
 	return outcome, nil
 }
 

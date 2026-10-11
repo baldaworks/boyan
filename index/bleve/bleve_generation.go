@@ -16,21 +16,26 @@ func (p *BleveRecallProjection) NewGeneration(id string) (*BleveGeneration, erro
 	if p == nil {
 		return nil, memory.PermanentError(memory.CodeDisabled, "bleve projection is unavailable", nil)
 	}
+
 	if !validBleveGenerationID(id) {
 		return nil, memory.PermanentError(memory.CodeInvalidDerived, "bleve generation id is invalid", nil)
 	}
+
 	p.mu.RLock()
 	root := p.root
 	p.mu.RUnlock()
+
 	path := filepath.Join(root, bleveGenerationDirectory, id)
 	if _, err := os.Stat(path); err == nil {
 		return nil, memory.PermanentError(memory.CodeConflict, "bleve generation already exists", nil)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("inspect bleve generation: %w", err)
 	}
+
 	index, err := bleve.New(path, bleveRecallMapping())
 	if err != nil {
 		return nil, fmt.Errorf("create bleve generation: %w", err)
 	}
+
 	return &BleveGeneration{id: id, path: path, batchSize: p.batchSize, index: index, batch: index.NewBatch()}, nil
 }

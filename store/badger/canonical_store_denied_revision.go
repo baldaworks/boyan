@@ -14,39 +14,61 @@ type badgerDeniedRevision struct {
 }
 
 // DenyRevision commits a fail-closed cascade result for one revision.
-func (s *CanonicalStore) DenyRevision(ctx context.Context, scope memory.Scope, revisionID string, deniedAt time.Time) error {
+func (s *CanonicalStore) DenyRevision(
+	ctx context.Context,
+	scope memory.Scope,
+	revisionID string,
+	deniedAt time.Time,
+) error {
 	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
+
 	if err := scope.Validate(); err != nil {
 		return err
 	}
+
 	if revisionID == "" || deniedAt.IsZero() {
 		return memory.PermanentError(memory.CodeInvalidDerived, "revision deny request is invalid", nil)
 	}
+
 	if s == nil {
 		return memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
+
 	s.maintenanceMu.RLock()
 	defer s.maintenanceMu.RUnlock()
+
 	if s.db == nil {
 		return memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
+
 	key, err := canonicalKey(scope, badgerRecordDeniedRevision, revisionID)
 	if err != nil {
 		return err
 	}
+
 	denied := badgerDeniedRevision{RevisionID: revisionID, DeniedAt: deniedAt.UTC()}
+
 	if err := s.db.Update(func(txn *badger.Txn) error {
 		return putBadgerDenyRecord(txn, key, badgerRecordDeniedRevision, denied)
 	}); err != nil {
 		return canonicalStoreError("deny canonical revision", err)
 	}
+
 	return nil
 }
 
 // IsRevisionDenied lets recall fail closed while physical scrub is pending.
 func (s *CanonicalStore) IsRevisionDenied(ctx context.Context, scope memory.Scope, revisionID string) (bool, error) {
 	var denied badgerDeniedRevision
-	return s.isDenied(ctx, scope, revisionID, badgerRecordDeniedRevision, "read canonical revision deny", &denied)
+
+	return s.isDenied(
+		ctx,
+		scope,
+		revisionID,
+		badgerRecordDeniedRevision,
+		"read canonical revision deny",
+		&denied,
+	)
 }

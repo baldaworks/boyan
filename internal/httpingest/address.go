@@ -13,10 +13,12 @@ func ValidateLoopbackAddress(addr string) error {
 	if addr == "" {
 		return memory.PermanentError(memory.CodeInvalidDerived, "listener address is required", nil)
 	}
+
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return memory.PermanentError(memory.CodeInvalidDerived, "listener address is invalid", err)
 	}
+
 	host = strings.Trim(host, "[]")
 	switch strings.ToLower(host) {
 	case "localhost":
@@ -24,9 +26,11 @@ func ValidateLoopbackAddress(addr string) error {
 	case "":
 		return memory.PermanentError(memory.CodeInvalidDerived, "listener address must bind loopback only", nil)
 	}
+
 	ip := net.ParseIP(host)
 	if ip == nil || !ip.IsLoopback() {
 		return memory.PermanentError(memory.CodeInvalidDerived, "listener address must bind loopback only", nil)
 	}
+
 	return nil
 }

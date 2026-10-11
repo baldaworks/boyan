@@ -6,5 +6,6 @@ func (d *Deriver) available() error {
 	if d == nil || d.invoker == nil {
 		return memory.PermanentError(memory.CodeModelFailure, "deriver is unavailable", nil)
 	}
+
 	return nil
 }

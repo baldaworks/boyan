@@ -8,10 +8,12 @@ func buildReconciliation(candidate SemanticCandidate, item MemoryItem, match *Me
 		candidate.Memory.Evidence[0].MessageID,
 		candidate.Memory.Statement,
 	)
+
 	action := ReconciliationActionCreate
 	if match != nil {
 		action = ReconciliationActionSupersede
 	}
+
 	lifecycle := LifecycleEvent{
 		EventID:    reconciliationID("lifecycle", revisionID, string(action)),
 		RevisionID: revisionID,
@@ -22,9 +24,11 @@ func buildReconciliation(candidate SemanticCandidate, item MemoryItem, match *Me
 	} else {
 		lifecycle.Type = LifecycleEventSupersede
 	}
+
 	if err := lifecycle.Validate(); err != nil {
 		return Reconciliation{}, err
 	}
+
 	reconciliation := Reconciliation{
 		Action:     action,
 		Item:       item,
@@ -35,5 +39,6 @@ func buildReconciliation(candidate SemanticCandidate, item MemoryItem, match *Me
 	if match != nil {
 		reconciliation.Supersedes = match
 	}
+
 	return reconciliation, nil
 }

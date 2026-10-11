@@ -14,15 +14,19 @@ func openCommittedBleveGeneration(root, id string) (bleve.Index, error) {
 	if !validBleveGenerationID(id) {
 		return nil, memory.PermanentError(memory.CodeStoreFailure, "bleve active generation marker is invalid", nil)
 	}
+
 	path := filepath.Join(root, bleveGenerationDirectory, id)
+
 	committed, err := os.ReadFile(filepath.Join(path, bleveCommittedGenerationFile))
 	if err != nil || strings.TrimSpace(string(committed)) != BleveRecallProjectionSchema {
 		return nil, memory.PermanentError(memory.CodeStoreFailure, "bleve active generation is not committed", err)
 	}
+
 	index, err := bleve.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open bleve active generation: %w", err)
 	}
+
 	return index, nil
 }
 
@@ -32,5 +36,6 @@ func isLowerHex(value string) bool {
 			return false
 		}
 	}
+
 	return true
 }

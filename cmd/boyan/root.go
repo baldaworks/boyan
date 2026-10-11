@@ -19,6 +19,7 @@ const (
 func run(args []string, stdout, stderr io.Writer) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
 	return runContext(ctx, args, stdout, stderr)
 }
 
@@ -26,11 +27,13 @@ func runContext(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	command := newRootCommand(stdout, stderr)
 	command.SetArgs(args)
 	command.SetContext(ctx)
+
 	return command.Execute()
 }
 
 func newRootCommand(stdout, stderr io.Writer) *cobra.Command {
 	var configPath string
+
 	command := &cobra.Command{
 		Use:           "boyan",
 		Short:         "Boyan is a standalone local service for grounded temporal memory.",
@@ -44,6 +47,7 @@ func newRootCommand(stdout, stderr io.Writer) *cobra.Command {
 	command.SetErr(stderr)
 	command.PersistentFlags().StringVar(&configPath, configFlagPath, "", "path to a Boyan YAML config file")
 	command.AddCommand(newServeCommand(&configPath))
+
 	return command
 }
 

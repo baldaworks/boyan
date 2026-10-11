@@ -13,16 +13,21 @@ type stateLayout struct {
 	ProjectionDir string
 }
 
+const stateDirectoryMode = 0o700
+
 func buildStateLayout(root string) (stateLayout, error) {
 	trimmed := strings.TrimSpace(root)
 	if trimmed == "" {
 		return stateLayout{}, fmt.Errorf("Boyan state directory is required")
 	}
+
 	abs, err := filepath.Abs(trimmed)
 	if err != nil {
 		return stateLayout{}, fmt.Errorf("resolve Boyan state directory: %w", err)
 	}
+
 	clean := filepath.Clean(abs)
+
 	return stateLayout{
 		Root:          clean,
 		CanonicalDir:  filepath.Join(clean, boyanCanonicalDirName),
@@ -31,13 +36,15 @@ func buildStateLayout(root string) (stateLayout, error) {
 }
 
 func ensureStandaloneState(layout stateLayout) error {
-	if err := os.MkdirAll(layout.Root, 0o700); err != nil {
+	if err := os.MkdirAll(layout.Root, stateDirectoryMode); err != nil {
 		return fmt.Errorf("create Boyan state root: %w", err)
 	}
+
 	for _, directory := range []string{layout.CanonicalDir, layout.ProjectionDir} {
-		if err := os.MkdirAll(directory, 0o700); err != nil {
+		if err := os.MkdirAll(directory, stateDirectoryMode); err != nil {
 			return fmt.Errorf("create Boyan state directory %s: %w", directory, err)
 		}
 	}
+
 	return nil
 }

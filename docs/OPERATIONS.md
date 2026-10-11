@@ -48,7 +48,19 @@ export BOYAN_LOG_LEVEL=debug
 export BOYAN_DERIVATION_PROVIDER=memory
 ```
 
-Nested runtime provider configuration is usually easiest to manage in YAML.
+`BOYAN_DERIVATION_PROVIDER` works without a YAML file or a `derivation.provider`
+key in YAML. Environment values override YAML values. Nested runtime provider
+configuration is usually easiest to manage in YAML.
+
+## HTTP body limits
+
+`http.max_body_bytes` bounds POST bodies on ingest and `/mcp` before decoding or
+tool execution. `http.request_timeout` bounds upload time, including stalled
+partial bodies. Once the body is fully read, that socket deadline is cleared.
+Ingest processing then has its own context bounded by the same configured timeout;
+MCP tools retain their tool timeouts. Long-lived MCP GET/SSE streams have no
+upload or blanket write deadline. Oversized or unreadable MCP bodies receive the
+SDK's HTTP 400 response; ingest retains its structured error envelope.
 
 ## Health and readiness
 
@@ -98,14 +110,31 @@ Set `log.level` to `debug`, `info`, `warn`, or `error`.
 
 `boyan serve` drains through ordered shutdown:
 
-1. HTTP server shutdown
-2. sequenced ingest runtime close
-3. projection runtime close
-4. derivation invoker close
-5. Bleve applier close
-6. canonical maintenance close
+1. Stop admission and cancel active operation contexts.
+2. Shut down HTTP and drain embedded operations.
+3. Close sequenced ingest and projection work.
+4. Close the derivation invoker and Bleve applier.
+5. Stop canonical maintenance and close Badger.
 
-Use the configured `http.shutdown_timeout` to bound shutdown.
+`http.shutdown_timeout` bounds how long the caller waits. A timeout reports a
+typed error and leaves one cleanup owner running while the process stays alive;
+it does not claim that resources were released. Embedders can call `Stop` again
+or `Wait` to join completion. Every `Wait` caller can observe the final result.
+Closing a constructed host before startup also releases its storage.
+
+## Projection recovery and retention
+
+Clean Bleve generations apply changes after their durable watermark; unchanged
+syncs are no-ops. Dirty, missing or incompatible generations rebuild from canonical
+active state. A retention floor advancing beyond the committed watermark also forces a fresh
+rebuild. Exact scopes
+serialize synchronization while independent scopes can progress separately.
+
+Committed activation is reconciled with the physical marker at startup. Cleanup
+preserves all referenced and in-flight generations, keeps at most one previous
+generation per scope, and removes abandoned builders after their handles close.
+Badger remains authoritative; deleting canonical records is not an index repair
+procedure.
 
 ## Diagnostics workflow
 

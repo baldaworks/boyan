@@ -15,6 +15,7 @@ func normalizeDerivation(derivation memory.DerivationRef) memory.DerivationRef {
 	if derivation == (memory.DerivationRef{}) {
 		return memory.LegacyDerivationRef()
 	}
+
 	return derivation
 }
 
@@ -22,5 +23,6 @@ func normalizeDerivation(derivation memory.DerivationRef) memory.DerivationRef {
 // operation and stage without retaining conversation state.
 func ProcessorRunID(operationID, stage string) string {
 	hash := sha256.Sum256([]byte(operationID + "\x00" + stage))
+
 	return "boyan-processor-" + hex.EncodeToString(hash[:])
 }

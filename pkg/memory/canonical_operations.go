@@ -18,6 +18,7 @@ func (r CanonicalOperationRecord) Validate() error {
 	if !isCanonicalID(r.Fingerprint) {
 		return invalidDerived("canonical operation fingerprint is invalid")
 	}
+
 	return r.Outcome.Validate()
 }
 
@@ -44,9 +45,13 @@ func (r CanonicalOperationCommitRequest) Validate() error {
 	if err := r.Scope.Validate(); err != nil {
 		return err
 	}
-	if !isCanonicalID(r.OperationID) || !isCanonicalID(r.Fingerprint) || r.ExpectedScopeVersion == ^uint64(0) || r.CommittedAt.IsZero() {
+
+	if !isCanonicalID(r.OperationID) || !isCanonicalID(r.Fingerprint) ||
+		r.ExpectedScopeVersion == ^uint64(0) ||
+		r.CommittedAt.IsZero() {
 		return invalidDerived("canonical operation commit identity is invalid")
 	}
+
 	return nil
 }
 
@@ -54,5 +59,11 @@ func (r CanonicalOperationCommitRequest) Validate() error {
 // Implementations must enforce the same operation fingerprint/CAS rules as a
 // regular canonical mutation.
 type CanonicalOperationCommitter interface {
-	CommitCanonicalOperation(ctx context.Context, request CanonicalOperationCommitRequest) (CanonicalMutationOutcome, error)
+	CommitCanonicalOperation(
+		ctx context.Context,
+		request CanonicalOperationCommitRequest,
+	) (
+		CanonicalMutationOutcome,
+		error,
+	)
 }

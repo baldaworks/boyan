@@ -1,4 +1,4 @@
-package orderedingest
+package orderedingest //nolint:testpackage // Exercises shared private test fixtures within the package.
 
 import (
 	"context"
@@ -21,17 +21,38 @@ func newMemoryIngestSequenceStore() *memoryIngestSequenceStore {
 	}
 }
 
-func (s *memoryIngestSequenceStore) LoadLatestIngestSequence(_ context.Context, producerID string, scope boyan.Scope) (boyan.IngestSequenceCursor, bool, error) {
+func (s *memoryIngestSequenceStore) LoadLatestIngestSequence(
+	_ context.Context,
+	producerID string,
+	scope boyan.Scope,
+) (
+	boyan.IngestSequenceCursor,
+	bool,
+	error,
+) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	cursor, ok := s.cursors[sequenceCursorKey(producerID, scope)]
+
 	return cursor, ok, nil
 }
 
-func (s *memoryIngestSequenceStore) LoadIngestSequence(_ context.Context, producerID string, scope boyan.Scope, sequence uint64) (boyan.IngestSequenceRecord, bool, error) {
+func (s *memoryIngestSequenceStore) LoadIngestSequence(
+	_ context.Context,
+	producerID string,
+	scope boyan.Scope,
+	sequence uint64,
+) (
+	boyan.IngestSequenceRecord,
+	bool,
+	error,
+) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	record, ok := s.records[sequenceRecordKey(producerID, scope, sequence)]
+
 	return record, ok, nil
 }
 
@@ -39,16 +60,21 @@ func (s *memoryIngestSequenceStore) SaveIngestSequence(_ context.Context, record
 	if err := record.Validate(); err != nil {
 		return err
 	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	recordKey := sequenceRecordKey(record.ProducerID, record.Scope, record.Sequence)
 	if stored, ok := s.records[recordKey]; ok {
 		if stored.Fingerprint != record.Fingerprint {
 			return boyan.PermanentError(boyan.CodeConflict, "ingest sequence identity was reused", nil)
 		}
+
 		return nil
 	}
+
 	cursorKey := sequenceCursorKey(record.ProducerID, record.Scope)
+
 	cursor, ok := s.cursors[cursorKey]
 	switch {
 	case !ok && record.Sequence != 1:
@@ -56,6 +82,7 @@ func (s *memoryIngestSequenceStore) SaveIngestSequence(_ context.Context, record
 	case ok && record.Sequence != cursor.Latest+1:
 		return boyan.PermanentError(boyan.CodeConflict, "ingest sequence is not next", nil)
 	}
+
 	s.records[recordKey] = record
 	s.cursors[cursorKey] = boyan.IngestSequenceCursor{
 		SchemaVersion: boyan.IngestSequenceSchemaVersionV1,
@@ -63,6 +90,7 @@ func (s *memoryIngestSequenceStore) SaveIngestSequence(_ context.Context, record
 		Scope:         record.Scope,
 		Latest:        record.Sequence,
 	}
+
 	return nil
 }
 

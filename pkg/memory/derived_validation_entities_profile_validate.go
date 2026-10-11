@@ -6,12 +6,15 @@ func (p Profile) Validate() error {
 	if err != nil {
 		return err
 	}
+
 	if summary != p.Summary {
 		return invalidDerived("profile summary must be normalized")
 	}
+
 	itemID, err := ProfileItemID(p.Meta.Scope)
 	if err != nil {
 		return err
 	}
+
 	return validateRevisionMeta(p.Meta, DerivedKindProfile, itemID, []string{p.Summary}, false)
 }

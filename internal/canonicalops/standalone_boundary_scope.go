@@ -11,5 +11,6 @@ func (s *CanonicalBoundaryStore) LoadScope(ctx context.Context, scope memory.Sco
 	if err != nil {
 		return memory.ScopeSnapshot{}, err
 	}
+
 	return view.Snapshot, nil
 }

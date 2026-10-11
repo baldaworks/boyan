@@ -88,6 +88,7 @@ func DefaultConfig() Config {
 // Validate checks configuration without opening files, sockets, or databases.
 func (config Config) Validate() error {
 	_, err := config.normalized()
+
 	return err
 }
 
@@ -98,10 +99,12 @@ func (config Config) normalized() (Config, error) {
 	if stateDir == "" {
 		stateDir = defaults.StateDir
 	}
+
 	absStateDir, err := filepath.Abs(stateDir)
 	if err != nil {
 		return Config{}, fmt.Errorf("resolve Boyan state directory: %w", err)
 	}
+
 	config.StateDir = filepath.Clean(absStateDir)
 
 	config.Log.Level = strings.TrimSpace(config.Log.Level)
@@ -112,31 +115,42 @@ func (config Config) normalized() (Config, error) {
 	if strings.TrimSpace(config.HTTP.Listen) == "" {
 		config.HTTP.Listen = defaults.HTTP.Listen
 	}
+
 	if err := validateLoopbackListenAddress(config.HTTP.Listen); err != nil {
 		return Config{}, err
 	}
+
 	if config.HTTP.RequestTimeout <= 0 {
 		config.HTTP.RequestTimeout = defaults.HTTP.RequestTimeout
 	}
+
 	if config.HTTP.ShutdownTimeout <= 0 {
 		config.HTTP.ShutdownTimeout = defaults.HTTP.ShutdownTimeout
 	}
+
 	if config.HTTP.MaxBodyBytes <= 0 {
 		config.HTTP.MaxBodyBytes = defaults.HTTP.MaxBodyBytes
 	}
 
+	return config.normalizeDerivation(defaults)
+}
+
+func (config Config) normalizeDerivation(defaults Config) (Config, error) {
 	config.Derivation.Provider = strings.TrimSpace(config.Derivation.Provider)
 	if strings.TrimSpace(config.Derivation.WorkingDir) == "" {
 		config.Derivation.WorkingDir = defaults.Derivation.WorkingDir
 	}
+
 	workingDir, err := filepath.Abs(config.Derivation.WorkingDir)
 	if err != nil {
 		return Config{}, fmt.Errorf("resolve Boyan derivation working directory: %w", err)
 	}
+
 	config.Derivation.WorkingDir = filepath.Clean(workingDir)
 	if config.Derivation.Timeout <= 0 {
 		config.Derivation.Timeout = defaults.Derivation.Timeout
 	}
+
 	if config.Derivation.MaxOutputBytes <= 0 {
 		config.Derivation.MaxOutputBytes = defaults.Derivation.MaxOutputBytes
 	}
@@ -144,6 +158,7 @@ func (config Config) normalized() (Config, error) {
 	if config.Maintenance.ValueLogGCInterval <= 0 {
 		config.Maintenance.ValueLogGCInterval = defaults.Maintenance.ValueLogGCInterval
 	}
+
 	if config.Maintenance.DiscardRatio <= 0 || config.Maintenance.DiscardRatio >= 1 {
 		config.Maintenance.DiscardRatio = defaults.Maintenance.DiscardRatio
 	}
@@ -156,10 +171,12 @@ func validateLoopbackListenAddress(addr string) error {
 	if addr == "" {
 		return fmt.Errorf("Boyan listener address is required")
 	}
+
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return fmt.Errorf("Boyan listener address %q must include a port: %w", addr, err)
 	}
+
 	host = strings.Trim(host, "[]")
 	switch strings.ToLower(host) {
 	case "localhost":
@@ -167,9 +184,11 @@ func validateLoopbackListenAddress(addr string) error {
 	case "":
 		return fmt.Errorf("Boyan listener address %q must bind loopback only", addr)
 	}
+
 	ip := net.ParseIP(host)
 	if ip == nil || !ip.IsLoopback() {
 		return fmt.Errorf("Boyan listener address %q must bind loopback only", addr)
 	}
+
 	return nil
 }

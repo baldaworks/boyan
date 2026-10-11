@@ -18,5 +18,6 @@ func NewScopeViewBuilder(canonical CanonicalStore) (*ScopeViewBuilder, error) {
 	if canonical == nil {
 		return nil, fmt.Errorf("canonical store is required")
 	}
+
 	return &ScopeViewBuilder{canonical: canonical}, nil
 }

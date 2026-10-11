@@ -1,4 +1,4 @@
-package orderedingest
+package orderedingest //nolint:testpackage // Exercises shared private test fixtures within the package.
 
 import (
 	"testing"
@@ -13,6 +13,7 @@ func testSequencedTurn(t *testing.T, sequence uint64, fingerprint string) boyan.
 
 func testSequencedTurnWithID(t *testing.T, sequence uint64, fingerprint, turnID string) boyan.SequencedTurn {
 	t.Helper()
+
 	turn, err := boyan.NewTurn(
 		boyan.Scope{Key: "telegram:sequenced-ingest", Kind: boyan.ScopeKindPersonal},
 		boyan.ConversationRef{ConversationID: "conversation-1", AgentConversationID: "agent-1"},
@@ -21,9 +22,8 @@ func testSequencedTurnWithID(t *testing.T, sequence uint64, fingerprint, turnID 
 		"Ada",
 		"Ada lives in Bishkek",
 	)
-	if err != nil {
-		t.Fatalf("NewTurn() error = %v", err)
-	}
+	requireNoError(t, err, "NewTurn() error = %v")
+
 	return boyan.SequencedTurn{
 		ProducerID:    "producer-1",
 		ScopeSequence: sequence,
@@ -34,6 +34,7 @@ func testSequencedTurnWithID(t *testing.T, sequence uint64, fingerprint, turnID 
 
 func testSequencedBoundary(t *testing.T, sequence uint64, fingerprint string) boyan.SequencedBoundary {
 	t.Helper()
+
 	boundary, err := boyan.NewBoundary(
 		boyan.Scope{Key: "telegram:sequenced-boundary", Kind: boyan.ScopeKindPersonal},
 		boyan.ConversationRef{ConversationID: "conversation-boundary", AgentConversationID: "agent-boundary"},
@@ -41,9 +42,8 @@ func testSequencedBoundary(t *testing.T, sequence uint64, fingerprint string) bo
 		boyan.BoundaryReasonClose,
 		time.Date(2026, time.August, 9, 12, 5, 0, 0, time.UTC),
 	)
-	if err != nil {
-		t.Fatalf("NewBoundary() error = %v", err)
-	}
+	requireNoError(t, err, "NewBoundary() error = %v")
+
 	return boyan.SequencedBoundary{
 		ProducerID:    "producer-1",
 		ScopeSequence: sequence,

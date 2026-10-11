@@ -15,36 +15,53 @@ func loadProfileGroundingState(boundary Boundary, snapshot ScopeSnapshot) (profi
 	if err != nil {
 		return profileGroundingState{}, err
 	}
+
 	state := profileGroundingState{
 		itemID:          itemID,
 		activeAtoms:     make(map[RevisionRef]struct{}),
 		activeScenarios: make(map[RevisionRef]struct{}),
 	}
+
 	for _, atom := range snapshot.Atoms {
 		if atom.Meta.State == RevisionStateActive {
 			state.activeAtoms[revisionRef(atom.Meta)] = struct{}{}
 		}
 	}
+
 	for _, scenario := range snapshot.Scenarios {
 		if scenario.Meta.State == RevisionStateActive {
 			state.activeScenarios[revisionRef(scenario.Meta)] = struct{}{}
 		}
 	}
-	for _, profile := range snapshot.Profiles {
-		if profile.Meta.ItemID != itemID {
-			return profileGroundingState{}, invalidDerived("Store snapshot contains a foreign logical profile item")
+
+	if err := state.loadProfiles(snapshot.Profiles); err != nil {
+		return profileGroundingState{}, err
+	}
+
+	return state, nil
+}
+
+func (state *profileGroundingState) loadProfiles(profiles []Profile) error {
+	for _, profile := range profiles {
+		if profile.Meta.ItemID != state.itemID {
+			return invalidDerived("Store snapshot contains a foreign logical profile item")
 		}
+
 		if profile.Meta.Revision > state.maxRevision {
 			state.maxRevision = profile.Meta.Revision
 		}
+
 		if profile.Meta.State != RevisionStateActive {
 			continue
 		}
+
 		if state.active != nil {
-			return profileGroundingState{}, invalidDerived("Store snapshot contains multiple active profile revisions")
+			return invalidDerived("Store snapshot contains multiple active profile revisions")
 		}
+
 		ref := revisionRef(profile.Meta)
 		state.active = &ref
 	}
-	return state, nil
+
+	return nil
 }

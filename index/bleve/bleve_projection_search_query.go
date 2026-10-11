@@ -5,6 +5,8 @@ import (
 	"github.com/blevesearch/bleve/v2"
 )
 
+const recallCandidateMultiplier = 4
+
 func buildRecallSearchRequest(request memory.RecallRequest) *bleve.SearchRequest {
 	searchRequest := bleve.NewSearchRequestOptions(
 		bleve.NewConjunctionQuery(buildRecallSearchClauses(request)...),
@@ -13,14 +15,16 @@ func buildRecallSearchRequest(request memory.RecallRequest) *bleve.SearchRequest
 		false,
 	)
 	searchRequest.Fields = recallSearchFields()
+
 	return searchRequest
 }
 
 func recallSearchCandidateLimit(limit int) int {
-	candidateLimit := limit * 4
+	candidateLimit := limit * recallCandidateMultiplier
 	if candidateLimit > memory.MaxRecallCandidates {
 		candidateLimit = memory.MaxRecallCandidates
 	}
+
 	return candidateLimit
 }
 

@@ -16,5 +16,6 @@ func NewForgetServiceWithProjection(operations Forgetter, projection ProjectionS
 	if operations == nil {
 		return nil, memory.PermanentError(memory.CodeStoreFailure, "forget operations are required", nil)
 	}
+
 	return &ForgetService{operations: operations, projection: projection}, nil
 }

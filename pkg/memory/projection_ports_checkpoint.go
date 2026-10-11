@@ -10,10 +10,23 @@ import (
 // before applying a batch, advances the watermark only after the engine commit,
 // then atomically activates the clean generation.
 type ProjectionCheckpointStore interface {
-	LoadProjectionManifest(ctx context.Context, scope Scope, projectionID, generationID string) (ProjectionManifest, bool, error)
+	LoadProjectionManifest(
+		ctx context.Context,
+		scope Scope,
+		projectionID, generationID string,
+	) (
+		ProjectionManifest,
+		bool,
+		error,
+	)
 	LoadActiveProjectionManifest(ctx context.Context, scope Scope, projectionID string) (ProjectionManifest, bool, error)
 	MarkProjectionDirty(ctx context.Context, manifest ProjectionManifest) error
-	AdvanceProjectionWatermark(ctx context.Context, manifest ProjectionManifest, watermark uint64, updatedAt time.Time) error
+	AdvanceProjectionWatermark(
+		ctx context.Context,
+		manifest ProjectionManifest,
+		watermark uint64,
+		updatedAt time.Time,
+	) error
 	ActivateProjectionGeneration(ctx context.Context, manifest ProjectionManifest, updatedAt time.Time) error
 }
 
@@ -21,7 +34,13 @@ type ProjectionCheckpointStore interface {
 // adapter. Apply must be idempotent for a generation/watermark pair; Commit
 // makes its preceding batch durable before the checkpoint advances.
 type ProjectionApplier interface {
-	Apply(ctx context.Context, scope Scope, generationID string, changes []ScopeChange, revisions []MemoryRevision) error
+	Apply(
+		ctx context.Context,
+		scope Scope,
+		generationID string,
+		changes []ScopeChange,
+		revisions []MemoryRevision,
+	) error
 	Commit(ctx context.Context, scope Scope, generationID string) error
 }
 

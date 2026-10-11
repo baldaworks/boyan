@@ -15,12 +15,15 @@ func (c ForgetSourceCommand) Validate() error {
 	if c.SchemaVersion != DerivedSchemaVersionV1 {
 		return invalidDerived("unsupported forget command schema version")
 	}
+
 	if err := c.Source.Validate(); err != nil {
 		return err
 	}
+
 	if c.ForgottenAt.IsZero() {
 		return invalidDerived("forget command timestamp is required")
 	}
+
 	return nil
 }
 
@@ -29,14 +32,18 @@ func (c ForgetScopeCommand) Validate() error {
 	if c.SchemaVersion != DerivedSchemaVersionV1 {
 		return invalidDerived("unsupported forget command schema version")
 	}
+
 	if err := c.Scope.Validate(); err != nil {
 		return err
 	}
+
 	if !isCanonicalID(c.RequestID) {
 		return invalidDerived("scope forget request id is required")
 	}
+
 	if c.ForgottenAt.IsZero() {
 		return invalidDerived("forget command timestamp is required")
 	}
+
 	return nil
 }

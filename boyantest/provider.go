@@ -25,9 +25,11 @@ func (p *Provider) IngestTurn(ctx context.Context, turn memory.Turn) error {
 	p.turns = append(p.turns, cloneTurn(turn))
 	fn := p.IngestTurnFunc
 	p.mu.Unlock()
+
 	if fn == nil {
 		return nil
 	}
+
 	return fn(ctx, turn)
 }
 
@@ -37,9 +39,11 @@ func (p *Provider) ApplyBoundary(ctx context.Context, boundary memory.Boundary) 
 	p.boundaries = append(p.boundaries, boundary)
 	fn := p.ApplyBoundaryFunc
 	p.mu.Unlock()
+
 	if fn == nil {
 		return nil
 	}
+
 	return fn(ctx, boundary)
 }
 
@@ -47,10 +51,12 @@ func (p *Provider) ApplyBoundary(ctx context.Context, boundary memory.Boundary) 
 func (p *Provider) Turns() []memory.Turn {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	turns := make([]memory.Turn, len(p.turns))
 	for index := range p.turns {
 		turns[index] = cloneTurn(p.turns[index])
 	}
+
 	return turns
 }
 
@@ -58,10 +64,12 @@ func (p *Provider) Turns() []memory.Turn {
 func (p *Provider) Boundaries() []memory.Boundary {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	return append([]memory.Boundary(nil), p.boundaries...)
 }
 
 func cloneTurn(turn memory.Turn) memory.Turn {
 	turn.Messages = append([]memory.Message(nil), turn.Messages...)
+
 	return turn
 }

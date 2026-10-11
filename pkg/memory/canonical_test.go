@@ -1,4 +1,6 @@
-package memory
+package memory_test
+
+import memory "github.com/baldaworks/boyan/pkg/memory"
 
 import (
 	"testing"
@@ -6,20 +8,22 @@ import (
 )
 
 func TestCanonicalMutationValidation(t *testing.T) {
-	scope := Scope{Key: "canonical:scope", Kind: ScopeKindPersonal}
-	mutation := CanonicalMutation{
-		SchemaVersion: CanonicalSchemaVersionV1,
+	scope := memory.Scope{Key: "canonical:scope", Kind: memory.ScopeKindPersonal}
+
+	mutation := memory.CanonicalMutation{
+		SchemaVersion: memory.CanonicalSchemaVersionV1,
 		Scope:         scope,
-		Operation: OperationRecord{
+		Operation: memory.OperationRecord{
 			OperationID: "operation-1",
 			Fingerprint: "derivation-current-sha256",
 			CommittedAt: time.Date(2026, time.August, 5, 12, 0, 0, 0, time.UTC),
 		},
-		Heads: []ItemHead{{ItemID: "item-1", RevisionID: "revision-1"}},
+		Heads: []memory.ItemHead{{ItemID: "item-1", RevisionID: "revision-1"}},
 	}
 	if err := mutation.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)
 	}
+
 	mutation.Operation.Fingerprint = " fingerprint"
 	if err := mutation.Validate(); err == nil {
 		t.Fatal("Validate() accepted a non-canonical operation fingerprint")
@@ -27,18 +31,18 @@ func TestCanonicalMutationValidation(t *testing.T) {
 }
 
 func TestCanonicalMutationValidationRejectsForeignScope(t *testing.T) {
-	mutation := CanonicalMutation{
-		SchemaVersion: CanonicalSchemaVersionV1,
-		Scope:         Scope{Key: "canonical:scope", Kind: ScopeKindPersonal},
-		Operation: OperationRecord{
+	mutation := memory.CanonicalMutation{
+		SchemaVersion: memory.CanonicalSchemaVersionV1,
+		Scope:         memory.Scope{Key: "canonical:scope", Kind: memory.ScopeKindPersonal},
+		Operation: memory.OperationRecord{
 			OperationID: "operation-1",
 			Fingerprint: "derivation-current-sha256",
 			CommittedAt: time.Date(2026, time.August, 5, 12, 0, 0, 0, time.UTC),
 		},
-		Items: []MemoryItem{{
+		Items: []memory.MemoryItem{{
 			ItemID:    "item-1",
-			Scope:     Scope{Key: "foreign:scope", Kind: ScopeKindPersonal},
-			Kind:      MemoryKindState,
+			Scope:     memory.Scope{Key: "foreign:scope", Kind: memory.ScopeKindPersonal},
+			Kind:      memory.MemoryKindState,
 			MemoryKey: "memory-key-1",
 		}},
 	}
@@ -48,15 +52,15 @@ func TestCanonicalMutationValidationRejectsForeignScope(t *testing.T) {
 }
 
 func TestCanonicalMutationValidationRejectsDuplicateHead(t *testing.T) {
-	mutation := CanonicalMutation{
-		SchemaVersion: CanonicalSchemaVersionV1,
-		Scope:         Scope{Key: "canonical:scope", Kind: ScopeKindPersonal},
-		Operation: OperationRecord{
+	mutation := memory.CanonicalMutation{
+		SchemaVersion: memory.CanonicalSchemaVersionV1,
+		Scope:         memory.Scope{Key: "canonical:scope", Kind: memory.ScopeKindPersonal},
+		Operation: memory.OperationRecord{
 			OperationID: "operation-1",
 			Fingerprint: "derivation-current-sha256",
 			CommittedAt: time.Date(2026, time.August, 5, 12, 0, 0, 0, time.UTC),
 		},
-		Heads: []ItemHead{
+		Heads: []memory.ItemHead{
 			{ItemID: "item-1", RevisionID: "revision-1"},
 			{ItemID: "item-1", RevisionID: "revision-2"},
 		},
@@ -67,7 +71,7 @@ func TestCanonicalMutationValidationRejectsDuplicateHead(t *testing.T) {
 }
 
 func TestCanonicalMutationOutcomeValidation(t *testing.T) {
-	outcome := CanonicalMutationOutcome{ScopeVersion: 1, ChangeSeq: 1, RevisionIDs: []string{"revision-1"}}
+	outcome := memory.CanonicalMutationOutcome{ScopeVersion: 1, ChangeSeq: 1, RevisionIDs: []string{"revision-1"}}
 	if err := outcome.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)
 	}

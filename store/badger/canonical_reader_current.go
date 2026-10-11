@@ -11,12 +11,15 @@ func (r *CanonicalReader) CurrentScopeChangeSeq(ctx context.Context, scope memor
 	if err := canonicalReaderContext(ctx); err != nil {
 		return 0, err
 	}
+
 	if r == nil || r.store == nil {
 		return 0, memory.PermanentError(memory.CodeDisabled, "canonical reader is unavailable", nil)
 	}
+
 	state, err := r.store.LoadScopeState(ctx, scope)
 	if err != nil {
 		return 0, err
 	}
+
 	return state.ChangeSeq, nil
 }

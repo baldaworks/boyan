@@ -10,8 +10,11 @@ func validateCanonicalRevisionRefPage(scope memory.Scope, afterRevisionID string
 	if err := scope.Validate(); err != nil {
 		return err
 	}
-	if limit == 0 || limit > 512 || (afterRevisionID != "" && strings.TrimSpace(afterRevisionID) != afterRevisionID) {
+
+	if limit == 0 || limit > 512 ||
+		(afterRevisionID != "" && strings.TrimSpace(afterRevisionID) != afterRevisionID) {
 		return memory.PermanentError(memory.CodeLimitExceeded, "canonical revision enumeration limit is invalid", nil)
 	}
+
 	return nil
 }

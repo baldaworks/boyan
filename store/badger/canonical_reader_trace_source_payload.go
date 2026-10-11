@@ -12,7 +12,12 @@ func decodeCanonicalTraceTurnPayload(payload []byte) (canonicalTurnSourcePayload
 		turnPayload.ExportID == "" ||
 		turnPayload.ConversationID == "" ||
 		turnPayload.SourceTurnID == "" {
-		return canonicalTurnSourcePayload{}, memory.PermanentError(memory.CodeInvalidDerived, "canonical trace source payload is not representable", nil)
+		return canonicalTurnSourcePayload{}, memory.PermanentError(
+			memory.CodeInvalidDerived,
+			"canonical trace source payload is not representable",
+			nil,
+		)
 	}
+
 	return turnPayload, nil
 }

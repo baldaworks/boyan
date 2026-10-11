@@ -11,5 +11,6 @@ func (s *standaloneService) shutdownServer(ctx context.Context) error {
 	if errors.Is(err, stdhttp.ErrServerClosed) {
 		return nil
 	}
+
 	return err
 }

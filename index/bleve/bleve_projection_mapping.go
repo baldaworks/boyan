@@ -9,14 +9,17 @@ import (
 
 func bleveRecallMapping() mapping.IndexMapping {
 	indexMapping := bleve.NewIndexMapping()
+
 	documentMapping := bleve.NewDocumentStaticMapping()
 	for _, field := range bleveRecallKeywordFields() {
 		documentMapping.AddFieldMappingsAt(field, bleve.NewKeywordFieldMapping())
 	}
+
 	documentMapping.AddFieldMappingsAt(bleveFieldTextStandard, bleveTextFieldMapping("standard"))
 	documentMapping.AddFieldMappingsAt(bleveFieldTextRussian, bleveTextFieldMapping("ru"))
 	documentMapping.AddFieldMappingsAt(bleveFieldTextEnglish, bleveTextFieldMapping("en"))
 	indexMapping.DefaultMapping = documentMapping
+
 	return indexMapping
 }
 
@@ -40,5 +43,6 @@ func bleveTextFieldMapping(analyzer string) *mapping.FieldMapping {
 	text := bleve.NewTextFieldMapping()
 	text.Store = false
 	text.Analyzer = analyzer
+
 	return text
 }

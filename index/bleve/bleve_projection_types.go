@@ -22,14 +22,16 @@ type BleveRecallProjection struct {
 // BleveGeneration is a write-once build generation. A generation must be
 // committed and closed before it can be activated.
 type BleveGeneration struct {
-	mu        sync.Mutex
-	id        string
-	path      string
-	batchSize int
-	index     bleve.Index
-	batch     *bleve.Batch
-	closed    bool
-	committed bool
+	mu         sync.Mutex
+	id         string
+	path       string
+	batchSize  int
+	index      bleve.Index
+	batch      *bleve.Batch
+	closed     bool
+	committed  bool
+	borrowed   bool
+	continuous bool
 }
 
 type bleveRecallDocument struct {

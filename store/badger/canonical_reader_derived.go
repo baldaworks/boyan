@@ -10,14 +10,19 @@ import (
 // response contract. Canonical state/event records are exposed as atom references;
 // category is derived from the durable memory kind and provenance remains
 // grounded in canonical evidence.
-func (r *CanonicalReader) SearchDerived(ctx context.Context, request memory.DerivedSearchRequest) (memory.DerivedSearchResponse, error) {
+func (r *CanonicalReader) SearchDerived(
+	ctx context.Context,
+	request memory.DerivedSearchRequest,
+) (memory.DerivedSearchResponse, error) {
 	if err := canonicalReaderContext(ctx); err != nil {
 		return memory.DerivedSearchResponse{}, err
 	}
+
 	normalized, err := memory.NormalizeDerivedSearchRequest(request)
 	if err != nil {
 		return memory.DerivedSearchResponse{}, err
 	}
+
 	if err := r.ensureDerivedSearchWatermark(ctx, normalized); err != nil {
 		return memory.DerivedSearchResponse{}, err
 	}
@@ -27,9 +32,11 @@ func (r *CanonicalReader) SearchDerived(ctx context.Context, request memory.Deri
 	if err != nil {
 		return memory.DerivedSearchResponse{}, err
 	}
+
 	results, err := appendDerivedSearchResults(records, normalized)
 	if err != nil {
 		return memory.DerivedSearchResponse{}, err
 	}
+
 	return derivedSearchResponse(normalized, results)
 }

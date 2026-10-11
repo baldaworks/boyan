@@ -19,12 +19,15 @@ func putCanonicalMutationRevisions(
 		if err := putBadgerCanonicalRecord(txn, scope, badgerRecordRevision, revision.RevisionID, revision); err != nil {
 			return err
 		}
+
 		if err := putCanonicalMutationParentEdges(txn, scope, revision); err != nil {
 			return err
 		}
+
 		if err := putCanonicalMutationEvidenceEdges(txn, scope, revision); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }

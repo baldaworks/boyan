@@ -12,13 +12,25 @@ import (
 )
 
 type hostRuntime interface {
+	hostLifecycle
+	hostTransport
+	hostCapabilities
+}
+
+type hostLifecycle interface {
 	Start(ctx context.Context) error
 	Stop(ctx context.Context) error
 	Wait(ctx context.Context) error
+}
+
+type hostTransport interface {
 	Ready() bool
 	Addr() string
 	Handler() http.Handler
 	MCP() *mcp.Service
+}
+
+type hostCapabilities interface {
 	IngestSequencedTurn(ctx context.Context, request memory.SequencedTurn) (memory.IngestOutcome, error)
 	ApplySequencedBoundary(ctx context.Context, request memory.SequencedBoundary) (memory.IngestOutcome, error)
 	Search(ctx context.Context, request memory.RecallRequest) (memory.RecallResponse, error)
@@ -39,10 +51,12 @@ func New(_ context.Context, config Config) (*Host, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	runtime, err := standaloneruntime.New(standaloneRuntimeConfig(normalized))
 	if err != nil {
 		return nil, err
 	}
+
 	return newHost(normalized, runtime), nil
 }
 
@@ -60,9 +74,11 @@ func (host *Host) Start(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
 	if host == nil || host.runtime == nil {
 		return fmt.Errorf("Boyan host runtime is unavailable")
 	}
+
 	return host.runtime.Start(ctx)
 }
 
@@ -71,22 +87,29 @@ func (host *Host) Run(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
 	if err := host.Start(ctx); err != nil {
 		return err
 	}
+
 	waitErr := host.Wait(ctx)
 	if ctx.Err() != nil {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), host.config.HTTP.ShutdownTimeout)
 		defer cancel()
+
 		return host.Stop(shutdownCtx)
 	}
+
 	if waitErr != nil {
 		_ = host.Stop(context.Background())
+
 		if errors.Is(waitErr, context.Canceled) || errors.Is(waitErr, context.DeadlineExceeded) {
 			return nil
 		}
+
 		return waitErr
 	}
+
 	return nil
 }
 
@@ -95,9 +118,11 @@ func (host *Host) Wait(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
 	if host == nil || host.runtime == nil {
 		return fmt.Errorf("Boyan host runtime is unavailable")
 	}
+
 	return host.runtime.Wait(ctx)
 }
 
@@ -106,9 +131,11 @@ func (host *Host) Stop(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
 	if host == nil || host.runtime == nil {
 		return nil
 	}
+
 	return host.runtime.Stop(ctx)
 }
 
@@ -117,8 +144,10 @@ func (host *Host) Close() error {
 	if host == nil {
 		return nil
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), host.config.HTTP.ShutdownTimeout)
 	defer cancel()
+
 	return host.Stop(ctx)
 }
 
@@ -132,9 +161,11 @@ func (host *Host) Addr() string {
 	if host == nil {
 		return ""
 	}
+
 	if host.runtime != nil {
 		return host.runtime.Addr()
 	}
+
 	return host.config.HTTP.Listen
 }
 
@@ -143,6 +174,7 @@ func (host *Host) Handler() http.Handler {
 	if host != nil && host.runtime != nil && host.runtime.Handler() != nil {
 		return host.runtime.Handler()
 	}
+
 	return http.NotFoundHandler()
 }
 
@@ -151,6 +183,7 @@ func (host *Host) MCP() *mcp.Service {
 	if host == nil || host.runtime == nil {
 		return nil
 	}
+
 	return host.runtime.MCP()
 }
 
@@ -159,14 +192,22 @@ func (host *Host) IngestSequencedTurn(ctx context.Context, request memory.Sequen
 	if host == nil || host.runtime == nil {
 		return memory.IngestOutcome{}, fmt.Errorf("Boyan host runtime is unavailable")
 	}
+
 	return host.runtime.IngestSequencedTurn(ctx, request)
 }
 
 // ApplySequencedBoundary applies one ordered boundary ingest request.
-func (host *Host) ApplySequencedBoundary(ctx context.Context, request memory.SequencedBoundary) (memory.IngestOutcome, error) {
+func (host *Host) ApplySequencedBoundary(
+	ctx context.Context,
+	request memory.SequencedBoundary,
+) (
+	memory.IngestOutcome,
+	error,
+) {
 	if host == nil || host.runtime == nil {
 		return memory.IngestOutcome{}, fmt.Errorf("Boyan host runtime is unavailable")
 	}
+
 	return host.runtime.ApplySequencedBoundary(ctx, request)
 }
 
@@ -175,6 +216,7 @@ func (host *Host) Search(ctx context.Context, request memory.RecallRequest) (mem
 	if host == nil || host.runtime == nil {
 		return memory.RecallResponse{}, fmt.Errorf("Boyan host runtime is unavailable")
 	}
+
 	return host.runtime.Search(ctx, request)
 }
 
@@ -183,6 +225,7 @@ func (host *Host) Trace(ctx context.Context, request memory.TraceRequest) (memor
 	if host == nil || host.runtime == nil {
 		return memory.TraceResponse{}, fmt.Errorf("Boyan host runtime is unavailable")
 	}
+
 	return host.runtime.Trace(ctx, request)
 }
 
@@ -191,6 +234,7 @@ func (host *Host) ForgetSource(ctx context.Context, command memory.ForgetSourceC
 	if host == nil || host.runtime == nil {
 		return memory.ForgetOutcome{}, fmt.Errorf("Boyan host runtime is unavailable")
 	}
+
 	return host.runtime.ForgetSource(ctx, command)
 }
 
@@ -199,6 +243,7 @@ func (host *Host) ForgetScope(ctx context.Context, command memory.ForgetScopeCom
 	if host == nil || host.runtime == nil {
 		return memory.ForgetOutcome{}, fmt.Errorf("Boyan host runtime is unavailable")
 	}
+
 	return host.runtime.ForgetScope(ctx, command)
 }
 

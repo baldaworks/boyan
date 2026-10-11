@@ -10,5 +10,13 @@ func NewHandler(cfg Config) (stdhttp.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return sdkmcp.NewStreamableHTTPHandler(func(*stdhttp.Request) *sdkmcp.Server { return server }, cfg.StreamableOptions), nil
+
+	return sdkmcp.NewStreamableHTTPHandler(
+		func(
+			*stdhttp.Request,
+		) *sdkmcp.Server {
+			return server
+		},
+		cfg.StreamableOptions,
+	), nil
 }

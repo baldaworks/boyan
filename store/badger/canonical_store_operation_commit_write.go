@@ -17,6 +17,7 @@ func writeCanonicalOperationOutcome(
 	if err != nil {
 		return err
 	}
+
 	change := memory.ScopeChange{
 		Sequence:    state.ChangeSeq,
 		OperationID: request.OperationID,
@@ -25,9 +26,11 @@ func writeCanonicalOperationOutcome(
 	if err := putCanonicalRecord(txn, changeKey, badgerRecordChange, change); err != nil {
 		return err
 	}
+
 	if err := putCanonicalRecord(txn, scopeKey, badgerRecordScope, state); err != nil {
 		return err
 	}
+
 	return putCanonicalRecord(txn, operationKey, badgerRecordOperation, badgerCanonicalOperation{
 		Fingerprint: request.Fingerprint,
 		Outcome:     outcome,

@@ -6,11 +6,14 @@ func (t Turn) Validate() error {
 	if err != nil {
 		return err
 	}
+
 	if len(t.Messages) == 0 {
 		return PermanentError(CodePermanent, "turn requires a user message", nil)
 	}
+
 	if err := t.validateTurnLead(status); err != nil {
 		return err
 	}
+
 	return t.validateTurnTools()
 }

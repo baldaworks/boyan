@@ -11,8 +11,10 @@ func canonicalCompatibilityPayload(payload []byte, scope memory.Scope) (memory.C
 	if err := json.Unmarshal(payload, &compatibility); err != nil {
 		return memory.CanonicalCompatibilityPayload{}, false
 	}
+
 	if err := compatibility.Validate(scope); err != nil {
 		return memory.CanonicalCompatibilityPayload{}, false
 	}
+
 	return compatibility, true
 }

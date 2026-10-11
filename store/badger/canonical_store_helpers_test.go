@@ -1,14 +1,21 @@
-package badger
+package badger_test
 
 import (
+	"testing"
 	"time"
 
 	boyan "github.com/baldaworks/boyan/pkg/memory"
+	canonicalbadger "github.com/baldaworks/boyan/store/badger"
 )
 
 const stateTestRevisionOneID = "revision-1"
 
-func canonicalRevisionMutation(scope boyan.Scope, expectedVersion uint64, operationID string, revision boyan.MemoryRevision) boyan.CanonicalMutation {
+func canonicalRevisionMutation(
+	scope boyan.Scope,
+	expectedVersion uint64,
+	operationID string,
+	revision boyan.MemoryRevision,
+) boyan.CanonicalMutation {
 	return boyan.CanonicalMutation{
 		SchemaVersion:        boyan.CanonicalSchemaVersionV1,
 		Scope:                scope,
@@ -42,5 +49,23 @@ func canonicalRevision(revisionID, itemID string) boyan.MemoryRevision {
 		Sensitivity: boyan.SensitivityStandard,
 		Retention:   boyan.RetentionClassStandard,
 		Payload:     boyan.PayloadRef{ID: "payload-1", Digest: "digest-1", ByteSize: 1},
+	}
+}
+
+func openCanonicalTestStore(t testing.TB, directory string) *canonicalbadger.CanonicalStore {
+	t.Helper()
+
+	store, err := canonicalbadger.OpenCanonicalStore(directory)
+	if err != nil {
+		t.Fatalf("OpenCanonicalStore(%q) error = %v", directory, err)
+	}
+
+	return store
+}
+func closeCanonicalTestStore(t testing.TB, store *canonicalbadger.CanonicalStore) {
+	t.Helper()
+
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
 	}
 }

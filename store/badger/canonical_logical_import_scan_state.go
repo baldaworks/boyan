@@ -14,7 +14,10 @@ type canonicalLogicalImportScanState struct {
 	count   uint64
 }
 
-func newCanonicalLogicalImportScanState(batchSize int, onBatch func([]CanonicalLogicalExportRecord) error) canonicalLogicalImportScanState {
+func newCanonicalLogicalImportScanState(
+	batchSize int,
+	onBatch func([]CanonicalLogicalExportRecord) error,
+) canonicalLogicalImportScanState {
 	return canonicalLogicalImportScanState{
 		hash:    sha256.New(),
 		scopes:  make(map[string]memory.Scope),
@@ -27,21 +30,28 @@ func (s *canonicalLogicalImportScanState) addRecord(scan *canonicalLogicalImport
 	if err := scan.unmarshal(line, &record); err != nil {
 		return err
 	}
+
 	if err := validateCanonicalLogicalRecord(record); err != nil {
 		return err
 	}
+
 	if scope, ok := canonicalLogicalScopeRecord(record); ok {
 		s.scopes[scope.Key+"\x00"+string(scope.Kind)] = scope
 	}
+
 	canonicalLine, err := marshalCanonicalLogicalJSON(record)
 	if err != nil {
 		return err
 	}
+
 	canonicalLine = append(canonicalLine, '\n')
+
 	_, _ = s.hash.Write(canonicalLine)
 	if err := s.batches.add(record); err != nil {
 		return err
 	}
+
 	s.count++
+
 	return nil
 }

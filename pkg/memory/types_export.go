@@ -19,7 +19,12 @@ func TurnMessageID(exportID string, role MessageRole) string {
 // TurnToolMessageID derives a stable content-free identity for one typed tool
 // response within a terminal turn.
 func TurnToolMessageID(exportID, toolName, toolCallID string) string {
-	return stableExportID("tool-message", strings.TrimSpace(exportID), strings.TrimSpace(toolName), strings.TrimSpace(toolCallID))
+	return stableExportID(
+		"tool-message",
+		strings.TrimSpace(exportID),
+		strings.TrimSpace(toolName),
+		strings.TrimSpace(toolCallID),
+	)
 }
 
 // TurnExportID derives a stable idempotency key for one source turn.
@@ -27,13 +32,16 @@ func TurnExportID(scope Scope, conversation ConversationRef, sourceTurnID string
 	if err := scope.Validate(); err != nil {
 		return "", err
 	}
+
 	if err := conversation.Validate(); err != nil {
 		return "", err
 	}
+
 	sourceTurnID = strings.TrimSpace(sourceTurnID)
 	if sourceTurnID == "" {
 		return "", PermanentError(CodeInvalidConversation, "source turn id is required", nil)
 	}
+
 	return stableExportID("turn", scope.Key, conversation.ConversationID, sourceTurnID), nil
 }
 
@@ -42,12 +50,15 @@ func BoundaryExportID(scope Scope, conversation ConversationRef, transitionID st
 	if err := scope.Validate(); err != nil {
 		return "", err
 	}
+
 	if err := conversation.Validate(); err != nil {
 		return "", err
 	}
+
 	transitionID = strings.TrimSpace(transitionID)
 	if transitionID == "" {
 		return "", PermanentError(CodeInvalidConversation, "transition id is required", nil)
 	}
+
 	return stableExportID("boundary", scope.Key, conversation.ConversationID, transitionID), nil
 }

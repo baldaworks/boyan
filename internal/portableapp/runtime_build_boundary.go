@@ -6,5 +6,6 @@ func buildRuntimeBoundary(config RuntimeConfig, project ProjectionSyncer) (*Boun
 	if config.Boundary == nil {
 		return nil, nil
 	}
+
 	return ingestapp.NewBoundaryService(config.Boundary, project)
 }

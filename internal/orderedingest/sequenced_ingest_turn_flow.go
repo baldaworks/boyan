@@ -6,18 +6,33 @@ import (
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
-func (r *SequencedIngestRuntime) ingestTurn(ctx context.Context, request memory.SequencedTurn) (memory.IngestOutcome, error) {
-	if replay, ok, err := r.loadReplay(ctx, request.ProducerID, request.Turn.Scope, request.ScopeSequence, request.Fingerprint); ok || err != nil {
+func (r *SequencedIngestRuntime) ingestTurn(
+	ctx context.Context,
+	request memory.SequencedTurn,
+) (
+	memory.IngestOutcome,
+	error,
+) {
+	if replay, ok, err := r.loadReplay(
+		ctx,
+		request.ProducerID,
+		request.Turn.Scope,
+		request.ScopeSequence,
+		request.Fingerprint,
+	); ok || err != nil {
 		return replay, err
 	}
+
 	canonicalOutcome, err := r.turn.processor.ProcessTurn(ctx, request.Turn, r.turn.derivation)
 	if err != nil {
 		return memory.IngestOutcome{}, err
 	}
+
 	operationID, err := memory.CanonicalSemanticOperationID(request.Turn.ExportID, r.turn.derivation)
 	if err != nil {
 		return memory.IngestOutcome{}, err
 	}
+
 	outcome := memory.IngestOutcome{
 		SchemaVersion:  memory.IngestOutcomeSchemaVersionV1,
 		Kind:           memory.IngestKindTurn,
@@ -35,6 +50,7 @@ func (r *SequencedIngestRuntime) ingestTurn(ctx context.Context, request memory.
 	if err := outcome.Validate(); err != nil {
 		return memory.IngestOutcome{}, err
 	}
+
 	outcome = r.markProjectionStatus(ctx, request.Turn.Scope, outcome, r.turn.projection, r.turn.repair)
 	if err := r.sequences.SaveIngestSequence(ctx, memory.IngestSequenceRecord{
 		SchemaVersion: memory.IngestSequenceSchemaVersionV1,
@@ -46,5 +62,6 @@ func (r *SequencedIngestRuntime) ingestTurn(ctx context.Context, request memory.
 	}); err != nil {
 		return memory.IngestOutcome{}, err
 	}
+
 	return outcome, nil
 }

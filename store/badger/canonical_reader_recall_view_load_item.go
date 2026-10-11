@@ -10,11 +10,14 @@ func loadCanonicalViewItem(txn *badger.Txn, scope memory.Scope, view *canonicalR
 	if err != nil {
 		return err
 	}
+
 	if err := getCanonicalRecord(txn, itemKey, badgerRecordItem, &view.item); err != nil {
 		return err
 	}
+
 	if err := view.item.Validate(); err != nil || view.item.Scope != scope || view.item.ItemID != view.revision.ItemID {
 		return memory.PermanentError(memory.CodeStoreFailure, "stored canonical item is invalid", err)
 	}
+
 	return nil
 }

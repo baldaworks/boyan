@@ -33,21 +33,24 @@ func newHTTPServer(
 	if err := httpingest.ValidateLoopbackAddress(cfg.Listen); err != nil {
 		return nil, err
 	}
+
 	ingestHandler, err := newHTTPIngestHandler(cfg, reporter, turns, boundaries)
 	if err != nil {
 		return nil, err
 	}
+
 	mcpHandler, err := newHTTPMCPHandler(searcher, tracer, forgetter)
 	if err != nil {
 		return nil, err
 	}
+
 	rootMux := stdhttp.NewServeMux()
 	rootMux.Handle("/mcp", httpLoggingMiddleware(logger, mcpHandler))
 	rootMux.Handle("/", httpLoggingMiddleware(logger, ingestHandler))
 
 	return &stdhttp.Server{
 		Addr:              cfg.Listen,
-		Handler:           rootMux,
+		Handler:           httpBodyLimits(cfg, rootMux),
 		ReadHeaderTimeout: cfg.RequestTimeout,
 	}, nil
 }

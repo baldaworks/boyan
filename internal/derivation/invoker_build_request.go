@@ -12,10 +12,12 @@ func dedicatedRuntimeBuildRequest(providerID, workingDir, instruction string) (a
 	if trimmedProvider == "" {
 		return agentfactory.BuildRequest{}, fmt.Errorf("Boyan derivation provider is required")
 	}
+
 	trimmedDir := strings.TrimSpace(workingDir)
 	if trimmedDir == "" {
 		return agentfactory.BuildRequest{}, fmt.Errorf("Boyan derivation workspace is required")
 	}
+
 	return agentfactory.BuildRequest{
 		AgentID:          trimmedProvider,
 		Name:             trimmedProvider + "-boyan-derivation",

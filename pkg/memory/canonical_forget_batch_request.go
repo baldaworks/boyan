@@ -20,9 +20,15 @@ func (r CanonicalSourceForgetBatchRequest) Validate() error {
 	if err := r.Scope.Validate(); err != nil {
 		return err
 	}
-	if !isCanonicalID(r.SourceID) || (r.AfterRevisionID != "" && !isCanonicalID(r.AfterRevisionID)) || r.Limit == 0 || r.Limit > maxCanonicalForgetBatch || r.DeniedAt.IsZero() {
+
+	if !isCanonicalID(r.SourceID) ||
+		(r.AfterRevisionID != "" && !isCanonicalID(r.AfterRevisionID)) ||
+		r.Limit == 0 ||
+		r.Limit > maxCanonicalForgetBatch ||
+		r.DeniedAt.IsZero() {
 		return invalidDerived("canonical source forget batch request is invalid")
 	}
+
 	return nil
 }
 

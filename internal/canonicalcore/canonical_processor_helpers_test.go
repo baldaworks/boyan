@@ -1,4 +1,4 @@
-package canonicalcore
+package canonicalcore_test
 
 import (
 	"context"
@@ -12,7 +12,13 @@ func testProcessorDerivation() DerivationRef {
 
 type canonicalExtractorFunc func(context.Context, CanonicalExtractionRequest) ([]SemanticCandidate, error)
 
-func (f canonicalExtractorFunc) ExtractCanonicalSemantics(ctx context.Context, request CanonicalExtractionRequest) ([]SemanticCandidate, error) {
+func (f canonicalExtractorFunc) ExtractCanonicalSemantics(
+	ctx context.Context,
+	request CanonicalExtractionRequest,
+) (
+	[]SemanticCandidate,
+	error,
+) {
 	return f(ctx, request)
 }
 
@@ -26,39 +32,62 @@ func (s *processorTestStore) LoadScopeState(_ context.Context, scope Scope) (Sco
 	if s.state.Scope == (Scope{}) {
 		s.state = ScopeState{SchemaVersion: CanonicalSchemaVersionV1, Scope: scope}
 	}
+
 	return s.state, nil
 }
 
-func (s *processorTestStore) ApplyCanonicalMutation(_ context.Context, mutation CanonicalMutation) (CanonicalMutationOutcome, error) {
+func (s *processorTestStore) ApplyCanonicalMutation(
+	_ context.Context,
+	mutation CanonicalMutation,
+) (
+	CanonicalMutationOutcome,
+	error,
+) {
 	if err := mutation.Validate(); err != nil {
 		return CanonicalMutationOutcome{}, err
 	}
+
 	if mutation.ExpectedScopeVersion != s.state.Version {
 		return CanonicalMutationOutcome{}, PermanentError(CodeConflict, "test scope version changed", nil)
 	}
+
 	s.mutation = mutation
 	s.state.Version++
 	s.state.ChangeSeq++
+
 	for _, revision := range mutation.Revisions {
 		item := MemoryItem{ItemID: revision.ItemID, Scope: mutation.Scope, Kind: MemoryKindState}
 		for _, existing := range s.active {
 			if existing.Item.ItemID == revision.ItemID {
 				item = existing.Item
+
 				break
 			}
 		}
+
 		for _, created := range mutation.Items {
 			if created.ItemID == revision.ItemID {
 				item = created
+
 				break
 			}
 		}
-		s.active = []ActiveCanonicalMemory{{Item: item, RevisionID: revision.RevisionID, Revision: revision.Revision, Evidence: revision.Evidence}}
+
+		s.active = []ActiveCanonicalMemory{
+			{
+				Item:       item,
+				RevisionID: revision.RevisionID,
+				Revision:   revision.Revision,
+				Evidence:   revision.Evidence,
+			},
+		}
 	}
+
 	outcome := CanonicalMutationOutcome{ScopeVersion: s.state.Version, ChangeSeq: s.state.ChangeSeq}
 	for _, revision := range mutation.Revisions {
 		outcome.RevisionIDs = append(outcome.RevisionIDs, revision.RevisionID)
 	}
+
 	return outcome, nil
 }
 
@@ -66,7 +95,13 @@ func (s *processorTestStore) ScanScopeChanges(context.Context, Scope, uint64, ui
 	return nil, nil
 }
 
-func (s *processorTestStore) LoadCanonicalRevisions(context.Context, CanonicalRevisionReadRequest) ([]MemoryRevision, error) {
+func (s *processorTestStore) LoadCanonicalRevisions(
+	context.Context,
+	CanonicalRevisionReadRequest,
+) (
+	[]MemoryRevision,
+	error,
+) {
 	return nil, nil
 }
 
@@ -74,7 +109,13 @@ func (s *processorTestStore) ScanActiveHeads(context.Context, ActiveHeadScanRequ
 	return nil, nil
 }
 
-func (s *processorTestStore) ScanActiveMemory(context.Context, ActiveMemoryScanRequest) ([]ActiveCanonicalMemory, error) {
+func (s *processorTestStore) ScanActiveMemory(
+	context.Context,
+	ActiveMemoryScanRequest,
+) (
+	[]ActiveCanonicalMemory,
+	error,
+) {
 	return append([]ActiveCanonicalMemory(nil), s.active...), nil
 }
 

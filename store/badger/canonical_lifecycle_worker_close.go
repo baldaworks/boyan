@@ -8,8 +8,10 @@ func (m *CanonicalMaintenance) Close(ctx context.Context) error {
 	if m == nil || m.store == nil {
 		return nil
 	}
+
 	if err := m.Stop(ctx); err != nil {
 		return err
 	}
+
 	return m.store.Close()
 }

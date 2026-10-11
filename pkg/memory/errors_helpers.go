@@ -18,11 +18,13 @@ func ClassifyError(err error) (ErrorCode, ErrorClass, bool) {
 	if !errors.As(err, &target) || target == nil || target.Code == "" || target.Class == "" {
 		return "", "", false
 	}
+
 	return target.Code, target.Class, true
 }
 
 // IsRetryable reports whether err explicitly permits retry.
 func IsRetryable(err error) bool {
 	_, class, ok := ClassifyError(err)
+
 	return ok && class == ErrorClassRetryable
 }

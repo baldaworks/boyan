@@ -7,17 +7,32 @@ func collectBoundaryParentSets(
 	request memory.CommitRequest,
 ) (map[string][]memory.RevisionRef, map[string]memory.RevisionRef, error) {
 	parentSets := make(map[string][]memory.RevisionRef, len(request.Scenarios)+len(request.Profiles))
+
 	needed := make(map[string]memory.RevisionRef)
 	for _, scenario := range request.Scenarios {
-		if err := addBoundaryParentSet(parentSets, needed, mapping, scenario.Meta.RevisionID, scenario.Meta.Provenance.ParentRevisions); err != nil {
+		if err := addBoundaryParentSet(
+			parentSets,
+			needed,
+			mapping,
+			scenario.Meta.RevisionID,
+			scenario.Meta.Provenance.ParentRevisions,
+		); err != nil {
 			return nil, nil, err
 		}
 	}
+
 	for _, profile := range request.Profiles {
-		if err := addBoundaryParentSet(parentSets, needed, mapping, profile.Meta.RevisionID, profile.Meta.Provenance.ParentRevisions); err != nil {
+		if err := addBoundaryParentSet(
+			parentSets,
+			needed,
+			mapping,
+			profile.Meta.RevisionID,
+			profile.Meta.Provenance.ParentRevisions,
+		); err != nil {
 			return nil, nil, err
 		}
 	}
+
 	return parentSets, needed, nil
 }
 
@@ -34,10 +49,13 @@ func addBoundaryParentSet(
 		if err != nil {
 			return err
 		}
+
 		translated = appendUniqueRefs(translated, canonical)
 		needed[canonical.RevisionID] = canonical
 	}
+
 	parentSets[revisionID] = translated
+
 	return nil
 }
 
@@ -48,8 +66,10 @@ func translateBoundaryParent(
 	if canonical, ok := mapping[ref]; ok {
 		return canonical, nil
 	}
+
 	if err := ref.Validate(); err != nil {
 		return memory.RevisionRef{}, err
 	}
+
 	return ref, nil
 }

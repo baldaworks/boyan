@@ -17,20 +17,25 @@ func collectForgetMessagePayloads(
 	if len(deniedSources) == 0 {
 		return nil
 	}
+
 	prefix, err := canonicalPrefix(scope, badgerRecordMessage)
 	if err != nil {
 		return err
 	}
+
 	iterator := txn.NewIterator(badger.DefaultIteratorOptions)
 	defer iterator.Close()
+
 	for iterator.Seek(prefix); iterator.ValidForPrefix(prefix); iterator.Next() {
 		var message memory.MessageRecord
 		if err := getCanonicalRecord(txn, iterator.Item().Key(), badgerRecordMessage, &message); err != nil {
 			return err
 		}
+
 		if _, ok := deniedSources[message.SourceID]; ok {
 			collector.add(message.Payload)
 		}
 	}
+
 	return nil
 }

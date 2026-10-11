@@ -8,11 +8,14 @@ func NormalizeRecallRequest(request RecallRequest) (RecallRequest, error) {
 	if request.SchemaVersion == "" {
 		request.SchemaVersion = RecallSchemaVersionV1
 	}
+
 	if request.Limit == 0 {
 		request.Limit = DefaultSearchLimit
 	}
+
 	if err := request.Validate(); err != nil {
 		return RecallRequest{}, err
 	}
+
 	return request, nil
 }
