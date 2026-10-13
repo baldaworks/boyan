@@ -15,13 +15,7 @@ func (r *SequencedIngestRuntime) ingestBoundary(
 	memory.IngestOutcome,
 	error,
 ) {
-	if replay, ok, err := r.loadReplay(
-		ctx,
-		request.ProducerID,
-		request.Boundary.Scope,
-		request.ScopeSequence,
-		request.Fingerprint,
-	); ok || err != nil {
+	if replay, ok, err := r.loadBoundaryReplay(ctx, request); ok || err != nil {
 		return replay, err
 	}
 

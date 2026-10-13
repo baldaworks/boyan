@@ -459,3 +459,26 @@ func TestBoundaryRejectsConflictingSuppliedStructuralTarget(t *testing.T) {
 		})
 	}
 }
+
+func (s *temporalStore) VerifyCanonicalBoundary(_ context.Context, input m.Boundary,
+) (m.BoundaryIdentityResult, error) {
+	expected, err := m.NewCanonicalBoundaryIdentityCommit(input)
+	if err != nil {
+		return m.BoundaryIdentityResult{}, err
+	}
+
+	for _, commit := range s.commits {
+		proof := commit.BoundaryIdentity
+		if proof == nil || proof.Certificate.ExportID != input.ExportID {
+			continue
+		}
+
+		if proof.Certificate != expected.Certificate {
+			return m.BoundaryIdentityResult{}, m.PermanentError(m.CodeConflict, "changed fixture boundary", nil)
+		}
+
+		return m.BoundaryIdentityResult{Certified: true}, nil
+	}
+
+	return m.BoundaryIdentityResult{SafelyNew: true}, nil
+}

@@ -57,6 +57,13 @@ func (r *SequencedIngestRuntime) ApplySequencedBoundary(
 		return memory.IngestOutcome{}, err
 	}
 
+	normalized, normalizeErr := memory.NormalizeCanonicalBoundary(request.Boundary)
+	if normalizeErr != nil {
+		return memory.IngestOutcome{}, normalizeErr
+	}
+
+	request.Boundary = normalized
+
 	var outcome memory.IngestOutcome
 
 	err := r.lanes.Execute(ctx, request.Boundary.Scope, func(runCtx context.Context) error {

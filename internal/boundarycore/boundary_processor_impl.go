@@ -19,14 +19,15 @@ func (e *BoundaryProcessor) ProcessBoundary(ctx context.Context, boundary Bounda
 		return partial, err
 	}
 
-	if err := boundary.Validate(); err != nil {
+	normalized, err := NormalizeCanonicalBoundary(boundary)
+	if err != nil {
 		return partial, err
 	}
 
-	if verifier, ok := e.store.(CanonicalBoundaryIdentityStore); ok {
-		if _, err := verifier.VerifyCanonicalBoundary(ctx, boundary); err != nil {
-			return partial, err
-		}
+	boundary = normalized
+
+	if err := e.verifyBoundaryIdentity(ctx, boundary, false); err != nil {
+		return partial, err
 	}
 
 	at := e.clock().UTC()
@@ -53,4 +54,28 @@ func (e *BoundaryProcessor) ProcessBoundary(ctx context.Context, boundary Bounda
 	}
 
 	return partial, nil
+}
+
+func (e *BoundaryProcessor) verifyBoundaryIdentity(
+	ctx context.Context, boundary Boundary, requireCertified bool,
+) error {
+	verifier, ok := e.store.(CanonicalBoundaryIdentityStore)
+	if !ok {
+		if requireCertified {
+			return PermanentError(CodeConflict, "boundary replay proof capability is unavailable", nil)
+		}
+
+		return nil
+	}
+
+	result, err := verifier.VerifyCanonicalBoundary(ctx, boundary)
+	if err != nil {
+		return err
+	}
+
+	if requireCertified && !result.Certified {
+		return PermanentError(CodeConflict, "boundary replay lacks original input proof", nil)
+	}
+
+	return nil
 }

@@ -18,7 +18,7 @@ func (e *BoundaryProcessor) prepareBoundaryStage(
 		return "", BoundarySnapshot{}, OperationOutcome{}, false, err
 	}
 
-	prior, found, err := e.lookupBoundaryStage(ctx, boundary.Scope, stage, operationID)
+	prior, found, err := e.lookupBoundaryStage(ctx, boundary, stage, operationID)
 	if err != nil || found {
 		return operationID, BoundarySnapshot{}, prior, found, err
 	}
@@ -33,7 +33,7 @@ func (e *BoundaryProcessor) prepareBoundaryStage(
 
 func (e *BoundaryProcessor) lookupBoundaryStage(
 	ctx context.Context,
-	scope Scope,
+	boundary Boundary,
 	stage OperationStage,
 	operationID string,
 ) (OperationOutcome, bool, error) {
@@ -41,7 +41,11 @@ func (e *BoundaryProcessor) lookupBoundaryStage(
 		SchemaVersion: DerivedSchemaVersionV1,
 		OperationID:   operationID,
 		Stage:         stage,
-		Scope:         scope,
+		Scope:         boundary.Scope,
+	}
+
+	if err := e.verifyBoundaryIdentity(ctx, boundary, false); err != nil {
+		return OperationOutcome{}, false, err
 	}
 
 	prior, err := e.store.LookupOperation(ctx, lookup)
@@ -58,6 +62,12 @@ func (e *BoundaryProcessor) lookupBoundaryStage(
 	}
 
 	if prior.Found {
+		// Another attempt may have certified this operation after our entry
+		// check. Recheck immutable input proof after reading its outcome.
+		if err := e.verifyBoundaryIdentity(ctx, boundary, true); err != nil {
+			return OperationOutcome{}, false, err
+		}
+
 		return cloneOperationOutcome(prior.Outcome), true, nil
 	}
 

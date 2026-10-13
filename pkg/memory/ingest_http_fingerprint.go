@@ -19,7 +19,12 @@ func BoundaryIngestFingerprint(envelope IngestEnvelope[Boundary]) (string, error
 		return "", err
 	}
 
-	return ingestPayloadFingerprint("boundary", envelope.Payload)
+	normalized, err := NormalizeCanonicalBoundary(envelope.Payload)
+	if err != nil {
+		return "", err
+	}
+
+	return ingestPayloadFingerprint("boundary", normalized)
 }
 
 func ingestPayloadFingerprint(kind string, payload any) (string, error) {

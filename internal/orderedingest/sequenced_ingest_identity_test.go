@@ -24,3 +24,104 @@ func TestTurnReceiptReplayRequiresAuthoritativeIdentityCapability(t *testing.T) 
 		t.Fatalf("unsupported replay=%v", err)
 	}
 }
+
+type boundaryProofCanonical struct {
+	memory.CanonicalStore
+
+	deny bool
+}
+
+func (s *boundaryProofCanonical) VerifyCanonicalBoundary(context.Context,
+	memory.Boundary) (memory.BoundaryIdentityResult, error) {
+	if s.deny {
+		return memory.BoundaryIdentityResult{}, memory.PermanentError(memory.CodeConflict, "changed boundary", nil)
+	}
+
+	return memory.BoundaryIdentityResult{SafelyNew: true}, nil
+}
+
+func TestBoundaryProofRunsBeforeReceiptReplay(t *testing.T) {
+	request := testSequencedBoundary(t, 1, "supplied-fingerprint")
+	runtime := newBoundaryReplayTestRuntime(t, request.Boundary.Scope, newMemoryIngestSequenceStore())
+	proof := &boundaryProofCanonical{CanonicalStore: runtime.canonical}
+	runtime.canonical = proof
+	requireNoError(t, runtime.Start(context.Background()), "start: %v")
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+
+	_, err := runtime.ApplySequencedBoundary(context.Background(), request)
+	requireNoError(t, err, "first: %v")
+
+	proof.deny = true
+	request.Boundary.Reason = memory.BoundaryReasonReset
+
+	_, err = runtime.ApplySequencedBoundary(context.Background(), request)
+	if !hasCodeClass(err, memory.CodeConflict, memory.ErrorClassPermanent) {
+		t.Fatalf("receipt bypassed proof: %v", err)
+	}
+}
+
+type proofChangingReceiptStore struct {
+	*memoryIngestSequenceStore
+
+	proof *boundaryProofCanonical
+}
+
+func (s *proofChangingReceiptStore) LoadIngestSequence(ctx context.Context, producer string, scope memory.Scope,
+	sequence uint64) (memory.IngestSequenceRecord, bool, error) {
+	record, found, err := s.memoryIngestSequenceStore.LoadIngestSequence(ctx, producer, scope, sequence)
+	s.proof.deny = true
+
+	return record, found, err
+}
+
+func TestBoundaryProofRechecksAfterReceiptRead(t *testing.T) {
+	request := testSequencedBoundary(t, 1, "supplied-fingerprint")
+	sequences := newMemoryIngestSequenceStore()
+	runtime := newBoundaryReplayTestRuntime(t, request.Boundary.Scope, sequences)
+	proof := &boundaryProofCanonical{CanonicalStore: runtime.canonical}
+	runtime.canonical = proof
+	requireNoError(t, runtime.Start(context.Background()), "start: %v")
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+
+	_, err := runtime.ApplySequencedBoundary(context.Background(), request)
+	requireNoError(t, err, "first: %v")
+
+	runtime.sequences = &proofChangingReceiptStore{memoryIngestSequenceStore: sequences, proof: proof}
+
+	_, err = runtime.ApplySequencedBoundary(context.Background(), request)
+	if !hasCodeClass(err, memory.CodeConflict, memory.ErrorClassPermanent) {
+		t.Fatalf("receipt read raced proof: %v", err)
+	}
+}
+
+func TestBoundaryReceiptRequiresCertifiedProofForCapableStore(t *testing.T) {
+	request := testSequencedBoundary(t, 1, "supplied-fingerprint")
+	runtime := newBoundaryReplayTestRuntime(t, request.Boundary.Scope, newMemoryIngestSequenceStore())
+	runtime.canonical = &boundaryProofCanonical{CanonicalStore: runtime.canonical}
+	requireNoError(t, runtime.Start(context.Background()), "start: %v")
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+
+	_, err := runtime.ApplySequencedBoundary(context.Background(), request)
+	requireNoError(t, err, "initial fixture: %v")
+
+	_, err = runtime.ApplySequencedBoundary(context.Background(), request)
+	if !hasCodeClass(err, memory.CodeConflict, memory.ErrorClassPermanent) {
+		t.Fatalf("uncertified receipt replay=%v", err)
+	}
+}
+
+func TestBoundaryReceiptRejectsUnsupportedProofCapability(t *testing.T) {
+	request := testSequencedBoundary(t, 1, "supplied-fingerprint")
+	runtime := newBoundaryReplayTestRuntime(t, request.Boundary.Scope, newMemoryIngestSequenceStore())
+	runtime.canonical = runtime.canonical.(boundaryFixtureCanonical).fakeCanonicalStore
+	requireNoError(t, runtime.Start(context.Background()), "start: %v")
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+
+	_, err := runtime.ApplySequencedBoundary(context.Background(), request)
+	requireNoError(t, err, "fresh portable processor: %v")
+
+	_, err = runtime.ApplySequencedBoundary(context.Background(), request)
+	if !hasCodeClass(err, memory.CodeConflict, memory.ErrorClassPermanent) {
+		t.Fatalf("unsupported proof replay=%v", err)
+	}
+}

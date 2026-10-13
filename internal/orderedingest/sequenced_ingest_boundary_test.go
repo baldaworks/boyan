@@ -45,20 +45,21 @@ func newBoundaryReplayTestRuntime(
 ) *SequencedIngestRuntime {
 	t.Helper()
 
+	proof := &boundaryFixtureProof{}
 	runtime, err := newSequencedIngestRuntimeWithParts(
 		sequences,
-		fakeCanonicalStore{
+		boundaryFixtureCanonical{proof: proof, fakeCanonicalStore: fakeCanonicalStore{
 			state: boyan.ScopeState{
 				SchemaVersion: boyan.CanonicalSchemaVersionV1,
 				Scope:         scope,
 				Version:       2,
 				ChangeSeq:     3,
 			},
-		},
+		}},
 		nil,
 		boyan.DerivationRef{},
 		nil,
-		fakeBoundaryProcessor{outcome: boyan.BoundaryOutcome{
+		boundaryFixtureProcessor{proof: proof, fakeBoundaryProcessor: fakeBoundaryProcessor{outcome: boyan.BoundaryOutcome{
 			SchemaVersion: boyan.DerivedSchemaVersionV1,
 			Scope:         scope,
 			Scenarios: boyan.OperationOutcome{
@@ -75,11 +76,63 @@ func newBoundaryReplayTestRuntime(
 				Scope:         scope,
 				ScopeVersion:  2,
 			},
-		}},
+		}}},
 		nil,
 		SequencedIngestConfig{},
 	)
 	requireNoError(t, err, "newSequencedIngestRuntimeWithParts() error = %v")
 
 	return runtime
+}
+
+type boundaryFixtureProof struct {
+	identity *boyan.CanonicalBoundaryIdentityCommit
+}
+
+type boundaryFixtureCanonical struct {
+	fakeCanonicalStore
+
+	proof *boundaryFixtureProof
+}
+
+func (s boundaryFixtureCanonical) VerifyCanonicalBoundary(_ context.Context, input boyan.Boundary,
+) (boyan.BoundaryIdentityResult, error) {
+	expected, err := boyan.NewCanonicalBoundaryIdentityCommit(input)
+	if err != nil {
+		return boyan.BoundaryIdentityResult{}, err
+	}
+
+	if s.proof.identity == nil {
+		return boyan.BoundaryIdentityResult{SafelyNew: true}, nil
+	}
+
+	if s.proof.identity.Certificate != expected.Certificate {
+		return boyan.BoundaryIdentityResult{}, boyan.PermanentError(boyan.CodeConflict, "changed boundary fixture", nil)
+	}
+
+	return boyan.BoundaryIdentityResult{Certified: true}, nil
+}
+
+type boundaryFixtureProcessor struct {
+	fakeBoundaryProcessor
+
+	proof *boundaryFixtureProof
+}
+
+func (p boundaryFixtureProcessor) ProcessBoundary(
+	ctx context.Context, input boyan.Boundary,
+) (boyan.BoundaryOutcome, error) {
+	outcome, err := p.fakeBoundaryProcessor.ProcessBoundary(ctx, input)
+	if err != nil {
+		return outcome, err
+	}
+
+	identity, err := boyan.NewCanonicalBoundaryIdentityCommit(input)
+	if err != nil {
+		return boyan.BoundaryOutcome{}, err
+	}
+
+	p.proof.identity = &identity
+
+	return outcome, nil
 }
