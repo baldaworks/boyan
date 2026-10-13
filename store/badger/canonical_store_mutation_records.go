@@ -1,11 +1,18 @@
 package badger
 
 import (
+	"context"
+
 	memory "github.com/baldaworks/boyan/pkg/memory"
 	"github.com/dgraph-io/badger/v4"
 )
 
-func (s *CanonicalStore) putCanonicalMutationRecords(txn *badger.Txn, mutation memory.CanonicalMutation) error {
+func (s *CanonicalStore) putCanonicalMutationRecords(ctx context.Context,
+	txn *badger.Txn, mutation memory.CanonicalMutation) error {
+	if err := validateCanonicalBoundaryGrounding(ctx, txn, mutation); err != nil {
+		return err
+	}
+
 	if err := validateEraseMutationPayloadLocks(txn, mutation); err != nil {
 		return err
 	}

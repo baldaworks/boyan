@@ -43,6 +43,10 @@ func (s *CanonicalBoundaryStore) buildBoundaryMutation(
 		return memory.CanonicalMutation{}, err
 	}
 
+	if err := inheritBoundaryRevisions(request, view, &mutation); err != nil {
+		return memory.CanonicalMutation{}, err
+	}
+
 	if err := mutation.Validate(); err != nil {
 		return memory.CanonicalMutation{}, err
 	}

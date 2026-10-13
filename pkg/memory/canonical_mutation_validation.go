@@ -24,6 +24,10 @@ func (m CanonicalMutation) Validate() error {
 		}
 	}
 
+	if err := m.validateBoundaryGrounding(); err != nil {
+		return err
+	}
+
 	return m.validateRecords()
 }
 

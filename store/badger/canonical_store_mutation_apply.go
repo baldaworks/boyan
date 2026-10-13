@@ -53,7 +53,7 @@ func (s *CanonicalStore) ApplyCanonicalMutation(
 	var outcome memory.CanonicalMutationOutcome
 
 	err = s.db.Update(func(txn *badger.Txn) error {
-		next, err := s.applyCanonicalMutationTxn(txn, mutation, scopeKey, operationKey)
+		next, err := s.applyCanonicalMutationTxn(ctx, txn, mutation, scopeKey, operationKey)
 		if err != nil {
 			return err
 		}

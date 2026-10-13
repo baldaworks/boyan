@@ -1,11 +1,14 @@
 package badger
 
 import (
+	"context"
+
 	memory "github.com/baldaworks/boyan/pkg/memory"
 	"github.com/dgraph-io/badger/v4"
 )
 
 func (s *CanonicalStore) applyCanonicalMutationTxn(
+	ctx context.Context,
 	txn *badger.Txn,
 	mutation memory.CanonicalMutation,
 	scopeKey []byte,
@@ -40,10 +43,11 @@ func (s *CanonicalStore) applyCanonicalMutationTxn(
 		return memory.CanonicalMutationOutcome{}, err
 	}
 
-	return s.applyUnfencedCanonicalMutationTxn(txn, mutation, scopeKey, operationKey)
+	return s.applyUnfencedCanonicalMutationTxn(ctx, txn, mutation, scopeKey, operationKey)
 }
 
 func (s *CanonicalStore) applyUnfencedCanonicalMutationTxn(
+	ctx context.Context,
 	txn *badger.Txn,
 	mutation memory.CanonicalMutation,
 	scopeKey []byte,
@@ -66,7 +70,7 @@ func (s *CanonicalStore) applyUnfencedCanonicalMutationTxn(
 		)
 	}
 
-	if err := s.putCanonicalMutationRecords(txn, mutation); err != nil {
+	if err := s.putCanonicalMutationRecords(ctx, txn, mutation); err != nil {
 		return memory.CanonicalMutationOutcome{}, err
 	}
 

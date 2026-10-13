@@ -57,6 +57,13 @@ func (r *CanonicalReader) loadCanonicalBoundaryView(ctx context.Context,
 		return memory.CanonicalBoundaryView{}, err
 	}
 
+	if at != nil {
+		records, err = r.resolveBoundaryRecordBounds(ctx, scope, records, *at)
+		if err != nil {
+			return memory.CanonicalBoundaryView{}, err
+		}
+	}
+
 	view, err := buildCanonicalBoundaryView(ctx, scope, state.Version, records)
 	if err != nil || at == nil {
 		return view, err

@@ -21,14 +21,18 @@ type MemoryItem struct {
 
 // MemoryRevision is immutable canonical metadata for one memory change.
 type MemoryRevision struct {
-	SchemaVersion string         `json:"schema_version"`
-	RevisionID    string         `json:"revision_id"`
-	ItemID        string         `json:"item_id"`
-	Revision      uint64         `json:"revision"`
-	Parents       []string       `json:"parents,omitempty"`
-	Temporal      Temporal       `json:"temporal"`
-	Evidence      []EvidenceRef  `json:"evidence"`
-	Sensitivity   Sensitivity    `json:"sensitivity"`
-	Retention     RetentionClass `json:"retention"`
-	Payload       PayloadRef     `json:"payload"`
+	// GroundingBoundsVersion identifies transaction-verified inherited constraints.
+	GroundingBoundsVersion uint32 `json:"grounding_bounds_version,omitempty"`
+	// GroundingParents separates semantic parents from structural provenance.
+	GroundingParents []string       `json:"grounding_parents,omitempty"`
+	SchemaVersion    string         `json:"schema_version"`
+	RevisionID       string         `json:"revision_id"`
+	ItemID           string         `json:"item_id"`
+	Revision         uint64         `json:"revision"`
+	Parents          []string       `json:"parents,omitempty"`
+	Temporal         Temporal       `json:"temporal"`
+	Evidence         []EvidenceRef  `json:"evidence"`
+	Sensitivity      Sensitivity    `json:"sensitivity"`
+	Retention        RetentionClass `json:"retention"`
+	Payload          PayloadRef     `json:"payload"`
 }

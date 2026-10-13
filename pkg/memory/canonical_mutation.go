@@ -31,6 +31,7 @@ type OperationRecord struct {
 // CanonicalMutation is the bounded atomic persistence unit. Records are
 // append-only except Heads and ScopeState, which are the only mutable indexes.
 type CanonicalMutation struct {
+	BoundaryGrounding    *BoundaryGroundingCommit     `json:"-"`
 	TurnIdentity         *CanonicalTurnIdentityCommit `json:"-"`
 	SchemaVersion        string                       `json:"schema_version"`
 	Scope                Scope                        `json:"scope"`
