@@ -54,6 +54,8 @@ func openWithConfig(root string, config Config) (*BleveRecallProjection, error) 
 
 	projection := &BleveRecallProjection{
 		root:           root,
+		checkpoints:    config.Checkpoints,
+		projectionID:   config.ProjectionID,
 		batchSize:      config.BatchSize,
 		activeByScope:  make(map[string]bleve.Index),
 		activeScopeIDs: make(map[string]string),

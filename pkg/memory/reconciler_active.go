@@ -34,21 +34,14 @@ func (p PolicyRegistry) ReconcileActive(
 		return Reconciliation{}, err
 	}
 
-	subject, predicate, qualifiers, err := normalizeSemanticCandidate(candidate)
+	matcher, err := p.PrepareActiveMemoryMatcher(scope, candidate)
 	if err != nil {
 		return Reconciliation{}, err
 	}
 
-	item, err := buildReconciliationItem(p, scope, candidate, subject, predicate, qualifiers)
-	if err != nil {
-		return Reconciliation{}, err
-	}
+	item := matcher.item
 
-	if err := item.Validate(); err != nil {
-		return Reconciliation{}, err
-	}
-
-	match, err := matchReconciliationItem(scope, candidate, &item, active)
+	match, err := matchReconciliationItem(matcher, &item, active)
 	if err != nil {
 		return Reconciliation{}, err
 	}

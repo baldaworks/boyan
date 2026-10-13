@@ -45,7 +45,7 @@ func openStandaloneStorage(
 		return nil, err
 	}
 
-	index, err := bleve.Open(layout.ProjectionDir)
+	index, err := bleve.Open(layout.ProjectionDir, bleve.Config{Checkpoints: store, ProjectionID: boyanProjectionID})
 	if err != nil {
 		return nil, fmt.Errorf("open Boyan Bleve projection: %w", err)
 	}

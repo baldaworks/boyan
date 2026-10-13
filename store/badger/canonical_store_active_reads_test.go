@@ -72,3 +72,54 @@ func assertCanonicalActiveEvidence(t *testing.T, store *canonicalbadger.Canonica
 		t.Fatalf("ScanActiveMemory() = %#v, error %v", active, err)
 	}
 }
+
+func TestCanonicalActivePagesKeepEncodedOrder(t *testing.T) {
+	t.Parallel()
+	store := openCanonicalTestStore(t, t.TempDir())
+	t.Cleanup(func() { _ = store.Close() })
+
+	scope := boyan.Scope{Key: "test:cursor", Kind: boyan.ScopeKindPersonal}
+	for i, id := range []string{"z", "aa", "ab", "aaa"} {
+		_,
+			err := store.ApplyCanonicalMutation(context.Background(),
+			canonicalRevisionMutation(scope,
+				uint64(i),
+				"operation-"+id,
+				canonicalRevision("revision-"+id,
+					id)))
+		if err != nil {
+			t.Fatalf("commit: %v", err)
+		}
+	}
+
+	cursor := ""
+	for _, want := range []string{"z", "aa", "ab", "aaa"} {
+		heads,
+			err := store.ScanActiveHeads(context.Background(),
+			boyan.ActiveHeadScanRequest{Scope: scope,
+				AfterItemID: cursor,
+				Limit:       1})
+		if err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+
+		if len(heads) != 1 || heads[0].ItemID != want {
+			t.Fatalf("after %q: %+v, want %s", cursor, heads, want)
+		}
+
+		cursor = want
+	}
+
+	heads,
+		err := store.ScanActiveHeads(context.Background(),
+		boyan.ActiveHeadScanRequest{Scope: scope,
+			AfterItemID: "a0",
+			Limit:       1})
+	if err != nil {
+		t.Fatalf("missing cursor: %v", err)
+	}
+
+	if len(heads) != 1 || heads[0].ItemID != "aa" {
+		t.Fatalf("missing cursor skipped next encoded key: %+v", heads)
+	}
+}

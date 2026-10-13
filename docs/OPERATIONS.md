@@ -126,7 +126,9 @@ Closing a constructed host before startup also releases its storage.
 
 Clean Bleve generations apply changes after their durable watermark; unchanged
 syncs are no-ops. Dirty, missing or incompatible generations rebuild from canonical
-active state. A retention floor advancing beyond the committed watermark also forces a fresh
+active state. Disposable Bleve v1 generations are incompatible with the v2
+kind-field mapping and rebuild through this same path; canonical memory is
+preserved. A retention floor advancing beyond the committed watermark also forces a fresh
 rebuild. Exact scopes
 serialize synchronization while independent scopes can progress separately.
 
@@ -135,6 +137,17 @@ preserves all referenced and in-flight generations, keeps at most one previous
 generation per scope, and removes abandoned builders after their handles close.
 Badger remains authoritative; deleting canonical records is not an index repair
 procedure.
+
+A search requesting `min_scope_change_seq` can return a retryable `conflict`
+while its checkpoint lags, is dirty, or changes during the query. Let normal
+synchronization/repair complete and retry; readiness alone does not certify a
+particular scope's search watermark.
+
+Boundary model views support up to 2048 active records across all layers,
+collected in pages of at most 256. Count overflow and serialized input beyond
+the independent 256 KiB default budget return `limit_exceeded`; increasing a
+record count does not increase the byte budget. Large scopes also increase
+reconciliation scan time, while page and retained-match memory stay bounded.
 
 ## Diagnostics workflow
 

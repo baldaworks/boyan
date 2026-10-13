@@ -1,7 +1,7 @@
 package memory
 
 // ActiveHeadScanRequest pages the mutable active-head index in deterministic
-// item-ID order. It is the bounded rebuild primitive for projections.
+// encoded item-ID order. It is the bounded rebuild primitive for projections.
 type ActiveHeadScanRequest struct {
 	Scope       Scope
 	AfterItemID string

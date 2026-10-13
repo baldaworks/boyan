@@ -46,13 +46,13 @@ func (s *RecallService) responseFromRecords(
 		score := float64(matched) / float64(len(tokens))
 		results = append(results, recallReference(record, memory.RankRecall(score, record.CreatedAt, now)))
 		seen[record.RevisionID] = struct{}{}
-
-		if len(results) == request.Limit {
-			break
-		}
 	}
 
 	memory.SortRecallReferences(results)
+
+	if len(results) > request.Limit {
+		results = results[:request.Limit]
+	}
 
 	return recallResponse(request.Scope, currentSeq, results), nil
 }

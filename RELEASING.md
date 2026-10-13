@@ -70,4 +70,7 @@ them.
 4. Local verification passes, including lint and architecture checks.
 5. Runtime regressions cover MCP streaming, bounded uploads, repeated waits,
    resource release, incremental sync, recovery and generation retention.
+   Functional regressions also cover native/legacy trace privacy, checkpoint
+   consistency, current-head temporal filtering, kind filtering/rebuild, bounded
+   ranking and growing boundary/reconciliation scopes.
 6. No legacy integration-only dependency is introduced.

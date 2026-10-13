@@ -3,7 +3,7 @@ package bleve
 const (
 	// BleveRecallProjectionSchema pins the application-owned projection
 	// document contract independently of Bleve's internal index metadata.
-	BleveRecallProjectionSchema  = "boyan-bleve/v1"
+	BleveRecallProjectionSchema  = "boyan-bleve/v2"
 	bleveActiveGenerationFile    = ".active-generation"
 	bleveScopedActivePrefix      = ".active-generation.scope."
 	bleveCommittedGenerationFile = ".committed"

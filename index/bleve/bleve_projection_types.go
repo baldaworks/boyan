@@ -1,6 +1,7 @@
 package bleve
 
 import (
+	memory "github.com/baldaworks/boyan/pkg/memory"
 	"sync"
 
 	"github.com/blevesearch/bleve/v2"
@@ -11,6 +12,8 @@ import (
 // returned IDs from canonical storage before exposing text.
 type BleveRecallProjection struct {
 	mu             sync.RWMutex
+	checkpoints    memory.RecallProjectionCheckpointReader
+	projectionID   string
 	root           string
 	batchSize      int
 	activeID       string

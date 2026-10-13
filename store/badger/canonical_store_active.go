@@ -65,7 +65,7 @@ func scanActiveHeads(
 			return err
 		}
 
-		if request.AfterItemID != "" && head.ItemID <= request.AfterItemID {
+		if request.AfterItemID != "" && head.ItemID == request.AfterItemID {
 			continue
 		}
 

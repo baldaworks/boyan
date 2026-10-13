@@ -8,8 +8,8 @@ type TraceOutput struct {
 
 	Scope              *memory.Scope         `json:"scope,omitempty"     jsonschema:"exact scope used for the trace"`
 	Root               *memory.RevisionRef   `json:"root,omitempty"      jsonschema:"requested revision identity"`
-	Revisions          []memory.SearchHit    `json:"revisions"           jsonschema:"untrusted derived revisions in the closed provenance graph"`  //nolint:lll // Schema tags must remain a single literal.
-	Sources            []memory.SourceRecord `json:"sources"             jsonschema:"untrusted raw source records in the closed provenance graph"` //nolint:lll // Schema tags must remain a single literal.
+	Revisions          []memory.SearchHit    `json:"revisions"           jsonschema:"untrusted canonical or legacy revisions in the closed provenance graph"` //nolint:lll // Schema tags must remain a single literal.
+	Sources            []memory.SourceRecord `json:"sources"             jsonschema:"untrusted raw source records in the closed provenance graph"`            //nolint:lll // Schema tags must remain a single literal.
 	DataClassification string                `json:"data_classification" jsonschema:"classification of recalled text"`
 	Notice             string                `json:"notice"              jsonschema:"fixed handling notice for recalled text"` //nolint:lll // Schema tags must remain a single literal.
 }

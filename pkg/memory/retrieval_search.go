@@ -19,10 +19,11 @@ type DerivedSearchRequest struct {
 
 // SearchHit is one full Store-owned revision plus an optional relevance score.
 type SearchHit struct {
-	Atom     *Atom     `json:"atom,omitempty"`
-	Scenario *Scenario `json:"scenario,omitempty"`
-	Profile  *Profile  `json:"profile,omitempty"`
-	Score    *float64  `json:"score,omitempty"`
+	Canonical *CanonicalTraceRevision `json:"canonical,omitempty"`
+	Atom      *Atom                   `json:"atom,omitempty"`
+	Scenario  *Scenario               `json:"scenario,omitempty"`
+	Profile   *Profile                `json:"profile,omitempty"`
+	Score     *float64                `json:"score,omitempty"`
 }
 
 // DerivedReference is one structured untrusted recall result.

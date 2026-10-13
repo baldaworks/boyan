@@ -3,25 +3,25 @@ package memory
 import "time"
 
 func (r RecallRecord) validateRecallTemporalWindow(request RecallRequest, now time.Time) error {
+	effective := now.UTC()
 	if request.AsOf != nil {
-		asOf := request.AsOf.UTC()
-		if r.Temporal.ValidFrom != nil && asOf.Before(r.Temporal.ValidFrom.UTC()) {
-			return PermanentError(CodeNotFound, "recall record is not valid at as_of", nil)
-		}
-
-		if r.Temporal.ValidUntil != nil && asOf.After(r.Temporal.ValidUntil.UTC()) {
-			return PermanentError(CodeNotFound, "recall record expired at as_of", nil)
-		}
-
-		if r.Temporal.ExpiresAt != nil && !asOf.Before(r.Temporal.ExpiresAt.UTC()) {
-			return PermanentError(CodeNotFound, "recall record expired at as_of", nil)
-		}
-
-		return nil
+		effective = request.AsOf.UTC()
 	}
 
-	if r.Temporal.ExpiresAt != nil && now.After(r.Temporal.ExpiresAt.UTC()) {
-		return PermanentError(CodeNotFound, "recall record has expired", nil)
+	if r.Temporal.ObservedAt.After(effective) {
+		return PermanentError(CodeNotFound, "recall record was observed after effective time", nil)
+	}
+
+	if r.Temporal.ValidFrom != nil && effective.Before(r.Temporal.ValidFrom.UTC()) {
+		return PermanentError(CodeNotFound, "recall record is not yet valid at effective time", nil)
+	}
+
+	if r.Temporal.ValidUntil != nil && !effective.Before(r.Temporal.ValidUntil.UTC()) {
+		return PermanentError(CodeNotFound, "recall record is no longer valid at effective time", nil)
+	}
+
+	if r.Temporal.ExpiresAt != nil && !effective.Before(r.Temporal.ExpiresAt.UTC()) {
+		return PermanentError(CodeNotFound, "recall record expired at effective time", nil)
 	}
 
 	return nil

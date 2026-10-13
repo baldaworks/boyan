@@ -18,28 +18,23 @@ func canonicalTraceHit(
 	category memory.AtomCategory,
 ) (memory.SearchHit, error) {
 	if view.compat == nil {
-		meta := memory.RevisionMeta{
-			SchemaVersion: memory.DerivedSchemaVersionV1,
-			Kind:          memory.DerivedKindAtom,
-			ItemID:        view.item.ItemID,
-			RevisionID:    view.revision.RevisionID,
-			Revision:      view.revision.Revision,
-			OperationID:   view.revision.RevisionID,
-			Scope:         scope,
-			State:         view.state,
-			Provenance:    provenance,
-			CreatedAt:     view.revision.Temporal.ObservedAt,
+		revision := memory.CanonicalTraceRevision{
+			SchemaVersion: memory.CanonicalSchemaVersionV1, Scope: scope,
+			ItemID: view.item.ItemID, RevisionID: view.revision.RevisionID, Revision: view.revision.Revision,
+			Kind: view.item.Kind, State: view.state, Text: string(text),
+			Sensitivity: view.revision.Sensitivity, Retention: view.revision.Retention,
+			CreatedAt: view.revision.Temporal.ObservedAt, Temporal: view.revision.Temporal, Provenance: provenance,
 		}
-		atom := memory.Atom{
-			Meta:     meta,
-			Category: category,
-			Text:     string(text),
-			Relation: memory.CandidateRelationNew,
+		for _, parent := range provenance.ParentRevisions {
+			if parent.ItemID == revision.ItemID {
+				copyOf := parent
+				revision.Supersedes = &copyOf
+
+				break
+			}
 		}
 
-		hit := memory.SearchHit{Atom: &atom}
-
-		return validatedCanonicalTraceHit(hit)
+		return memory.SearchHit{Canonical: &revision}, nil
 	}
 
 	return canonicalCompatibilityTraceHit(scope, view, provenance)

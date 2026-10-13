@@ -6,6 +6,10 @@ import (
 
 // Validate verifies one Store search hit and returns its full revision metadata.
 func (h SearchHit) Validate() (RevisionMeta, error) {
+	if h.Canonical != nil {
+		return RevisionMeta{}, invalidDerived("canonical revisions are trace-only")
+	}
+
 	populated := 0
 
 	var meta RevisionMeta

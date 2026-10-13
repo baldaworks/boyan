@@ -45,3 +45,15 @@ type RecallCanonicalReader interface {
 type RecallProjection interface {
 	SearchRecall(ctx context.Context, request RecallRequest) ([]RecallProjectionHit, error)
 }
+
+// ConsistentRecallProjection certifies its pinned physical view through the
+// request's minimum scope change sequence. Empty results are certified too.
+// Adapters without this optional capability cannot serve a nonzero minimum.
+type ConsistentRecallProjection interface {
+	SearchRecallConsistent(ctx context.Context, request RecallRequest) ([]RecallProjectionHit, error)
+}
+
+// RecallProjectionCheckpointReader exposes authoritative active checkpoints.
+type RecallProjectionCheckpointReader interface {
+	LoadActiveProjectionManifest(ctx context.Context, scope Scope, projectionID string) (ProjectionManifest, bool, error)
+}

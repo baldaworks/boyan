@@ -104,18 +104,7 @@ func assertCanonicalReaderHydration(
 		t.Fatalf("SearchDerived() = %#v, error = %v", search, err)
 	}
 
-	if _, err := reader.Trace(
-		context.Background(),
-		boyan.TraceRequest{
-			Scope:    scope,
-			Root:     boyan.RevisionRef{ItemID: item.ItemID, RevisionID: revision.RevisionID},
-			MaxNodes: 10,
-		},
-	); err == nil {
-		t.Fatal(
-			"Trace() unexpectedly accepted a canonical item without a representable legacy identity",
-		)
-	}
+	assertNativeReaderTrace(t, reader, scope, item, revision)
 }
 
 func canonicalReaderTestTurn(t *testing.T, scope boyan.Scope, completedAt time.Time) boyan.Turn {
@@ -220,4 +209,27 @@ func canonicalReaderTestSourcePayload(t *testing.T, turn boyan.Turn) []byte {
 	}
 
 	return sourcePayload
+}
+
+func assertNativeReaderTrace(t *testing.T,
+	reader *CanonicalReader,
+	scope boyan.Scope,
+	item boyan.MemoryItem,
+	revision boyan.MemoryRevision) {
+	t.Helper()
+
+	response, err := reader.Trace(context.Background(), boyan.TraceRequest{
+		Scope: scope, Root: boyan.RevisionRef{ItemID: item.ItemID, RevisionID: revision.RevisionID}, MaxNodes: 10,
+	})
+	if err != nil {
+		t.Fatalf("Trace() error = %v", err)
+	}
+
+	if len(response.Revisions) != 1 || response.Revisions[0].Canonical == nil {
+		t.Fatalf("native trace = %+v", response)
+	}
+
+	if err := response.Validate(10); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
 }

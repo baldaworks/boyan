@@ -13,11 +13,11 @@ func (s *RecallService) searchProjectionOrTail(
 	currentSeq uint64,
 	now time.Time,
 ) (memory.RecallResponse, error) {
-	if s.projection == nil {
+	if s.projection == nil && request.MinScopeChangeSeq == 0 {
 		return s.searchCanonicalTail(ctx, request, currentSeq, now)
 	}
 
-	hits, err := s.projection.SearchRecall(ctx, request)
+	hits, err := s.recallProjectionHits(ctx, request)
 	if err != nil {
 		return memory.RecallResponse{}, err
 	}
@@ -30,7 +30,7 @@ func (s *RecallService) searchProjectionOrTail(
 		)
 	}
 
-	if len(hits) == 0 {
+	if len(hits) == 0 && request.MinScopeChangeSeq == 0 {
 		return s.searchCanonicalTail(ctx, request, currentSeq, now)
 	}
 
@@ -49,4 +49,19 @@ func (s *RecallService) searchProjectionOrTail(
 	}
 
 	return s.responseFromProjection(request, records, byID, currentSeq, now)
+}
+
+func (s *RecallService) recallProjectionHits(ctx context.Context,
+	request memory.RecallRequest) ([]memory.RecallProjectionHit,
+	error) {
+	if request.MinScopeChangeSeq == 0 {
+		return s.projection.SearchRecall(ctx, request)
+	}
+
+	consistent, ok := s.projection.(memory.ConsistentRecallProjection)
+	if !ok {
+		return nil, memory.RetryableError(memory.CodeConflict, "recall projection cannot certify consistency", nil)
+	}
+
+	return consistent.SearchRecallConsistent(ctx, request)
 }

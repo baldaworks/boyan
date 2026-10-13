@@ -2,16 +2,24 @@ package badger
 
 import memory "github.com/baldaworks/boyan/pkg/memory"
 
-func traceItemByRevision(nodes []traceNode) map[string]string {
-	itemByRevision := make(map[string]string, len(nodes))
+func traceItemByRevision(nodes []traceNode) map[string]memory.RevisionRef {
+	itemByRevision := make(map[string]memory.RevisionRef, len(nodes))
 	for _, node := range nodes {
-		itemByRevision[node.view.revision.RevisionID] = node.view.item.ItemID
+		ref := memory.RevisionRef{ItemID: node.view.item.ItemID, RevisionID: node.view.revision.RevisionID}
+		if node.view.compat != nil {
+			ref = memory.RevisionRef{ItemID: node.view.compat.LegacyItemID, RevisionID: node.view.compat.LegacyRevisionID}
+		}
+
+		itemByRevision[node.view.revision.RevisionID] = ref
 	}
 
 	return itemByRevision
 }
 
-func traceRecords(scope memory.Scope, graph traceGraph, itemByRevision map[string]string) ([]memory.SearchHit, error) {
+func traceRecords(scope memory.Scope,
+	graph traceGraph,
+	itemByRevision map[string]memory.RevisionRef) ([]memory.SearchHit,
+	error) {
 	records := make([]memory.SearchHit, 0, len(graph.nodes))
 	for _, node := range graph.nodes {
 		provenance, err := traceProvenance(scope, node, itemByRevision, graph.sourcesByRef)
@@ -33,14 +41,14 @@ func traceRecords(scope memory.Scope, graph traceGraph, itemByRevision map[strin
 func traceProvenance(
 	scope memory.Scope,
 	node traceNode,
-	itemByRevision map[string]string,
+	itemByRevision map[string]memory.RevisionRef,
 	sourcesByRef map[memory.SourceRef]memory.SourceRecord,
 ) (memory.Provenance, error) {
 	provenance := memory.Provenance{
 		ParentRevisions: make([]memory.RevisionRef, 0, len(node.view.revision.Parents)),
 	}
 	for _, parentID := range node.view.revision.Parents {
-		parentItemID, ok := itemByRevision[parentID]
+		parentRef, ok := itemByRevision[parentID]
 		if !ok {
 			return memory.Provenance{}, memory.PermanentError(
 				memory.CodeNotFound,
@@ -49,10 +57,7 @@ func traceProvenance(
 			)
 		}
 
-		provenance.ParentRevisions = append(provenance.ParentRevisions, memory.RevisionRef{
-			ItemID:     parentItemID,
-			RevisionID: parentID,
-		})
+		provenance.ParentRevisions = append(provenance.ParentRevisions, parentRef)
 	}
 
 	for _, source := range node.view.sourceRefs {

@@ -32,6 +32,12 @@ func (p *BleveRecallProjection) SearchRecall(
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
+	return p.searchRecallLocked(ctx, normalized)
+}
+
+func (p *BleveRecallProjection) searchRecallLocked(ctx context.Context,
+	normalized memory.RecallRequest) ([]memory.RecallProjectionHit,
+	error) {
 	index := p.activeByScope[projectionScopeKey(normalized.Scope)]
 	if index == nil {
 		index = p.active

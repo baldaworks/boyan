@@ -47,13 +47,13 @@ func (s *RecallService) responseFromProjection(
 			recallReference(record, memory.RankRecall(hit.Score, record.CreatedAt, now)),
 		)
 		seen[record.RevisionID] = struct{}{}
-
-		if len(results) == request.Limit {
-			break
-		}
 	}
 
 	memory.SortRecallReferences(results)
+
+	if len(results) > request.Limit {
+		results = results[:request.Limit]
+	}
 
 	return recallResponse(request.Scope, currentSeq, results), nil
 }

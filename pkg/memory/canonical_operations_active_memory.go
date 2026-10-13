@@ -1,7 +1,7 @@
 package memory
 
 // ActiveMemoryScanRequest pages active item metadata and the evidence of each
-// active revision in deterministic item-ID order. It is the bounded context
+// active revision in deterministic encoded item-ID order. It is the bounded context
 // read used by the reconciler; implementations must not load full history.
 type ActiveMemoryScanRequest struct {
 	Scope       Scope

@@ -14,8 +14,18 @@ func (r *CanonicalReader) LoadCanonicalBoundaryView(
 	ctx context.Context,
 	scope memory.Scope,
 ) (memory.CanonicalBoundaryView, error) {
-	records, err := r.LoadActiveRecallRecords(ctx, scope, memory.MaxRecallCandidates)
-	if err != nil {
+	if err := canonicalReaderContext(ctx); err != nil {
+		return memory.CanonicalBoundaryView{}, err
+	}
+
+	if !r.hasOpenStore() {
+		return memory.CanonicalBoundaryView{},
+			memory.PermanentError(memory.CodeStoreFailure,
+				"canonical reader is closed",
+				nil)
+	}
+
+	if err := scope.Validate(); err != nil {
 		return memory.CanonicalBoundaryView{}, err
 	}
 
@@ -24,15 +34,33 @@ func (r *CanonicalReader) LoadCanonicalBoundaryView(
 		return memory.CanonicalBoundaryView{}, err
 	}
 
+	records, err := collectBoundaryRecallRecords(ctx, scope, r.store, r.loadActiveRecallRecords)
+	if err != nil {
+		return memory.CanonicalBoundaryView{}, err
+	}
+
+	return buildCanonicalBoundaryView(ctx, scope, state.Version, records)
+}
+
+func buildCanonicalBoundaryView(ctx context.Context,
+	scope memory.Scope,
+	version uint64,
+	records []memory.RecallRecord) (memory.CanonicalBoundaryView,
+	error) {
 	view := memory.CanonicalBoundaryView{
 		Snapshot: memory.ScopeSnapshot{
 			SchemaVersion: memory.DerivedSchemaVersionV1,
 			Scope:         scope,
-			Version:       state.Version,
+			Version:       version,
 		},
 		LegacyToCanonical: make(map[memory.RevisionRef]memory.RevisionRef),
 	}
+
 	for _, record := range records {
+		if err := canonicalReaderContext(ctx); err != nil {
+			return memory.CanonicalBoundaryView{}, err
+		}
+
 		entry, err := canonicalBoundaryEntry(scope, record)
 		if err != nil {
 			return memory.CanonicalBoundaryView{}, err

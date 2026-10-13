@@ -217,6 +217,16 @@ Physical retention keeps active and at most one previous generation per scope,
 while preserving durable references and in-flight builders. Startup reconciles
 committed marker switches before removing abandoned generations.
 
+Native kind is indexed by the disposable v2 schema; physical v1 generations
+rebuild from canonical state. Nonzero-minimum recall pins the physical
+generation and verifies the clean exact-scope checkpoint before and after the
+query. Adapters without this optional consistency capability fail closed.
+
+Boundary views page active metadata and aggregate at most 2048 records,
+independently of the model serializer byte limit. Reconciliation scans the same
+encoded item-ID order and retains only candidate matches; the scope version
+captured before scanning guards the final atomic mutation.
+
 The projection can lag and be repaired, but canonical state remains safe and
 authoritative. Readiness checks canonical maintenance diagnostics before
 accepting work.

@@ -1,36 +1,30 @@
 package memory
 
-func matchReconciliationItem(
-	scope Scope,
-	candidate SemanticCandidate,
+func matchReconciliationItem(matcher ActiveMemoryMatcher,
 	item *MemoryItem,
-	active []ActiveMemoryItem,
-) (*MemoryItem, error) {
+	active []ActiveMemoryItem) (*MemoryItem,
+	error) {
 	var match *MemoryItem
 
 	for _, existing := range active {
-		if err := existing.Item.Validate(); err != nil || existing.Item.Scope != scope {
-			return nil, PermanentError(CodeScopeViolation, "reconciliation active item is invalid or foreign", nil)
+		matched, err := matcher.Matches(existing)
+		if err != nil {
+			return nil, err
 		}
 
-		if candidate.Kind == MemoryKindState && existing.Item.MemoryKey == item.MemoryKey {
-			if match != nil {
-				return nil, invalidDerived("reconciliation has ambiguous active state matches")
-			}
-
-			matched := existing.Item
-			match = &matched
+		if !matched {
+			continue
 		}
 
-		if candidate.Kind == MemoryKindEvent &&
-			sameEventEvidence(existing.Evidence, candidate.Memory.Evidence) {
-			if match != nil {
-				return nil, invalidDerived("reconciliation has ambiguous active event matches")
-			}
+		if match != nil {
+			return nil, invalidDerived("reconciliation has ambiguous active matches")
+		}
 
+		copyOf := existing.Item
+		match = &copyOf
+
+		if matcher.kind == MemoryKindEvent {
 			item.ItemID = existing.Item.ItemID
-			matched := existing.Item
-			match = &matched
 		}
 	}
 

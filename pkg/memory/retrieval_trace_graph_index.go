@@ -47,7 +47,7 @@ func traceGraphRevisionEntry(scope Scope, hit SearchHit) (RevisionMeta, Revision
 		return RevisionMeta{}, RevisionRef{}, invalidDerived("trace revision cannot contain a search score")
 	}
 
-	meta, err := hit.Validate()
+	meta, err := hit.traceMeta()
 	if err != nil {
 		return RevisionMeta{}, RevisionRef{}, err
 	}

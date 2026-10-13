@@ -2,6 +2,8 @@ package badger
 
 import (
 	"context"
+	"errors"
+	"github.com/dgraph-io/badger/v4"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
@@ -20,18 +22,9 @@ func (r *CanonicalReader) loadSourceRecord(
 		return memory.SourceRecord{}, err
 	}
 
-	source, err := r.loadCanonicalTraceSource(scope, sourceID)
+	source, err := r.traceSourceIdentity(scope, ref, sourceID)
 	if err != nil {
 		return memory.SourceRecord{}, err
-	}
-	// Evidence keys normally use the canonical SourceID, whereas migrated
-	// payloads retain the original export ID. Try both identities so the
-	// adapter remains compatible with either representation.
-	if source.SourceID != ref.ExportID {
-		source, err = r.loadCanonicalTraceSource(scope, ref.ExportID)
-		if err != nil {
-			return memory.SourceRecord{}, err
-		}
 	}
 
 	payload, err := r.store.LoadPayload(ctx, source.Payload)
@@ -44,4 +37,27 @@ func (r *CanonicalReader) loadSourceRecord(
 	}
 
 	return r.nativeTraceSourceRecord(ctx, scope, ref, source, payload)
+}
+
+func (r *CanonicalReader) traceSourceIdentity(scope memory.Scope,
+	ref memory.SourceRef,
+	sourceID string) (memory.CanonicalSourceRecord,
+	error) {
+	source, err := r.loadCanonicalTraceSource(scope, sourceID)
+	if errors.Is(err, badger.ErrKeyNotFound) && sourceID != ref.ExportID {
+		source, err = r.loadCanonicalTraceSource(scope, ref.ExportID)
+	}
+
+	if err != nil {
+		return memory.CanonicalSourceRecord{}, err
+	}
+
+	if source.Scope != scope || source.SourceID != sourceID && source.SourceID != ref.ExportID {
+		return memory.CanonicalSourceRecord{},
+			memory.PermanentError(memory.CodeScopeViolation,
+				"trace source identity does not match",
+				nil)
+	}
+
+	return source, nil
 }

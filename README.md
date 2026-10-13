@@ -29,7 +29,11 @@ downstream integration work are outside this standalone quick-start scope.
 
 Requests use exact scopes: a key such as `telegram:123:0` plus `personal` or
 `group`. See the [scope and lifecycle contracts](docs/API.md) and
-[upload, shutdown and projection operations](docs/OPERATIONS.md).
+[upload, shutdown and projection operations](docs/OPERATIONS.md). Search uses
+current active memory: `as_of` filters those heads without reconstructing past
+state. Minimum-watermark searches fail with a retryable conflict until the
+index can certify the requested checkpoint. Boundary count and model-input
+byte limits remain independent; see the [recall and model-input contracts](docs/API.md).
 
 ## Install and build
 

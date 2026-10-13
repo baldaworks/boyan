@@ -2,6 +2,7 @@ package canonicalcore_test
 
 import (
 	"context"
+	"sort"
 
 	. "github.com/baldaworks/boyan/pkg/memory"
 )
@@ -109,14 +110,36 @@ func (s *processorTestStore) ScanActiveHeads(context.Context, ActiveHeadScanRequ
 	return nil, nil
 }
 
-func (s *processorTestStore) ScanActiveMemory(
-	context.Context,
-	ActiveMemoryScanRequest,
-) (
-	[]ActiveCanonicalMemory,
-	error,
-) {
-	return append([]ActiveCanonicalMemory(nil), s.active...), nil
+func (s *processorTestStore) ScanActiveMemory(_ context.Context,
+	request ActiveMemoryScanRequest) ([]ActiveCanonicalMemory,
+	error) {
+	ordered := append([]ActiveCanonicalMemory(nil), s.active...)
+	sort.Slice(ordered,
+		func(i,
+			j int) bool {
+			a,
+				b := ordered[i].Item.ItemID,
+				ordered[j].Item.ItemID
+
+			return len(a) < len(b) || len(a) == len(b) && a < b
+		})
+
+	page := make([]ActiveCanonicalMemory, 0, request.Limit)
+
+	for _, active := range ordered {
+		id := active.Item.ItemID
+		if len(id) < len(request.AfterItemID) || len(id) == len(request.AfterItemID) && id <= request.AfterItemID {
+			continue
+		}
+
+		if len(page) == int(request.Limit) {
+			break
+		}
+
+		page = append(page, active)
+	}
+
+	return page, nil
 }
 
 func (s *processorTestStore) ClaimDeliveryOutbox(context.Context, DeliveryClaimRequest) ([]ClaimedDelivery, error) {

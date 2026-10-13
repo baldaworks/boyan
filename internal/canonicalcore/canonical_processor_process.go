@@ -51,12 +51,12 @@ func (p *CanonicalTurnProcessor) processPreparedTurn(
 	turn Turn,
 	derivation DerivationRef,
 ) (CanonicalMutationOutcome, error) {
-	scopeState, active, activeView, err := p.loadCanonicalActiveView(ctx, turn.Scope)
+	candidates, err := p.extractCanonicalCandidates(ctx, turn, derivation)
 	if err != nil {
 		return CanonicalMutationOutcome{}, err
 	}
 
-	candidates, err := p.extractCanonicalCandidates(ctx, turn, derivation)
+	scopeState, active, activeView, err := p.loadCanonicalActiveView(ctx, turn, candidates)
 	if err != nil {
 		return CanonicalMutationOutcome{}, err
 	}

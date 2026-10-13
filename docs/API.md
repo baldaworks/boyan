@@ -115,6 +115,61 @@ Current tool set:
 - scope forget also requires `confirm_scope_key`
 - forgotten timestamps are assigned server-side
 
+## Recall consistency, time and ranking
+
+`boyan.search` and `Host.Search` operate on current active revisions in one
+exact scope. MCP `memory_kind` (Go `RecallRequest.Kind`) selects native
+`state` or `event` memories. Candidates are
+validated against canonical storage and ranked before applying the requested
+result limit. Ranking covers the admitted bounded candidate set (up to 256),
+not every possible match in an arbitrarily large scope.
+
+One effective time is used per request: `as_of` when supplied, otherwise the
+current time captured at search start. A revision must have been observed by
+that time. Optional validity windows are half-open `[valid_from, valid_until)`;
+`expires_at` also excludes equality. Absent bounds add no restriction.
+
+`as_of` filters current heads; it does not reconstruct superseded state. For
+example, after “I live in Bishkek” at T1 is replaced by “I live in Osh” at T2,
+a request between T1 and T2 may return no residence. It cannot return the
+future Osh assertion; it does not recover the former Bishkek revision.
+
+With `min_scope_change_seq=N`, successful search requires a physical search
+view certified through N by its clean active checkpoint. Canonical sequence or
+one returned record's sequence alone is insufficient. During index lag,
+rebuild or a concurrent checkpoint change, the request returns a retryable
+`conflict`; retry after projection synchronization. A certified empty result
+remains empty. Without a nonzero minimum, bounded canonical fallback remains
+available. Portable `RecallProjection` adapters must implement the optional
+`ConsistentRecallProjection` capability to serve nonzero minimum requests.
+
+## Trace representation
+
+Trace revisions contain exactly one revision arm and no search score. Native
+revisions use the additive `canonical` arm with canonical item/revision IDs,
+revision number, scope, native kind, state, text, temporal metadata, creation
+time, sensitivity, retention, provenance and optional same-item `supersedes`.
+The root identity is the identity returned by native search. Existing migrated
+revisions retain their `atom`, `scenario` or `profile` representation and strict
+legacy identity validation. A closed graph can contain both representations.
+
+Sensitive or forgotten records/sources are unavailable to trace; a failure
+returns no partial graph. Recalled text and raw source messages remain
+untrusted reference data.
+
+## Boundary model-input limits
+
+Boundary synthesis collects active memory in bounded pages of at most 256,
+with a combined model-view limit of 2048 atoms, scenarios and profiles.
+Overflow returns `limit_exceeded` rather than silently omitting eligible
+records. Turn reconciliation also traverses bounded active pages to locate
+state-key or event-evidence matches beyond the first page.
+
+The serialized model-input byte limit is independent: at most 256 KiB by
+default. A valid view of 2048
+records can exceed this byte limit and fail before invoking the model. The
+count limit does not promise that arbitrary content of that size will fit.
+
 ## Safe defaults
 
 - loopback listener only

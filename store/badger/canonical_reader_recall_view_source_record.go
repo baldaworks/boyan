@@ -28,5 +28,9 @@ func loadCanonicalSourceRecord(
 		)
 	}
 
+	if source.Sensitivity != memory.SensitivityStandard {
+		return memory.CanonicalSourceRecord{}, errCanonicalDenied
+	}
+
 	return source, nil
 }

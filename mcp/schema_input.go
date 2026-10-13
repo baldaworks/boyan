@@ -21,11 +21,11 @@ type SearchInput struct {
 	Limit             int                  `json:"limit,omitempty"                jsonschema:"maximum references to return; defaults to 10 and is bounded by the server"` //nolint:lll // Schema tags must remain a single literal.
 	MemoryKind        *memory.MemoryKind   `json:"memory_kind,omitempty"          jsonschema:"canonical state or event kind filter"`                                      //nolint:lll // Schema tags must remain a single literal.
 	Category          *memory.AtomCategory `json:"category,omitempty"             jsonschema:"atom category filter"`
-	AsOf              *time.Time           `json:"as_of,omitempty"                jsonschema:"explicit validity timestamp"`
+	AsOf              *time.Time           `json:"as_of,omitempty"                jsonschema:"current-head validity time"`
 	SourceID          string               `json:"source_id,omitempty"            jsonschema:"exact source filter"`
 	ConversationID    string               `json:"conversation_id,omitempty"      jsonschema:"exact conversation filter"`
-	MemoryKey         string               `json:"memory_key,omitempty"           jsonschema:"canonical state memory key filter"`       //nolint:lll // Schema tags must remain a single literal.
-	MinScopeChangeSeq uint64               `json:"min_scope_change_seq,omitempty" jsonschema:"minimum canonical scope change sequence"` //nolint:lll // Schema tags must remain a single literal.
+	MemoryKey         string               `json:"memory_key,omitempty"           jsonschema:"canonical state memory key filter"`                                        //nolint:lll // Schema tags must remain a single literal.
+	MinScopeChangeSeq uint64               `json:"min_scope_change_seq,omitempty" jsonschema:"minimum search checkpoint sequence; retryable conflict while uncertified"` //nolint:lll // Schema tags must remain a single literal.
 }
 
 // TraceInput is the complete public argument surface of boyan.trace.

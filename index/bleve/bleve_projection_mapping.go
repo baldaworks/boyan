@@ -30,6 +30,7 @@ func bleveRecallKeywordFields() []string {
 		bleveFieldItemID,
 		bleveFieldRevisionID,
 		bleveFieldRevision,
+		bleveFieldKind,
 		bleveFieldCategory,
 		bleveFieldMemoryKey,
 		bleveFieldCreatedAt,

@@ -16,6 +16,10 @@ func loadCanonicalViewCore(
 		return err
 	}
 
+	if view.revision.Sensitivity != memory.SensitivityStandard {
+		return errCanonicalDenied
+	}
+
 	if err := loadCanonicalViewItem(txn, scope, view); err != nil {
 		return err
 	}
