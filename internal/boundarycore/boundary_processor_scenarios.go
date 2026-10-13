@@ -5,7 +5,7 @@ import . "github.com/baldaworks/boyan/pkg/memory"
 func (e *BoundaryProcessor) groundScenarioCandidates(
 	boundary Boundary,
 	operationID string,
-	snapshot ScopeSnapshot,
+	snapshot BoundarySnapshot,
 	candidates []ScenarioCandidate,
 ) ([]Scenario, []RevisionTransition, error) {
 	state, err := loadScenarioGroundingState(snapshot)

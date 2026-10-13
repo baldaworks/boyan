@@ -23,14 +23,19 @@ func (e *BoundaryProcessor) ProcessBoundary(ctx context.Context, boundary Bounda
 		return partial, err
 	}
 
-	scenarios, err := e.processScenarioStage(ctx, boundary)
+	at := e.clock().UTC()
+	if at.IsZero() {
+		return partial, invalidDerived("boundary processing time is required")
+	}
+
+	scenarios, err := e.processScenarioStage(ctx, boundary, at)
 
 	partial.Scenarios = scenarios
 	if err != nil {
 		return partial, err
 	}
 
-	profile, err := e.processProfileStage(ctx, boundary)
+	profile, err := e.processProfileStage(ctx, boundary, at)
 
 	partial.Profile = profile
 	if err != nil {

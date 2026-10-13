@@ -2,27 +2,31 @@ package boundarycore
 
 import (
 	"context"
+	"time"
 
 	. "github.com/baldaworks/boyan/pkg/memory"
 )
 
-func (e *BoundaryProcessor) loadBoundarySnapshot(ctx context.Context, scope Scope) (ScopeSnapshot, error) {
-	snapshot, err := e.store.LoadScope(ctx, scope)
+func (e *BoundaryProcessor) loadBoundarySnapshot(ctx context.Context,
+	scope Scope,
+	at time.Time) (BoundarySnapshot,
+	error) {
+	snapshot, err := e.store.LoadBoundarySnapshot(ctx, scope, at)
 	if err != nil {
-		return ScopeSnapshot{}, boundaryStoreFailure(ctx, err)
+		return BoundarySnapshot{}, boundaryStoreFailure(ctx, err)
 	}
 
 	if err := checkBoundaryContext(ctx); err != nil {
-		return ScopeSnapshot{}, err
+		return BoundarySnapshot{}, err
 	}
 
-	snapshot = cloneScopeSnapshot(snapshot)
-	if err := snapshot.Validate(e.config.MaxSnapshotItems); err != nil {
-		return ScopeSnapshot{}, err
+	snapshot = cloneBoundarySnapshot(snapshot)
+	if err := snapshot.Validate(e.config.MaxSnapshotItems, at); err != nil {
+		return BoundarySnapshot{}, err
 	}
 
-	if snapshot.Scope != scope {
-		return ScopeSnapshot{}, PermanentError(CodeScopeViolation, "Store snapshot scope does not match the boundary", nil)
+	if snapshot.Structural.Scope != scope {
+		return BoundarySnapshot{}, PermanentError(CodeScopeViolation, "Store snapshot scope does not match the boundary", nil)
 	}
 
 	return snapshot, nil

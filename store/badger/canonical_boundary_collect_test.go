@@ -212,3 +212,50 @@ func assertBoundarySerializedLimit(t *testing.T, snapshot m.ScopeSnapshot) {
 			err)
 	}
 }
+
+func TestBoundaryCollectorRejectsUnexpectedHydratedRevision(t *testing.T) {
+	t.Parallel()
+
+	scope := m.Scope{Key: "test:hydration", Kind: m.ScopeKindPersonal}
+
+	for _, change := range []string{"revision", "item", "duplicate", "inactive"} {
+		t.Run(change, func(t *testing.T) {
+			hydrate := func(ctx context.Context, requested m.Scope, page []m.ActiveCanonicalMemory) ([]m.RecallRecord, error) {
+				records, err := boundaryTestHydrate(ctx, requested, page)
+
+				switch change {
+				case "revision":
+					records[0].RevisionID = "unrequested-revision"
+				case "item":
+					records[0].ItemID = "unrequested-item"
+				case "duplicate":
+					records = append(records, records[0])
+				case "inactive":
+					records[0].State = m.RevisionStateSuperseded
+				}
+
+				return records, err
+			}
+
+			_, err := collectBoundaryRecallRecords(context.Background(), scope, &boundaryTestScanner{count: 1}, hydrate)
+			if code, _, ok := m.ClassifyError(err); !ok || code != m.CodeStoreFailure {
+				t.Fatalf("unrequested/inactive hydration accepted: %v", err)
+			}
+		})
+	}
+}
+
+func TestBoundaryCollectorBoundsHeadsWhenHydrationOmitsRecords(t *testing.T) {
+	t.Parallel()
+
+	scanner := &boundaryTestScanner{count: m.MaxSnapshotItems + 1}
+	hydrate := func(context.Context, m.Scope, []m.ActiveCanonicalMemory) ([]m.RecallRecord, error) {
+		return nil, nil
+	}
+
+	_, err := collectBoundaryRecallRecords(context.Background(),
+		m.Scope{Key: "test:omitted-hydration", Kind: m.ScopeKindPersonal}, scanner, hydrate)
+	if code, _, ok := m.ClassifyError(err); !ok || code != m.CodeLimitExceeded {
+		t.Fatalf("omitted hydration bypassed active-head budget: calls=%d error=%v", scanner.calls, err)
+	}
+}

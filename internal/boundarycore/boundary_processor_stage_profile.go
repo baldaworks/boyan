@@ -2,12 +2,16 @@ package boundarycore
 
 import (
 	"context"
+	"time"
 
 	. "github.com/baldaworks/boyan/pkg/memory"
 )
 
-func (e *BoundaryProcessor) processProfileStage(ctx context.Context, boundary Boundary) (OperationOutcome, error) {
-	operationID, snapshot, prior, found, err := e.prepareBoundaryStage(ctx, boundary, OperationStageProfile)
+func (e *BoundaryProcessor) processProfileStage(ctx context.Context,
+	boundary Boundary,
+	at time.Time) (OperationOutcome,
+	error) {
+	operationID, snapshot, prior, found, err := e.prepareBoundaryStage(ctx, boundary, OperationStageProfile, at)
 	if err != nil || found {
 		return prior, err
 	}
@@ -16,7 +20,7 @@ func (e *BoundaryProcessor) processProfileStage(ctx context.Context, boundary Bo
 		SchemaVersion: DerivedSchemaVersionV1,
 		Derivation:    e.config.Derivation,
 		Boundary:      boundary,
-		View:          scopeViewFromSnapshot(snapshot),
+		View:          cloneScopeView(snapshot.Eligible),
 	})
 	if err != nil {
 		return OperationOutcome{}, boundaryModelFailure(ctx, err)
@@ -32,11 +36,12 @@ func (e *BoundaryProcessor) processProfileStage(ctx context.Context, boundary Bo
 	}
 
 	commit := CommitRequest{
+		ProcessingAt:         at,
 		SchemaVersion:        DerivedSchemaVersionV1,
 		OperationID:          operationID,
 		Stage:                OperationStageProfile,
 		Scope:                boundary.Scope,
-		ExpectedScopeVersion: snapshot.Version,
+		ExpectedScopeVersion: snapshot.Structural.Version,
 		Profiles:             profiles,
 		Transitions:          transitions,
 	}

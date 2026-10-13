@@ -9,7 +9,7 @@ type scenarioGroundingState struct {
 	maxRevision     map[string]uint64
 }
 
-func loadScenarioGroundingState(snapshot ScopeSnapshot) (scenarioGroundingState, error) {
+func loadScenarioGroundingState(snapshot BoundarySnapshot) (scenarioGroundingState, error) {
 	state := scenarioGroundingState{
 		activeAtoms:     make(map[RevisionRef]struct{}),
 		activeScenarios: make(map[RevisionRef]Scenario),
@@ -17,13 +17,13 @@ func loadScenarioGroundingState(snapshot ScopeSnapshot) (scenarioGroundingState,
 		maxRevision:     make(map[string]uint64),
 	}
 
-	for _, atom := range snapshot.Atoms {
+	for _, atom := range snapshot.Eligible.Atoms {
 		if atom.Meta.State == RevisionStateActive {
 			state.activeAtoms[revisionRef(atom.Meta)] = struct{}{}
 		}
 	}
 
-	for _, scenario := range snapshot.Scenarios {
+	for _, scenario := range snapshot.Structural.Scenarios {
 		ref := revisionRef(scenario.Meta)
 		if scenario.Meta.Revision > state.maxRevision[scenario.Meta.ItemID] {
 			state.maxRevision[scenario.Meta.ItemID] = scenario.Meta.Revision

@@ -23,7 +23,8 @@ func (d *Deriver) SynthesizeScenarios(
 	var output scenariosOutput
 	if err := d.invokeLegacyStage(ctx, request, memory.OperationStageScenarios,
 		request.Boundary.ExportID,
-		DefaultDerivationInstruction+" Synthesize same-scope topic scenarios from the active view.",
+		DefaultDerivationInstruction+" Synthesize same-scope topic scenarios from the active view."+
+			boundaryTemporalInstruction,
 		request.Derivation, &output); err != nil {
 		return nil, err
 	}
@@ -48,10 +49,13 @@ func (d *Deriver) SynthesizeProfile(
 	var output profileOutput
 	if err := d.invokeLegacyStage(ctx, request, memory.OperationStageProfile,
 		request.Boundary.ExportID,
-		DefaultDerivationInstruction+" Synthesize one same-scope long-lived profile.",
+		DefaultDerivationInstruction+" Synthesize one same-scope long-lived profile."+boundaryTemporalInstruction,
 		request.Derivation, &output); err != nil {
 		return nil, err
 	}
 
 	return &output.Output, nil
 }
+
+const boundaryTemporalInstruction = " Preserve dated historical and planned event meaning from temporal context." +
+	" Event time describes the event; do not present it as a newly observed undated current fact."

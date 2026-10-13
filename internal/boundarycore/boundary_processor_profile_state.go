@@ -10,7 +10,7 @@ type profileGroundingState struct {
 	activeScenarios map[RevisionRef]struct{}
 }
 
-func loadProfileGroundingState(boundary Boundary, snapshot ScopeSnapshot) (profileGroundingState, error) {
+func loadProfileGroundingState(boundary Boundary, snapshot BoundarySnapshot) (profileGroundingState, error) {
 	itemID, err := ProfileItemID(boundary.Scope)
 	if err != nil {
 		return profileGroundingState{}, err
@@ -22,19 +22,19 @@ func loadProfileGroundingState(boundary Boundary, snapshot ScopeSnapshot) (profi
 		activeScenarios: make(map[RevisionRef]struct{}),
 	}
 
-	for _, atom := range snapshot.Atoms {
+	for _, atom := range snapshot.Eligible.Atoms {
 		if atom.Meta.State == RevisionStateActive {
 			state.activeAtoms[revisionRef(atom.Meta)] = struct{}{}
 		}
 	}
 
-	for _, scenario := range snapshot.Scenarios {
+	for _, scenario := range snapshot.Eligible.Scenarios {
 		if scenario.Meta.State == RevisionStateActive {
 			state.activeScenarios[revisionRef(scenario.Meta)] = struct{}{}
 		}
 	}
 
-	if err := state.loadProfiles(snapshot.Profiles); err != nil {
+	if err := state.loadProfiles(snapshot.Structural.Profiles); err != nil {
 		return profileGroundingState{}, err
 	}
 

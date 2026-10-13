@@ -33,7 +33,7 @@ func appendBoundaryProfileMutation(
 			ItemID:        profile.Meta.ItemID,
 			Revision:      profile.Meta.Revision,
 			Parents:       revisionIDs(parentRefs[profile.Meta.RevisionID]),
-			Temporal:      memory.Temporal{ObservedAt: profile.Meta.CreatedAt},
+			Temporal:      memory.Temporal{ObservedAt: request.ProcessingAt},
 			Evidence:      append([]memory.EvidenceRef(nil), evidence[profile.Meta.RevisionID]...),
 			Sensitivity:   memory.SensitivityStandard,
 			Retention:     memory.RetentionClassStandard,

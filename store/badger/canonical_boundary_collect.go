@@ -19,6 +19,7 @@ func collectBoundaryRecallRecords(ctx context.Context,
 	error) {
 	records := make([]memory.RecallRecord, 0, memory.MaxSnapshotItems)
 	cursor := ""
+	scanned := 0
 
 	for {
 		if err := canonicalReaderContext(ctx); err != nil {
@@ -29,7 +30,7 @@ func collectBoundaryRecallRecords(ctx context.Context,
 			err := scanner.ScanActiveMemory(ctx,
 			memory.ActiveMemoryScanRequest{Scope: scope,
 				AfterItemID: cursor,
-				Limit:       min(memory.MaxCanonicalReadRecords, uint32(memory.MaxSnapshotItems-len(records)+1))})
+				Limit:       min(memory.MaxCanonicalReadRecords, uint32(memory.MaxSnapshotItems-scanned+1))})
 		if err != nil {
 			return nil, err
 		}
@@ -42,19 +43,18 @@ func collectBoundaryRecallRecords(ctx context.Context,
 			return nil, err
 		}
 
+		scanned += len(page)
+		if scanned > memory.MaxSnapshotItems {
+			return nil, memory.PermanentError(memory.CodeLimitExceeded,
+				"canonical boundary scan exceeds active item limit", nil)
+		}
+
 		hydrated, err := hydrate(ctx, scope, page)
 		if err != nil {
 			return nil, err
 		}
 
-		if len(records)+len(hydrated) > memory.MaxSnapshotItems {
-			return nil,
-				memory.PermanentError(memory.CodeLimitExceeded,
-					"canonical boundary view exceeds model item limit",
-					nil)
-		}
-
-		if err := validateBoundaryHydration(scope, hydrated); err != nil {
+		if err := validateBoundaryHydration(scope, page, hydrated); err != nil {
 			return nil, err
 		}
 
@@ -100,13 +100,29 @@ func validateBoundaryPage(scope memory.Scope, cursor string, page []memory.Activ
 	return nil
 }
 
-func validateBoundaryHydration(scope memory.Scope, hydrated []memory.RecallRecord) error {
+func validateBoundaryHydration(scope memory.Scope, page []memory.ActiveCanonicalMemory,
+	hydrated []memory.RecallRecord) error {
+	requested := make(map[memory.RevisionRef]bool, len(page))
+	for _, active := range page {
+		requested[memory.RevisionRef{ItemID: active.Item.ItemID, RevisionID: active.RevisionID}] = false
+	}
+
 	for _, record := range hydrated {
 		if record.Scope != scope {
 			return memory.PermanentError(memory.CodeScopeViolation,
 				"boundary record scope does not match",
 				nil)
 		}
+
+		ref := memory.RevisionRef{ItemID: record.ItemID, RevisionID: record.RevisionID}
+
+		seen, found := requested[ref]
+		if !found || seen || record.State != memory.RevisionStateActive {
+			return memory.PermanentError(memory.CodeStoreFailure,
+				"boundary hydration does not match the requested active revision", nil)
+		}
+
+		requested[ref] = true
 	}
 
 	return nil

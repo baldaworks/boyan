@@ -2,6 +2,7 @@ package badger
 
 import (
 	"context"
+	"time"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
@@ -14,6 +15,23 @@ func (r *CanonicalReader) LoadCanonicalBoundaryView(
 	ctx context.Context,
 	scope memory.Scope,
 ) (memory.CanonicalBoundaryView, error) {
+	return r.loadCanonicalBoundaryView(ctx, scope, nil)
+}
+
+// LoadCanonicalBoundaryViewAt separates bounded structural heads from factual
+// context eligible at the single processing instant chosen by the caller.
+func (r *CanonicalReader) LoadCanonicalBoundaryViewAt(ctx context.Context,
+	scope memory.Scope, at time.Time) (memory.CanonicalBoundaryView, error) {
+	if at.IsZero() {
+		return memory.CanonicalBoundaryView{}, memory.PermanentError(memory.CodeInvalidDerived,
+			"boundary processing time is required", nil)
+	}
+
+	return r.loadCanonicalBoundaryView(ctx, scope, &at)
+}
+
+func (r *CanonicalReader) loadCanonicalBoundaryView(ctx context.Context,
+	scope memory.Scope, at *time.Time) (memory.CanonicalBoundaryView, error) {
 	if err := canonicalReaderContext(ctx); err != nil {
 		return memory.CanonicalBoundaryView{}, err
 	}
@@ -39,7 +57,12 @@ func (r *CanonicalReader) LoadCanonicalBoundaryView(
 		return memory.CanonicalBoundaryView{}, err
 	}
 
-	return buildCanonicalBoundaryView(ctx, scope, state.Version, records)
+	view, err := buildCanonicalBoundaryView(ctx, scope, state.Version, records)
+	if err != nil || at == nil {
+		return view, err
+	}
+
+	return temporalCanonicalBoundaryView(view, records, *at)
 }
 
 func buildCanonicalBoundaryView(ctx context.Context,

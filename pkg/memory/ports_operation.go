@@ -1,6 +1,9 @@
 package memory
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // OperationLookup asks whether one exact-scope stage already committed.
 type OperationLookup struct {
@@ -25,6 +28,8 @@ type RevisionTransition struct {
 
 // CommitRequest atomically applies one idempotent exact-scope operation.
 type CommitRequest struct {
+	// ProcessingAt is the captured current instant for one boundary attempt.
+	ProcessingAt         time.Time            `json:"-"`
 	SchemaVersion        string               `json:"schema_version"`
 	OperationID          string               `json:"operation_id"`
 	Stage                OperationStage       `json:"stage"`

@@ -5,7 +5,7 @@ import . "github.com/baldaworks/boyan/pkg/memory"
 func (e *BoundaryProcessor) groundProfileCandidate(
 	boundary Boundary,
 	operationID string,
-	snapshot ScopeSnapshot,
+	snapshot BoundarySnapshot,
 	candidate *ProfileCandidate,
 ) ([]Profile, []RevisionTransition, error) {
 	if candidate == nil {

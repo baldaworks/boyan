@@ -6,6 +6,11 @@ func resolveProfileCandidateParents(
 	state profileGroundingState,
 	candidate ProfileCandidate,
 ) (*RevisionRef, []RevisionRef, []RevisionTransition, error) {
+	if candidate.Supersedes == nil && state.active != nil {
+		target := *state.active
+		candidate.Supersedes = &target
+	}
+
 	var supersedes *RevisionRef
 
 	transitions := []RevisionTransition(nil)

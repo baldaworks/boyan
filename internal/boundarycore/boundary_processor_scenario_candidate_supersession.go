@@ -8,6 +8,10 @@ func resolveScenarioCandidateParents(
 	candidate ScenarioCandidate,
 	transitioned map[RevisionRef]struct{},
 ) (*RevisionRef, []RevisionRef, []RevisionTransition, error) {
+	if candidate.Supersedes == nil {
+		candidate.Supersedes = structuralScenarioTarget(state, itemID)
+	}
+
 	var supersedes *RevisionRef
 
 	parents := append([]RevisionRef(nil), candidate.Atoms...)
@@ -43,4 +47,13 @@ func resolveScenarioCandidateParents(
 	}
 
 	return supersedes, parents, transitions, nil
+}
+
+func structuralScenarioTarget(state scenarioGroundingState, itemID string) *RevisionRef {
+	target, exists := state.activeItems[itemID]
+	if !exists {
+		return nil
+	}
+
+	return &target
 }

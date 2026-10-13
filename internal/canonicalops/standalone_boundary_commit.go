@@ -17,12 +17,21 @@ func (s *CanonicalBoundaryStore) Commit(
 		return memory.OperationOutcome{}, err
 	}
 
+	if request.ProcessingAt.IsZero() {
+		return memory.OperationOutcome{},
+			memory.PermanentError(memory.CodeInvalidDerived, "boundary processing time is required", nil)
+	}
+
 	if len(request.Scenarios)+len(request.Profiles) == 0 {
 		return s.commitCanonicalOperation(ctx, request)
 	}
 
-	view, err := s.reader.LoadCanonicalBoundaryView(ctx, request.Scope)
+	view, err := s.reader.LoadCanonicalBoundaryViewAt(ctx, request.Scope, request.ProcessingAt)
 	if err != nil {
+		return memory.OperationOutcome{}, err
+	}
+
+	if err := validateBoundaryGroundingAt(request, view.Boundary); err != nil {
 		return memory.OperationOutcome{}, err
 	}
 

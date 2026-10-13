@@ -35,7 +35,7 @@ func appendBoundaryScenarioMutation(
 			ItemID:        scenario.Meta.ItemID,
 			Revision:      scenario.Meta.Revision,
 			Parents:       revisionIDs(parentRefs[scenario.Meta.RevisionID]),
-			Temporal:      memory.Temporal{ObservedAt: scenario.Meta.CreatedAt},
+			Temporal:      memory.Temporal{ObservedAt: request.ProcessingAt},
 			Evidence:      append([]memory.EvidenceRef(nil), evidence[scenario.Meta.RevisionID]...),
 			Sensitivity:   memory.SensitivityStandard,
 			Retention:     memory.RetentionClassStandard,

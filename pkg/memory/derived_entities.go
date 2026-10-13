@@ -12,6 +12,7 @@ type DerivationRef struct {
 
 // Atom is one independently searchable derived statement.
 type Atom struct {
+	Temporal        *Temporal         `json:"temporal,omitempty"`
 	Meta            RevisionMeta      `json:"meta"`
 	Category        AtomCategory      `json:"category"`
 	Text            string            `json:"text"`
@@ -21,6 +22,7 @@ type Atom struct {
 
 // Scenario is one topic or project context revision.
 type Scenario struct {
+	Temporal *Temporal    `json:"temporal,omitempty"`
 	Meta     RevisionMeta `json:"meta"`
 	TopicKey string       `json:"topic_key"`
 	Title    string       `json:"title"`
@@ -29,6 +31,7 @@ type Scenario struct {
 
 // Profile is one long-lived exact-scope synthesis revision.
 type Profile struct {
-	Meta    RevisionMeta `json:"meta"`
-	Summary string       `json:"summary"`
+	Temporal *Temporal    `json:"temporal,omitempty"`
+	Meta     RevisionMeta `json:"meta"`
+	Summary  string       `json:"summary"`
 }

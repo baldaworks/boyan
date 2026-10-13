@@ -2,6 +2,7 @@ package boundarycore
 
 import (
 	"context"
+	"time"
 
 	. "github.com/baldaworks/boyan/pkg/memory"
 )
@@ -10,20 +11,21 @@ func (e *BoundaryProcessor) prepareBoundaryStage(
 	ctx context.Context,
 	boundary Boundary,
 	stage OperationStage,
-) (string, ScopeSnapshot, OperationOutcome, bool, error) {
+	at time.Time,
+) (string, BoundarySnapshot, OperationOutcome, bool, error) {
 	operationID, err := ProcessingOperationID(stage, boundary.ExportID, e.config.Derivation)
 	if err != nil {
-		return "", ScopeSnapshot{}, OperationOutcome{}, false, err
+		return "", BoundarySnapshot{}, OperationOutcome{}, false, err
 	}
 
 	prior, found, err := e.lookupBoundaryStage(ctx, boundary.Scope, stage, operationID)
 	if err != nil || found {
-		return operationID, ScopeSnapshot{}, prior, found, err
+		return operationID, BoundarySnapshot{}, prior, found, err
 	}
 
-	snapshot, err := e.loadBoundarySnapshot(ctx, boundary.Scope)
+	snapshot, err := e.loadBoundarySnapshot(ctx, boundary.Scope, at)
 	if err != nil {
-		return "", ScopeSnapshot{}, OperationOutcome{}, false, err
+		return "", BoundarySnapshot{}, OperationOutcome{}, false, err
 	}
 
 	return operationID, snapshot, OperationOutcome{}, false, nil

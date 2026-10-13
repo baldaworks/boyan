@@ -1,6 +1,9 @@
 package boundarycore
 
-import . "github.com/baldaworks/boyan/pkg/memory"
+import (
+	. "github.com/baldaworks/boyan/pkg/memory"
+	"time"
+)
 
 type boundaryConfig struct {
 	Derivation            DerivationRef
@@ -18,17 +21,19 @@ type BoundaryProcessor struct {
 	scenarioSynthesizer ScenarioSynthesizer
 	profileSynthesizer  ProfileSynthesizer
 	config              boundaryConfig
+	clock               func() time.Time
 }
 
-// NewBoundaryProcessor constructs the memory-owned boundary application
-// service with package hard limits and the supplied derivation identity.
-func NewBoundaryProcessor(
+// NewBoundaryProcessorWithClock constructs a boundary service with an injectable
+// processing clock. Each attempt captures the clock exactly once.
+func NewBoundaryProcessorWithClock(
 	store BoundaryStore,
 	scenarios ScenarioSynthesizer,
 	profiles ProfileSynthesizer,
 	derivation DerivationRef,
+	clock func() time.Time,
 ) (*BoundaryProcessor, error) {
-	if store == nil || scenarios == nil || profiles == nil {
+	if store == nil || scenarios == nil || profiles == nil || clock == nil {
 		return nil, PermanentError(CodeStoreFailure, "boundary processor dependencies are required", nil)
 	}
 
@@ -38,6 +43,7 @@ func NewBoundaryProcessor(
 
 	return &BoundaryProcessor{
 		store:               store,
+		clock:               clock,
 		scenarioSynthesizer: scenarios,
 		profileSynthesizer:  profiles,
 		config: boundaryConfig{
@@ -48,4 +54,10 @@ func NewBoundaryProcessor(
 			MaxSnapshotItems:      MaxSnapshotItems,
 		},
 	}, nil
+}
+
+// NewBoundaryProcessor constructs a boundary service using the current clock.
+func NewBoundaryProcessor(store BoundaryStore, scenarios ScenarioSynthesizer,
+	profiles ProfileSynthesizer, derivation DerivationRef) (*BoundaryProcessor, error) {
+	return NewBoundaryProcessorWithClock(store, scenarios, profiles, derivation, time.Now)
 }

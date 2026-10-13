@@ -2,6 +2,7 @@ package boundarycore
 
 import (
 	"context"
+	"time"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
@@ -11,6 +12,6 @@ import (
 // snapshot, and commit operations.
 type BoundaryStore interface {
 	LookupOperation(ctx context.Context, lookup memory.OperationLookup) (memory.OperationLookupResult, error)
-	LoadScope(ctx context.Context, scope memory.Scope) (memory.ScopeSnapshot, error)
+	LoadBoundarySnapshot(ctx context.Context, scope memory.Scope, at time.Time) (memory.BoundarySnapshot, error)
 	Commit(ctx context.Context, request memory.CommitRequest) (memory.OperationOutcome, error)
 }

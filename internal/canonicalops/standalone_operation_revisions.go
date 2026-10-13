@@ -37,23 +37,5 @@ func collectOperationRevisions(request memory.CommitRequest) []memory.RevisionRe
 }
 
 func operationCommittedAt(request memory.CommitRequest) time.Time {
-	for _, scenario := range request.Scenarios {
-		if !scenario.Meta.CreatedAt.IsZero() {
-			return scenario.Meta.CreatedAt
-		}
-	}
-
-	for _, profile := range request.Profiles {
-		if !profile.Meta.CreatedAt.IsZero() {
-			return profile.Meta.CreatedAt
-		}
-	}
-
-	for _, atom := range request.Atoms {
-		if !atom.Meta.CreatedAt.IsZero() {
-			return atom.Meta.CreatedAt
-		}
-	}
-
-	return time.Now().UTC()
+	return request.ProcessingAt
 }
