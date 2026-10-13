@@ -6,6 +6,12 @@ func (r CommitRequest) Validate() error {
 		return err
 	}
 
+	if r.BoundaryIdentity != nil {
+		if err := r.BoundaryIdentity.Validate(r.Scope); err != nil {
+			return err
+		}
+	}
+
 	if err := validateCommitSources(r); err != nil {
 		return err
 	}

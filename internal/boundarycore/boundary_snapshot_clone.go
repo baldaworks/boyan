@@ -12,6 +12,11 @@ func cloneOperationOutcome(outcome memory.OperationOutcome) memory.OperationOutc
 }
 
 func cloneCommitRequest(request memory.CommitRequest) memory.CommitRequest {
+	if request.BoundaryIdentity != nil {
+		identity := *request.BoundaryIdentity
+		request.BoundaryIdentity = &identity
+	}
+
 	request.Sources = cloneSources(request.Sources)
 	request.Atoms = cloneAtoms(request.Atoms)
 	request.Scenarios = cloneScenarios(request.Scenarios)

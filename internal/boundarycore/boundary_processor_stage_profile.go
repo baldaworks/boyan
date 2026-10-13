@@ -35,7 +35,13 @@ func (e *BoundaryProcessor) processProfileStage(ctx context.Context,
 		return OperationOutcome{}, err
 	}
 
+	identity, err := NewCanonicalBoundaryIdentityCommit(boundary)
+	if err != nil {
+		return OperationOutcome{}, err
+	}
+
 	commit := CommitRequest{
+		BoundaryIdentity:     &identity,
 		ProcessingAt:         at,
 		SchemaVersion:        DerivedSchemaVersionV1,
 		OperationID:          operationID,

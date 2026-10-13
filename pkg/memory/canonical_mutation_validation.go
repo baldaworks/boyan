@@ -18,13 +18,7 @@ func (m CanonicalMutation) Validate() error {
 		return invalidDerived("canonical mutation record count is invalid")
 	}
 
-	if m.TurnIdentity != nil {
-		if err := m.TurnIdentity.Validate(m.Scope); err != nil {
-			return err
-		}
-	}
-
-	if err := m.validateBoundaryGrounding(); err != nil {
+	if err := m.validateTransientIdentity(); err != nil {
 		return err
 	}
 
@@ -80,4 +74,24 @@ func canonicalMutationRecordCount(m CanonicalMutation) int {
 		len(m.Heads) +
 		len(m.Delivery) +
 		len(m.Payloads)
+}
+
+func (m CanonicalMutation) validateTransientIdentity() error {
+	if m.TurnIdentity != nil {
+		if err := m.TurnIdentity.Validate(m.Scope); err != nil {
+			return err
+		}
+	}
+
+	if err := m.validateBoundaryGrounding(); err != nil {
+		return err
+	}
+
+	if m.BoundaryIdentity != nil {
+		if err := m.BoundaryIdentity.Validate(m.Scope); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

@@ -17,6 +17,8 @@ func (s *CanonicalStore) CommitCanonicalOperation(
 		return memory.CanonicalMutationOutcome{}, err
 	}
 
+	request.BoundaryIdentity = cloneBoundaryIdentity(request.BoundaryIdentity)
+
 	if err := request.Validate(); err != nil {
 		return memory.CanonicalMutationOutcome{}, err
 	}
@@ -53,16 +55,15 @@ func (s *CanonicalStore) CommitCanonicalOperation(
 	var outcome memory.CanonicalMutationOutcome
 
 	err = s.db.Update(func(txn *badger.Txn) error {
-		next, txErr := s.commitCanonicalOperationTxn(txn, request, scopeKey, operationKey)
-		if txErr != nil {
-			return txErr
-		}
+		var txErr error
 
-		outcome = next
+		outcome, txErr = s.commitCanonicalOperationTxn(txn, request, scopeKey, operationKey)
 
-		return nil
+		return txErr
 	})
 	if err != nil {
+		err = boundaryCertificateWriteError(s.db, request.BoundaryIdentity, err)
+
 		return memory.CanonicalMutationOutcome{}, canonicalStoreError("commit canonical operation", err)
 	}
 

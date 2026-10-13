@@ -24,6 +24,7 @@ func (s *CanonicalBoundaryStore) buildBoundaryMutation(
 	}
 
 	mutation := memory.CanonicalMutation{
+		BoundaryIdentity:     request.BoundaryIdentity,
 		SchemaVersion:        memory.CanonicalSchemaVersionV1,
 		Scope:                request.Scope,
 		ExpectedScopeVersion: request.ExpectedScopeVersion,

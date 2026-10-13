@@ -18,6 +18,10 @@ func (s *CanonicalStore) applyCanonicalMutationTxn(
 		return memory.CanonicalMutationOutcome{}, err
 	}
 
+	if err := prepareBoundaryIdentity(txn, mutation.Scope, mutation.BoundaryIdentity, operationKey); err != nil {
+		return memory.CanonicalMutationOutcome{}, err
+	}
+
 	identity, err := prepareTurnIdentityMutation(txn, mutation)
 	if err != nil {
 		return memory.CanonicalMutationOutcome{}, err
@@ -74,6 +78,10 @@ func (s *CanonicalStore) applyUnfencedCanonicalMutationTxn(
 		return memory.CanonicalMutationOutcome{}, err
 	}
 
+	if err := persistBoundaryCertificate(txn, mutation.Scope, mutation.BoundaryIdentity); err != nil {
+		return memory.CanonicalMutationOutcome{}, err
+	}
+
 	state.Version++
 	state.ChangeSeq++
 
@@ -86,10 +94,8 @@ func (s *CanonicalStore) applyUnfencedCanonicalMutationTxn(
 		return memory.CanonicalMutationOutcome{}, err
 	}
 
-	if s.beforeCanonicalMutationCommit != nil {
-		if err := s.beforeCanonicalMutationCommit(); err != nil {
-			return memory.CanonicalMutationOutcome{}, err
-		}
+	if err := s.runBeforeCanonicalMutationCommit(); err != nil {
+		return memory.CanonicalMutationOutcome{}, err
 	}
 
 	return outcome, nil
@@ -105,4 +111,12 @@ func completeTurnIdentityReplay(
 	}
 
 	return persistTurnCertificate(txn, mutation)
+}
+
+func (s *CanonicalStore) runBeforeCanonicalMutationCommit() error {
+	if s.beforeCanonicalMutationCommit != nil {
+		return s.beforeCanonicalMutationCommit()
+	}
+
+	return nil
 }

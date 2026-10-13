@@ -15,21 +15,21 @@ func (s *CanonicalStore) commitCanonicalOperationTxn(
 		return memory.CanonicalMutationOutcome{}, err
 	}
 
+	if err := prepareBoundaryIdentity(txn, request.Scope, request.BoundaryIdentity, operationKey); err != nil {
+		return memory.CanonicalMutationOutcome{}, err
+	}
+
 	if outcome, ok, err := loadCanonicalOperationOutcome(txn, request, operationKey); ok || err != nil {
 		return outcome, err
 	}
 
-	state, err := loadCanonicalOperationScopeState(txn, request.Scope, scopeKey)
+	state, err := loadExpectedCanonicalOperationState(txn, request, scopeKey)
 	if err != nil {
 		return memory.CanonicalMutationOutcome{}, err
 	}
 
-	if state.Version != request.ExpectedScopeVersion {
-		return memory.CanonicalMutationOutcome{}, memory.PermanentError(
-			memory.CodeConflict,
-			"canonical scope version changed",
-			nil,
-		)
+	if err := persistBoundaryCertificate(txn, request.Scope, request.BoundaryIdentity); err != nil {
+		return memory.CanonicalMutationOutcome{}, err
 	}
 
 	state.Version++
@@ -44,11 +44,28 @@ func (s *CanonicalStore) commitCanonicalOperationTxn(
 		return memory.CanonicalMutationOutcome{}, err
 	}
 
-	if s.beforeCanonicalMutationCommit != nil {
-		if err := s.beforeCanonicalMutationCommit(); err != nil {
-			return memory.CanonicalMutationOutcome{}, err
-		}
+	if err := s.runBeforeCanonicalMutationCommit(); err != nil {
+		return memory.CanonicalMutationOutcome{}, err
 	}
 
 	return outcome, nil
+}
+
+func loadExpectedCanonicalOperationState(
+	txn *badger.Txn,
+	request memory.CanonicalOperationCommitRequest,
+	scopeKey []byte,
+) (memory.ScopeState, error) {
+	state, err := loadCanonicalOperationScopeState(txn, request.Scope, scopeKey)
+	if err != nil {
+		return memory.ScopeState{}, err
+	}
+
+	if state.Version != request.ExpectedScopeVersion {
+		return memory.ScopeState{}, memory.PermanentError(
+			memory.CodeConflict, "canonical scope version changed", nil,
+		)
+	}
+
+	return state, nil
 }

@@ -33,6 +33,7 @@ type CanonicalOperationReader interface {
 // memory revision (for example a successful profile skip) while still
 // advancing the exact-scope version and replay watermark.
 type CanonicalOperationCommitRequest struct {
+	BoundaryIdentity     *CanonicalBoundaryIdentityCommit `json:"-"`
 	Scope                Scope
 	ExpectedScopeVersion uint64
 	OperationID          string
@@ -44,6 +45,12 @@ type CanonicalOperationCommitRequest struct {
 func (r CanonicalOperationCommitRequest) Validate() error {
 	if err := r.Scope.Validate(); err != nil {
 		return err
+	}
+
+	if r.BoundaryIdentity != nil {
+		if err := r.BoundaryIdentity.Validate(r.Scope); err != nil {
+			return err
+		}
 	}
 
 	if !isCanonicalID(r.OperationID) || !isCanonicalID(r.Fingerprint) ||

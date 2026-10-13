@@ -31,20 +31,21 @@ type OperationRecord struct {
 // CanonicalMutation is the bounded atomic persistence unit. Records are
 // append-only except Heads and ScopeState, which are the only mutable indexes.
 type CanonicalMutation struct {
-	BoundaryGrounding    *BoundaryGroundingCommit     `json:"-"`
-	TurnIdentity         *CanonicalTurnIdentityCommit `json:"-"`
-	SchemaVersion        string                       `json:"schema_version"`
-	Scope                Scope                        `json:"scope"`
-	ExpectedScopeVersion uint64                       `json:"expected_scope_version"`
-	Operation            OperationRecord              `json:"operation"`
-	Sources              []CanonicalSourceRecord      `json:"sources,omitempty"`
-	Messages             []MessageRecord              `json:"messages,omitempty"`
-	Items                []MemoryItem                 `json:"items,omitempty"`
-	Revisions            []MemoryRevision             `json:"revisions,omitempty"`
-	Lifecycle            []LifecycleEvent             `json:"lifecycle,omitempty"`
-	Heads                []ItemHead                   `json:"heads,omitempty"`
-	Delivery             []DeliveryOutboxRecord       `json:"delivery,omitempty"`
-	Payloads             []CanonicalPayload           `json:"payloads,omitempty"`
+	BoundaryIdentity     *CanonicalBoundaryIdentityCommit `json:"-"`
+	BoundaryGrounding    *BoundaryGroundingCommit         `json:"-"`
+	TurnIdentity         *CanonicalTurnIdentityCommit     `json:"-"`
+	SchemaVersion        string                           `json:"schema_version"`
+	Scope                Scope                            `json:"scope"`
+	ExpectedScopeVersion uint64                           `json:"expected_scope_version"`
+	Operation            OperationRecord                  `json:"operation"`
+	Sources              []CanonicalSourceRecord          `json:"sources,omitempty"`
+	Messages             []MessageRecord                  `json:"messages,omitempty"`
+	Items                []MemoryItem                     `json:"items,omitempty"`
+	Revisions            []MemoryRevision                 `json:"revisions,omitempty"`
+	Lifecycle            []LifecycleEvent                 `json:"lifecycle,omitempty"`
+	Heads                []ItemHead                       `json:"heads,omitempty"`
+	Delivery             []DeliveryOutboxRecord           `json:"delivery,omitempty"`
+	Payloads             []CanonicalPayload               `json:"payloads,omitempty"`
 }
 
 // CanonicalPayload couples payload bytes to the structural reference that

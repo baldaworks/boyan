@@ -28,6 +28,7 @@ type RevisionTransition struct {
 
 // CommitRequest atomically applies one idempotent exact-scope operation.
 type CommitRequest struct {
+	BoundaryIdentity *CanonicalBoundaryIdentityCommit `json:"-"`
 	// ProcessingAt is the captured current instant for one boundary attempt.
 	ProcessingAt         time.Time            `json:"-"`
 	SchemaVersion        string               `json:"schema_version"`

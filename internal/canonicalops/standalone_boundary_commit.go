@@ -66,6 +66,7 @@ func (s *CanonicalBoundaryStore) commitCanonicalOperation(
 
 	outcome, err := s.store.CommitCanonicalOperation(ctx, memory.CanonicalOperationCommitRequest{
 		Scope:                request.Scope,
+		BoundaryIdentity:     request.BoundaryIdentity,
 		ExpectedScopeVersion: request.ExpectedScopeVersion,
 		OperationID:          request.OperationID,
 		Fingerprint:          stableCanonicalFingerprint("boundary-operation", request),
