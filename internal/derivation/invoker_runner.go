@@ -42,11 +42,7 @@ func collectRunnerOutput(ctx context.Context, events iter.Seq2[*runEvent, error]
 
 	for event, runErr := range events {
 		if runErr != nil {
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				return "", memory.RetryableError(memory.CodeTimeout, "run Boyan derivation timed out", nil)
-			}
-
-			return "", memory.RetryableError(memory.CodeModelFailure, "run Boyan derivation", nil)
+			return "", classifyRunnerError(ctx, runErr)
 		}
 
 		if event == nil || event.Content == nil {
@@ -67,4 +63,16 @@ func collectRunnerOutput(ctx context.Context, events iter.Seq2[*runEvent, error]
 	}
 
 	return output, nil
+}
+
+func classifyRunnerError(ctx context.Context, runErr error) error {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return memory.RetryableError(memory.CodeTimeout, "run Boyan derivation timed out", nil)
+	}
+
+	if errors.Is(runErr, structuredagent.ErrStructuredOutputSchemaValidation) {
+		return memory.PermanentError(memory.CodeInvalidDerived, "Boyan derivation output violates schema", nil)
+	}
+
+	return memory.RetryableError(memory.CodeModelFailure, "run Boyan derivation", nil)
 }
