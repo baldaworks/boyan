@@ -78,9 +78,22 @@ them.
    with projection rebuilds, immutable legacy/native replay, lost receipts with
    an unavailable extractor, and startup index repair without new ingest.
 
+## Boundary contract compatibility
+
+Release checks cover strict four-stage model replies with valid empty/skip
+controls, current-T eligibility and inherited lifetimes, normalized immutable
+boundary replay across partial completion/restart/receipts, and native/logical
+proof roundtrips. Preserve the existing candidate wire spellings.
+
+Before deployment, follow the [boundary upgrade restrictions](docs/OPERATIONS.md#boundary-contract-upgrades).
+Uncertified old derived scopes (including atom-only history) fail closed;
+native-semantic-only old scopes may establish certification safely. Do not run
+old writers against upgraded state or delete proof/bounds metadata. Deployed
+rollback requires a trustworthy pre-upgrade backup.
+
 ## Integrated delivery
 
-For the approved recovery story, delivery includes integrating all approved
+For an approved Prism story, delivery includes integrating all approved
 changes into target `main` and pushing `origin/main` under the existing user
 authorization. Record the integrated revision and confirm the remote contains it.
 Run the required gates above freshly on the integrated state; successful branch

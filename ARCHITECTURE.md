@@ -298,3 +298,37 @@ The model runtime does not choose:
 Boyan does not ship migration or historical import as part of its supported
 CLI or runtime surface. If that capability is needed later, it belongs in a
 separate migration tool outside this repository's primary service boundary.
+
+## Derivation and boundary identity
+
+`internal/structuredderive` shares one explicit four-stage wire-shape tree
+between strict response validation and provider schemas. It preserves public
+candidate tags, rejects malformed replies before successful stage persistence,
+and distinguishes valid empty/skip outcomes from invalid output.
+
+Boundary processing captures one T for current-head temporal eligibility.
+Canonical reads separate bounded structural head metadata from eligible model
+content. Derived revisions persist inherited temporal bounds plus a versioned
+semantic-parent trust marker. Legacy ancestry uses bounded exact reads;
+structural supersession remains distinct from semantic grounding. Event time
+stays descriptive.
+
+Badger owns immutable, versioned Boundary certificates keyed by exact
+Scope(key, kind) and ExportID, plus an immutable per-scope capability marker.
+The marker is initialized only with a first successful certified stage after a
+bounded exact encoded legacy-operation namespace check. Both empty-operation
+and nonempty-mutation transactions check proof before operation replay and
+commit proof atomically with success. Shared scope CAS serializes initialization
+against uncertified derived writers. No history backfill is inferred.
+
+Native processing and ordered receipts verify input before replay and require
+certified matching proof after reading saved outcomes, closing first-attempt
+races. The producer fingerprint is separate delivery metadata. Scenarios and
+profile retain independent durable completion; forget retains content-free
+certificates and scope markers without restoring erased payloads.
+
+Logical exports and native backups preserve certificates, capability markers
+and inherited grounding metadata. Maintenance validates bounded new structural
+metadata against its key and version; native restore validates integrity before
+reporting success. Failed restore destinations must remain unavailable because
+Badger Load is not an atomic replacement. Older proof-free data remains unproven.

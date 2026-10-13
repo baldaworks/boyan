@@ -159,8 +159,9 @@ while its checkpoint lags, is dirty, or changes during the query. Let normal
 synchronization/repair complete and retry; readiness alone does not certify a
 particular scope's search watermark.
 
-Boundary model views support up to 2048 active records across all layers,
-collected in pages of at most 256. Count overflow and serialized input beyond
+Boundary collection examines up to 2048 structural active heads across all
+layers, in pages of at most 256. Only eligible content enters model views;
+filtered records do not trigger an unbounded refill scan. Count overflow and serialized input beyond
 the independent 256 KiB default budget return `limit_exceeded`; increasing a
 record count does not increase the byte budget. Large scopes also increase
 reconciliation scan time, while page and retained-match memory stay bounded.
@@ -194,6 +195,45 @@ still requires normal startup recovery. Payload API absence is logical cleanup;
 it does not promise forensic removal from disk, old backups or previous
 disposable index generations. Existing retention cleanup remains responsible
 for disposable generations.
+
+## Boundary contract upgrades
+
+Structured provider replies now follow the complete existing candidate shapes
+strictly. Malformed output returns redacted permanent `invalid_derived` instead
+of committing a successful empty stage. Correct the provider output and retry
+the same operation; valid empty arrays and explicit profile skip remain success.
+
+Boundary eligibility uses current processing time, with one captured T per
+attempt, and inherited parent validity/expiry. `occurred_at` does not request a
+historical snapshot. A delayed boundary cannot revive an expired fact;
+`event_at` remains descriptive.
+
+A successful boundary stage permanently binds normalized authoritative input.
+Changed reason, occurrence time or other same-exact-scope authoritative fields
+return permanent `conflict`, including new delivery sequences and partial
+retries. Use the original normalized input to resume unfinished profile work.
+Completed replay requires certificate verification capability; portable adapters
+without it receive an explicit conflict rather than unverified success.
+
+Old scopes containing any uncertified derived-operation history are restricted,
+including atom-only history. Old native-semantic-only scopes remain usable after
+a bounded exact namespace check. Scope forget/reset, altered derivation or
+producer fingerprints cannot bypass this restriction. There is no automatic
+backfill, metadata deletion procedure or migration/repair CLI.
+
+Take a trustworthy backup before upgrading a writer. Supported physical and
+logical roundtrips preserve boundary proof, capability markers and inherited
+bounds/trust metadata, including forgotten replay evidence. Old proof-free
+imports remain unproven. Integrity checks reject malformed new structural proof
+records. Native restore checks integrity before success, but Badger Load and
+streaming logical import are not atomic replacements: keep any failed
+destination unavailable and restore into an empty destination from a trustworthy
+backup rather than serving partially loaded state.
+
+Do not run an older writer against a store written under these contracts; it can
+bypass certification or inherited-bound enforcement. A deployed rollback needs
+a trustworthy pre-upgrade backup. Never strip certificates, capability markers
+or grounding metadata to bypass a conflict.
 
 ## Diagnostics workflow
 

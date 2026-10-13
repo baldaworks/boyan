@@ -41,6 +41,14 @@ call; changed authoritative input conflicts. Large scope erases return bounded
 counted summaries. See the [recovery contracts](docs/API.md) and
 [operational recovery behavior](docs/OPERATIONS.md).
 
+Structured model replies follow strict existing candidate shapes; valid empty
+arrays and profile skip remain successful. Boundary synthesis uses current
+processing-time eligibility and inherits actual parents' lifetime bounds.
+Certified boundary retries preserve original outcomes; changed authoritative
+input conflicts. Old uncertified derived scopes, including atom-only history,
+require the [documented upgrade restrictions](docs/OPERATIONS.md#boundary-contract-upgrades).
+See the [model and boundary contracts](docs/API.md#structured-derivation-output).
+
 ## Install and build
 
 Build the standalone binary locally:
