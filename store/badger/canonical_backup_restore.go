@@ -5,13 +5,15 @@ import (
 	"io"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
+	"github.com/dgraph-io/badger/v4"
 )
 
 const defaultBadgerRestorePendingWrites = 128
 
 // RestoreCanonicalBackup loads a Badger backup into the current store. A
 // caller must stop canonical writers before invoking this method and should
-// run VerifyCanonicalIntegrity before making the restored store available.
+// keep a failed destination unavailable. Restore checks record integrity before
+// reporting success; Badger Load itself is not an atomic replacement.
 func (s *CanonicalStore) RestoreCanonicalBackup(ctx context.Context, source io.Reader, maxPendingWrites int) error {
 	if err := validateCanonicalMaintenance(ctx, source); err != nil {
 		return err
@@ -41,7 +43,7 @@ func (s *CanonicalStore) RestoreCanonicalBackup(ctx context.Context, source io.R
 		return err
 	}
 
-	return nil
+	return s.db.View(func(txn *badger.Txn) error { return verifyCanonicalIntegrityTxn(ctx, txn) })
 }
 
 func normalizeBadgerRestorePendingWrites(maxPendingWrites int) (int, error) {

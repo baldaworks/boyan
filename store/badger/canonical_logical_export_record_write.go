@@ -2,7 +2,6 @@ package badger
 
 import (
 	"bufio"
-	"fmt"
 	"hash"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
@@ -33,7 +32,9 @@ func writeCanonicalLogicalExportRecord(writer *bufio.Writer, digest hash.Hash, i
 func canonicalLogicalExportRecord(item *badger.Item) (CanonicalLogicalExportRecord, bool, error) {
 	components, suffix, err := decodeCanonicalLogicalKey(item.Key())
 	if err != nil {
-		return CanonicalLogicalExportRecord{}, false, fmt.Errorf("decode canonical key %x: %w", item.Key(), err)
+		return CanonicalLogicalExportRecord{}, false, memory.PermanentError(
+			memory.CodeStoreFailure, "canonical logical export key is invalid", nil,
+		)
 	}
 
 	if !isExportableCanonicalRecordType(components[0]) {
@@ -52,6 +53,11 @@ func canonicalLogicalExportRecord(item *badger.Item) (CanonicalLogicalExportReco
 			"canonical logical export found an invalid record",
 			err,
 		)
+	}
+
+	if err := validateCanonicalProofRecord(components, decoded); err != nil {
+		return CanonicalLogicalExportRecord{}, false, memory.PermanentError(
+			memory.CodeStoreFailure, "canonical logical export found invalid proof metadata", nil)
 	}
 
 	return CanonicalLogicalExportRecord{

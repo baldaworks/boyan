@@ -26,7 +26,7 @@ func validateCanonicalLogicalRecord(record CanonicalLogicalExportRecord) error {
 		return memory.PermanentError(memory.CodeInvalidDerived, "canonical logical record envelope is invalid", err)
 	}
 
-	return nil
+	return validateCanonicalProofRecord(record.Components, envelope)
 }
 
 func canonicalLogicalScopeRecord(record CanonicalLogicalExportRecord) (memory.Scope, bool) {
