@@ -354,12 +354,12 @@ func capturedRuntimeStateRunner(stateStore *runStateStore, runStateID *string) r
 							Content: &genai.Content{
 								Parts: []*genai.Part{
 									{
-										Text: ("{\"output\":[{\"Kind\":\"state\",\"Subject\":\"Ada\",\"Predicate\":\"Live" +
-											"s In\",\"Memory\":{\"Kind\":\"state\",\"Statement\":\"Ada lives in Bis" +
-											"hkek\",\"Temporal\":{\"ObservedAt\":\"2026-08-09T10:00:00Z\"},\"Evid" +
-											"ence\":[{\"SourceID\":\"source-1\",\"MessageID\":\"message-1\",\"Role\"" +
-											":\"user\",\"StartByte\":0,\"EndByte\":3,\"AssertionMode\":\"user\"}],\"" +
-											"Sensitivity\":\"standard\",\"Retention\":\"standard\"}}]}"),
+										Text: `{"output":[{"Kind":"state","Subject":"Ada","Predicate":"Lives In",` +
+											`"Memory":{"kind":"state","statement":"Ada lives in Bishkek",` +
+											`"temporal":{"observed_at":"2026-08-09T10:00:00Z"},` +
+											`"evidence":[{"source_id":"source-1","message_id":"message-1",` +
+											`"role":"user","start_byte":0,"end_byte":3,"assertion_mode":"user"}],` +
+											`"sensitivity":"standard","retention":"standard"}}]}`,
 									},
 								},
 							},

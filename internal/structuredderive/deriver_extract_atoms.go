@@ -2,7 +2,6 @@ package structuredderive
 
 import (
 	"context"
-	"encoding/json"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
@@ -23,24 +22,11 @@ func (d *Deriver) ExtractAtoms(
 
 	request.Derivation = normalizeDerivation(request.Derivation)
 
-	input, err := json.Marshal(request)
-	if err != nil {
-		return nil, memory.PermanentError(memory.CodeInvalidDerived, "encode atom derivation request", err)
-	}
-
-	operationID, err := operationID(memory.OperationStageAtoms, request.Turn.ExportID, request.Derivation)
-	if err != nil {
-		return nil, err
-	}
-
 	var output atomsOutput
-	if err := d.invoke(ctx, StructuredInvocation{
-		OperationID:  operationID,
-		Stage:        string(memory.OperationStageAtoms),
-		Instruction:  DefaultDerivationInstruction + " Extract only grounded atom candidates from this completed turn.",
-		InputJSON:    input,
-		OutputSchema: atomsOutputSchema,
-	}, &output); err != nil {
+	if err := d.invokeLegacyStage(ctx, request, memory.OperationStageAtoms,
+		request.Turn.ExportID,
+		DefaultDerivationInstruction+" Extract only grounded atom candidates from this completed turn.",
+		request.Derivation, &output); err != nil {
 		return nil, err
 	}
 

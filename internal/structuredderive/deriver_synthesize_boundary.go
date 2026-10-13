@@ -2,7 +2,6 @@ package structuredderive
 
 import (
 	"context"
-	"encoding/json"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
@@ -21,24 +20,11 @@ func (d *Deriver) SynthesizeScenarios(
 
 	request.Derivation = normalizeDerivation(request.Derivation)
 
-	input, err := json.Marshal(request)
-	if err != nil {
-		return nil, memory.PermanentError(memory.CodeInvalidDerived, "encode scenario derivation request", err)
-	}
-
-	operationID, err := operationID(memory.OperationStageScenarios, request.Boundary.ExportID, request.Derivation)
-	if err != nil {
-		return nil, err
-	}
-
 	var output scenariosOutput
-	if err := d.invoke(ctx, StructuredInvocation{
-		OperationID:  operationID,
-		Stage:        string(memory.OperationStageScenarios),
-		Instruction:  DefaultDerivationInstruction + " Synthesize same-scope topic scenarios from the active view.",
-		InputJSON:    input,
-		OutputSchema: scenariosOutputSchema,
-	}, &output); err != nil {
+	if err := d.invokeLegacyStage(ctx, request, memory.OperationStageScenarios,
+		request.Boundary.ExportID,
+		DefaultDerivationInstruction+" Synthesize same-scope topic scenarios from the active view.",
+		request.Derivation, &output); err != nil {
 		return nil, err
 	}
 
@@ -59,24 +45,11 @@ func (d *Deriver) SynthesizeProfile(
 
 	request.Derivation = normalizeDerivation(request.Derivation)
 
-	input, err := json.Marshal(request)
-	if err != nil {
-		return nil, memory.PermanentError(memory.CodeInvalidDerived, "encode profile derivation request", err)
-	}
-
-	operationID, err := operationID(memory.OperationStageProfile, request.Boundary.ExportID, request.Derivation)
-	if err != nil {
-		return nil, err
-	}
-
 	var output profileOutput
-	if err := d.invoke(ctx, StructuredInvocation{
-		OperationID:  operationID,
-		Stage:        string(memory.OperationStageProfile),
-		Instruction:  DefaultDerivationInstruction + " Synthesize one same-scope long-lived profile.",
-		InputJSON:    input,
-		OutputSchema: profileOutputSchema,
-	}, &output); err != nil {
+	if err := d.invokeLegacyStage(ctx, request, memory.OperationStageProfile,
+		request.Boundary.ExportID,
+		DefaultDerivationInstruction+" Synthesize one same-scope long-lived profile.",
+		request.Derivation, &output); err != nil {
 		return nil, err
 	}
 

@@ -41,7 +41,7 @@ func (d *Deriver) ExtractCanonicalSemantics(
 		Instruction: DefaultDerivationInstruction + (" Extract only grounded canonical semantic candidates with me" +
 			"ssage-level evidence."),
 		InputJSON:    input,
-		OutputSchema: canonicalSemanticsOutputSchema,
+		OutputSchema: outputSchema("canonical_semantics"),
 	}, &output); err != nil {
 		return nil, err
 	}

@@ -35,9 +35,34 @@ func (d *Deriver) invoke(ctx context.Context, request StructuredInvocation, outp
 		return memory.PermanentError(memory.CodeLimitExceeded, "derivation output exceeds the configured limit", nil)
 	}
 
-	if err := json.Unmarshal(raw, output); err != nil {
+	return decodeDerivedOutput(raw, request.Stage, output)
+}
+
+func decodeDerivedOutput(raw []byte, stage string, output any) error {
+	validated, ok := validatedOutput(raw, stage)
+	if !ok {
+		return memory.PermanentError(memory.CodeInvalidDerived, "structured derivation output is invalid", nil)
+	}
+
+	if err := json.Unmarshal(validated, output); err != nil {
 		return memory.PermanentError(memory.CodeInvalidDerived, "structured derivation output is invalid", nil)
 	}
 
 	return nil
+}
+
+func (d *Deriver) invokeLegacyStage(ctx context.Context, input any, stage memory.OperationStage,
+	exportID, instruction string, derivation memory.DerivationRef, output any) error {
+	encoded, err := json.Marshal(input)
+	if err != nil {
+		return memory.PermanentError(memory.CodeInvalidDerived, "encode derivation request", err)
+	}
+
+	identity, err := operationID(stage, exportID, derivation)
+	if err != nil {
+		return err
+	}
+
+	return d.invoke(ctx, StructuredInvocation{OperationID: identity, Stage: string(stage),
+		Instruction: instruction, InputJSON: encoded, OutputSchema: outputSchema(string(stage))}, output)
 }
