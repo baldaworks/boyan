@@ -25,6 +25,8 @@ type CanonicalBoundaryIdentityCommit struct {
 // BoundaryIdentityResult distinguishes a certified match from absent proof.
 type BoundaryIdentityResult struct {
 	Certified bool
+	// SafelyNew permits uncertified input after bounded scope classification.
+	SafelyNew bool
 }
 
 // CanonicalBoundaryIdentityStore verifies authoritative input before replay.

@@ -11,7 +11,7 @@ import (
 const badgerRecordBoundaryCertificate = "boundary-certificate"
 
 // VerifyCanonicalBoundary checks content-free immutable boundary input proof.
-// Absence is not a legacy cleanliness proof; classification is a separate check.
+// Uncertified input requires bounded proof that its scope supports certification.
 func (s *CanonicalStore) VerifyCanonicalBoundary(ctx context.Context,
 	boundary memory.Boundary) (memory.BoundaryIdentityResult, error) {
 	if err := canonicalContextError(ctx); err != nil {
@@ -61,7 +61,11 @@ func verifyCanonicalBoundaryTxn(txn *badger.Txn,
 		return memory.BoundaryIdentityResult{}, boundaryIdentityConflict()
 	}
 
-	return memory.BoundaryIdentityResult{Certified: found}, nil
+	if found {
+		return memory.BoundaryIdentityResult{Certified: true}, nil
+	}
+
+	return classifyBoundaryScope(txn, identity.Boundary.Scope)
 }
 
 func loadBoundaryCertificate(txn *badger.Txn, scope memory.Scope,
@@ -90,9 +94,9 @@ func loadBoundaryCertificate(txn *badger.Txn, scope memory.Scope,
 }
 
 func prepareBoundaryIdentity(txn *badger.Txn, scope memory.Scope,
-	identity *memory.CanonicalBoundaryIdentityCommit, operationKey []byte) error {
+	identity *memory.CanonicalBoundaryIdentityCommit, operationID string, operationKey []byte) error {
 	if identity == nil {
-		return nil
+		return rejectUnprovenDerivedOperation(txn, scope, operationID)
 	}
 
 	if err := identity.Validate(scope); err != nil {
@@ -122,6 +126,23 @@ func persistBoundaryCertificate(txn *badger.Txn, scope memory.Scope,
 
 	key, err := canonicalKey(scope, badgerRecordBoundaryCertificate, identity.Certificate.ExportID)
 	if err != nil {
+		return err
+	}
+
+	certificate, found, err := loadBoundaryCertificate(txn, scope, identity.Certificate.ExportID)
+	if err != nil {
+		return err
+	}
+
+	if found {
+		if certificate != identity.Certificate {
+			return boundaryIdentityConflict()
+		}
+
+		return nil
+	}
+
+	if err := persistBoundaryCapability(txn, scope); err != nil {
 		return err
 	}
 

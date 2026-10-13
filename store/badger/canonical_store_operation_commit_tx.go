@@ -15,7 +15,9 @@ func (s *CanonicalStore) commitCanonicalOperationTxn(
 		return memory.CanonicalMutationOutcome{}, err
 	}
 
-	if err := prepareBoundaryIdentity(txn, request.Scope, request.BoundaryIdentity, operationKey); err != nil {
+	if err := prepareBoundaryIdentity(
+		txn, request.Scope, request.BoundaryIdentity, request.OperationID, operationKey,
+	); err != nil {
 		return memory.CanonicalMutationOutcome{}, err
 	}
 

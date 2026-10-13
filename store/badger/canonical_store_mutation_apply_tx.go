@@ -18,7 +18,9 @@ func (s *CanonicalStore) applyCanonicalMutationTxn(
 		return memory.CanonicalMutationOutcome{}, err
 	}
 
-	if err := prepareBoundaryIdentity(txn, mutation.Scope, mutation.BoundaryIdentity, operationKey); err != nil {
+	if err := prepareBoundaryIdentity(
+		txn, mutation.Scope, mutation.BoundaryIdentity, mutation.Operation.OperationID, operationKey,
+	); err != nil {
 		return memory.CanonicalMutationOutcome{}, err
 	}
 

@@ -23,6 +23,12 @@ func (e *BoundaryProcessor) ProcessBoundary(ctx context.Context, boundary Bounda
 		return partial, err
 	}
 
+	if verifier, ok := e.store.(CanonicalBoundaryIdentityStore); ok {
+		if _, err := verifier.VerifyCanonicalBoundary(ctx, boundary); err != nil {
+			return partial, err
+		}
+	}
+
 	at := e.clock().UTC()
 	if at.IsZero() {
 		return partial, invalidDerived("boundary processing time is required")
