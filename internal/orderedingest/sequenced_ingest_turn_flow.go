@@ -13,13 +13,7 @@ func (r *SequencedIngestRuntime) ingestTurn(
 	memory.IngestOutcome,
 	error,
 ) {
-	if replay, ok, err := r.loadReplay(
-		ctx,
-		request.ProducerID,
-		request.Turn.Scope,
-		request.ScopeSequence,
-		request.Fingerprint,
-	); ok || err != nil {
+	if replay, ok, err := r.loadTurnReplay(ctx, request); ok || err != nil {
 		return replay, err
 	}
 

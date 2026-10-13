@@ -35,6 +35,12 @@ state. Minimum-watermark searches fail with a retryable conflict until the
 index can certify the requested checkpoint. Boundary count and model-input
 byte limits remain independent; see the [recall and model-input contracts](docs/API.md).
 
+Startup resumes unfinished forgetting and repairs disposable indexes before
+readiness. Verified turn retries recover committed results without another model
+call; changed authoritative input conflicts. Large scope erases return bounded
+counted summaries. See the [recovery contracts](docs/API.md) and
+[operational recovery behavior](docs/OPERATIONS.md).
+
 ## Install and build
 
 Build the standalone binary locally:

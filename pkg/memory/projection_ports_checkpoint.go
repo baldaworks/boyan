@@ -19,6 +19,8 @@ type ProjectionCheckpointStore interface {
 		bool,
 		error,
 	)
+	// LoadActiveProjectionManifest may return the pointed generation as Dirty
+	// during interrupted sync. Readers must require Active to certify freshness.
 	LoadActiveProjectionManifest(ctx context.Context, scope Scope, projectionID string) (ProjectionManifest, bool, error)
 	MarkProjectionDirty(ctx context.Context, manifest ProjectionManifest) error
 	AdvanceProjectionWatermark(

@@ -22,12 +22,16 @@ func (o ForgetOutcome) Validate() error {
 		return invalidDerived("forget outcome scope version is required")
 	}
 
-	if len(o.Sources)+len(o.Revisions) > MaxSnapshotItems {
+	if len(o.Sources)+len(o.Revisions) > MaxForgetOutcomeReferences {
 		return limitExceeded("forget outcome exceeds the item limit")
 	}
 
 	if o.Kind == ForgetKindSource && len(o.Sources) != 1 {
 		return invalidDerived("source forget outcome requires exactly one source")
+	}
+
+	if err := o.validateSummary(); err != nil {
+		return err
 	}
 
 	return o.validateSources()
@@ -51,10 +55,10 @@ func (o ForgetOutcome) validateSources() error {
 		seen[source.ExportID] = struct{}{}
 	}
 
-	return validateUniqueRevisionRefs(o.Revisions, "forget outcome")
+	return validateForgetRevisionRefs(o.Revisions, "forget outcome")
 }
-func validateUniqueRevisionRefs(refs []RevisionRef, subject string) error {
-	if len(refs) > MaxSnapshotItems {
+func validateForgetRevisionRefs(refs []RevisionRef, subject string) error {
+	if len(refs) > MaxForgetOutcomeReferences {
 		return limitExceeded(subject + " exceeds the revision limit")
 	}
 
@@ -72,4 +76,34 @@ func validateUniqueRevisionRefs(refs []RevisionRef, subject string) error {
 	}
 
 	return nil
+}
+
+func (o ForgetOutcome) validateSummary() error {
+	if o.ReferencesTruncated {
+		if o.Kind != ForgetKindScope || len(o.Sources)+len(o.Revisions) != 0 {
+			return invalidDerived("truncated forget outcome must be a scope summary without reference arrays")
+		}
+
+		if !forgetCountsExceedLimit(o.SourceCount, o.RevisionCount) {
+			return invalidDerived("truncated forget outcome counts must exceed the reference limit")
+		}
+
+		return nil
+	}
+	// Both zero fields preserve old outcomes whose exhaustive arrays carried the counts.
+	if o.SourceCount == 0 && o.RevisionCount == 0 {
+		return nil
+	}
+
+	if o.SourceCount != uint64(len(o.Sources)) || o.RevisionCount != uint64(len(o.Revisions)) {
+		return invalidDerived("forget outcome counts do not match its exhaustive reference arrays")
+	}
+
+	return nil
+}
+
+func forgetCountsExceedLimit(sources, revisions uint64) bool {
+	// Only add after each operand is bounded, so persisted uint64 counts cannot wrap.
+	return sources > MaxForgetOutcomeReferences || revisions > MaxForgetOutcomeReferences ||
+		sources+revisions > MaxForgetOutcomeReferences
 }

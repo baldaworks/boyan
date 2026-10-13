@@ -56,7 +56,7 @@ func (p *CanonicalTurnProcessor) appendReconciledRevision(
 	}
 
 	revisionPayload, revisionRef, err := p.payload(
-		canonicalPayloadID("revision", reconciliation.RevisionID),
+		canonicalScopedPayloadID(mutation.Scope, "revision", reconciliation.RevisionID),
 		[]byte(candidate.Memory.Statement),
 	)
 	if err != nil {

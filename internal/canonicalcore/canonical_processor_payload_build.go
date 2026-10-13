@@ -27,6 +27,8 @@ func (p *CanonicalTurnProcessor) payload(payloadID string, plaintext []byte) (Ca
 	return payload, ref, nil
 }
 
-func canonicalPayloadID(kind, identity string) string {
-	return reconciliationID("payload", kind, identity)
+// canonicalScopedPayloadID isolates disposable raw blobs even when legacy turn
+// exports share their identity between scope kinds. Stable operation IDs stay unchanged.
+func canonicalScopedPayloadID(scope Scope, kind, identity string) string {
+	return reconciliationID("payload", scope.Key, string(scope.Kind), kind, identity)
 }

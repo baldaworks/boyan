@@ -22,7 +22,9 @@ func (p *CanonicalTurnProcessor) appendCanonicalTurnMessages(
 
 		messageByID[message.MessageID] = message
 
-		payload, payloadRef, err := p.payload(canonicalPayloadID("message", message.MessageID), []byte(message.Text))
+		payload, payloadRef, err := p.payload(
+			canonicalScopedPayloadID(mutation.Scope, "message", message.MessageID), []byte(message.Text),
+		)
 		if err != nil {
 			return nil, err
 		}

@@ -2,6 +2,9 @@ package memory
 
 import "time"
 
+// MaxForgetOutcomeReferences bounds public identity lists independently of model input.
+const MaxForgetOutcomeReferences = 2048
+
 // ForgetKind identifies one independently idempotent forgetting operation.
 type ForgetKind string
 
@@ -29,11 +32,14 @@ type ForgetScopeCommand struct {
 
 // ForgetOutcome is the durable, content-free result of one atomic forget.
 type ForgetOutcome struct {
-	SchemaVersion string        `json:"schema_version"`
-	OperationID   string        `json:"operation_id"`
-	Kind          ForgetKind    `json:"kind"`
-	Scope         Scope         `json:"scope"`
-	ScopeVersion  uint64        `json:"scope_version"`
-	Sources       []SourceRef   `json:"sources,omitempty"`
-	Revisions     []RevisionRef `json:"revisions,omitempty"`
+	SchemaVersion       string        `json:"schema_version"`
+	OperationID         string        `json:"operation_id"`
+	Kind                ForgetKind    `json:"kind"`
+	Scope               Scope         `json:"scope"`
+	SourceCount         uint64        `json:"source_count,omitempty"`
+	RevisionCount       uint64        `json:"revision_count,omitempty"`
+	ReferencesTruncated bool          `json:"references_truncated,omitempty"`
+	ScopeVersion        uint64        `json:"scope_version"`
+	Sources             []SourceRef   `json:"sources,omitempty"`
+	Revisions           []RevisionRef `json:"revisions,omitempty"`
 }

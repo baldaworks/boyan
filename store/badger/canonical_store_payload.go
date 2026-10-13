@@ -34,6 +34,14 @@ func (s *CanonicalStore) PutPayload(ctx context.Context, data []byte, ref memory
 	}
 
 	if err := s.db.Update(func(txn *badger.Txn) error {
+		if err := checkScopeErasePayloadGuard(txn); err != nil {
+			return err
+		}
+
+		if err := checkErasedBlob(txn, ref.ID); err != nil {
+			return err
+		}
+
 		return putCanonicalImmutableRecord(txn, key, badgerRecordPayload, data)
 	}); err != nil {
 		return canonicalStoreError("store payload", err)

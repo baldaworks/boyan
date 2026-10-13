@@ -6,11 +6,6 @@ import (
 	"github.com/baldaworks/boyan/store/badger"
 )
 
-const (
-	forgetBatchLimit = 512
-	scrubBatchLimit  = 4096
-)
-
 type CanonicalForgetAdapter struct {
 	store *badger.CanonicalStore
 }

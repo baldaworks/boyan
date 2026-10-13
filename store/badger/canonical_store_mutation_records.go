@@ -6,6 +6,10 @@ import (
 )
 
 func (s *CanonicalStore) putCanonicalMutationRecords(txn *badger.Txn, mutation memory.CanonicalMutation) error {
+	if err := validateEraseMutationPayloadLocks(txn, mutation); err != nil {
+		return err
+	}
+
 	if err := validateBadgerMutationReferences(txn, mutation); err != nil {
 		return err
 	}
@@ -33,4 +37,32 @@ func (s *CanonicalStore) putCanonicalMutationRecords(txn *badger.Txn, mutation m
 	}
 
 	return putCanonicalMutationTailRecords(txn, mutation.Scope, mutation.Lifecycle, mutation.Heads, mutation.Delivery)
+}
+
+func validateEraseMutationPayloadLocks(txn *badger.Txn, mutation memory.CanonicalMutation) error {
+	for _, source := range mutation.Sources {
+		if err := checkEraseBlobWrite(txn, source.Payload.ID); err != nil {
+			return err
+		}
+	}
+
+	for _, message := range mutation.Messages {
+		if err := checkEraseBlobWrite(txn, message.Payload.ID); err != nil {
+			return err
+		}
+	}
+
+	for _, revision := range mutation.Revisions {
+		if err := checkEraseBlobWrite(txn, revision.Payload.ID); err != nil {
+			return err
+		}
+	}
+
+	for _, payload := range mutation.Payloads {
+		if err := checkEraseBlobWrite(txn, payload.Ref.ID); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

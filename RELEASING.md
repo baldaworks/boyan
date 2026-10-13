@@ -74,3 +74,19 @@ them.
    consistency, current-head temporal filtering, kind filtering/rebuild, bounded
    ranking and growing boundary/reconciliation scopes.
 6. No legacy integration-only dependency is introduced.
+7. Recovery regressions cover interrupted payload scrubbing, counted large erases
+   with projection rebuilds, immutable legacy/native replay, lost receipts with
+   an unavailable extractor, and startup index repair without new ingest.
+
+## Integrated delivery
+
+For the approved recovery story, delivery includes integrating all approved
+changes into target `main` and pushing `origin/main` under the existing user
+authorization. Record the integrated revision and confirm the remote contains it.
+Run the required gates above freshly on the integrated state; successful branch
+checks alone do not establish delivered correctness.
+
+The separate Prism Verify phase checks the integrated evidence and all child
+statuses before closing the story. Keep the story open if integration, push or
+verification fails. Each Prism phase runs in its own subagent, as required by
+[AGENTS.md](AGENTS.md).

@@ -51,6 +51,10 @@ func (s *CanonicalStore) DenyRevision(
 	denied := badgerDeniedRevision{RevisionID: revisionID, DeniedAt: deniedAt.UTC()}
 
 	if err := s.db.Update(func(txn *badger.Txn) error {
+		if err := checkScopeEraseFence(txn, scope, ""); err != nil {
+			return err
+		}
+
 		return putBadgerDenyRecord(txn, key, badgerRecordDeniedRevision, denied)
 	}); err != nil {
 		return canonicalStoreError("deny canonical revision", err)

@@ -9,6 +9,9 @@ import (
 	"github.com/dgraph-io/badger/v4"
 )
 
+// LoadActiveProjectionManifest resolves the active generation pointer. A valid
+// dirty manifest is returned for repair; consumers must require Active status
+// before certifying freshness. Missing, corrupt or other invalid targets fail.
 func (s *CanonicalStore) LoadActiveProjectionManifest(
 	ctx context.Context,
 	scope memory.Scope,
@@ -45,7 +48,8 @@ func (s *CanonicalStore) LoadActiveProjectionManifest(
 	}
 
 	manifest, found, err := s.LoadProjectionManifest(ctx, scope, projectionID, active.GenerationID)
-	if err != nil || !found || manifest.Status != memory.ProjectionGenerationActive {
+	if err != nil || !found ||
+		(!repairableProjectionStatus(manifest.Status)) {
 		return memory.ProjectionManifest{}, false, memory.PermanentError(
 			memory.CodeStoreFailure,
 			"active projection manifest is invalid",
@@ -54,4 +58,8 @@ func (s *CanonicalStore) LoadActiveProjectionManifest(
 	}
 
 	return manifest, true, nil
+}
+
+func repairableProjectionStatus(status memory.ProjectionGenerationStatus) bool {
+	return status == memory.ProjectionGenerationActive || status == memory.ProjectionGenerationDirty
 }

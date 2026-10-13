@@ -95,6 +95,30 @@ Accepts the same envelope shape, but the payload is a validated
 - successful outcomes are idempotent by producer, scope, sequence, and payload
 - same-scope ordering is enforced by the sequenced ingest runtime
 
+## Canonical turn replay
+
+Turn identity is independent of the producer delivery fingerprint. Before a
+model call or replaying a saved TURN receipt, Boyan verifies a versioned content
+certificate covering the complete normalized Turn: exact scope, conversation
+and lineage fields, timestamps, status, ordered messages and tool fields.
+Generated message/source IDs, an omitted success status and equivalent UTC
+instants normalize consistently. Reusing a canonical turn identity with changed
+content returns `conflict`, even with an unchanged delivery fingerprint.
+
+If canonical commit succeeded but receipt persistence failed, retrying the same
+verified turn completes the receipt without invoking the model again. This also
+works after reopening storage and when the model is unavailable. A certified
+forgotten turn can replay an existing canonical operation; it cannot create a
+new derivation or restore erased content.
+
+Old data requires verifiable original source/message evidence. Missing or
+ambiguous evidence returns an explicit `conflict` before model execution or
+mutation. Supported uniquely owned native legacy records retain their original
+payload references. Native legacy tool metadata alone cannot prove the order of
+multiple tools; full original Turn evidence is required in that case. The older
+ExportID-keyed source namespace is rejected when its original identity cannot
+be certified safely.
+
 ## MCP endpoint
 
 ### `POST /mcp`
@@ -114,6 +138,45 @@ Current tool set:
 - forget operations require explicit exact scope input
 - scope forget also requires `confirm_scope_key`
 - forgotten timestamps are assigned server-side
+
+## Forget outcomes and retries
+
+`Host.ForgetScope` and `boyan.forget_scope` process history in fixed storage
+pages, including records already denied by an interrupted attempt. Completion
+means original selected source, message and revision payloads are absent through
+the payload API, and the exact scope's durable erase journal has completed.
+Logical denial alone does not report successful cleanup.
+
+Outcomes expose `source_count`, `revision_count` and `references_truncated`.
+At most 2048 combined source/revision references are returned. Within that bound,
+arrays are exhaustive. Above it, **both** arrays are omitted and
+`references_truncated=true`; counts remain exact. For example, 1025 sources and
+1025 revisions produce counts of 1025 each with no partial reference arrays.
+Zero-valued fields may be omitted in JSON; old stored outcomes without counts
+remain decodable. This result bound is separate from the model-input limit.
+Source forget retains its one-source outcome contract; excessive revision
+references return `limit_exceeded` before denial.
+
+Retry the same scope request identity after cancellation or a retryable failure.
+A durable fence rejects new writes to that exact key and kind until recovery
+finishes. Completed old-request replay retains its original outcome and leaves
+later writes intact. Startup resumes unfinished journals automatically.
+Scope-free raw payload maintenance writes are also blocked while an erase is
+pending, since those APIs cannot establish a scope.
+
+New native payload IDs include exact scope key and kind. Some old records share
+a global payload reference across scopes or sources. Boyan preserves those
+foreign records and returns an explicit permanent `conflict` before denial,
+releasing rejection locks and the fence; it does not claim a successful scrub or
+migrate foreign data. Uniquely owned legacy payloads remain erasable. Old crash
+windows without a durable target snapshot cannot recover an unknowable earlier
+selection; recovery does not invent that snapshot.
+
+Truncated erases persist a bounded projection rebuild marker. Supported Bleve
+synchronization rebuilds from current canonical state, preserving later writes
+and removing stale active candidates. Portable projection adapters without
+rebuild support return a conflict and retain lag rather than certify that marker
+as applied.
 
 ## Recall consistency, time and ranking
 

@@ -11,6 +11,10 @@ func (s *CanonicalStore) commitCanonicalOperationTxn(
 	scopeKey []byte,
 	operationKey []byte,
 ) (memory.CanonicalMutationOutcome, error) {
+	if err := checkScopeEraseFence(txn, request.Scope, ""); err != nil {
+		return memory.CanonicalMutationOutcome{}, err
+	}
+
 	if outcome, ok, err := loadCanonicalOperationOutcome(txn, request, operationKey); ok || err != nil {
 		return outcome, err
 	}

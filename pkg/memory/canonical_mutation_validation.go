@@ -18,6 +18,12 @@ func (m CanonicalMutation) Validate() error {
 		return invalidDerived("canonical mutation record count is invalid")
 	}
 
+	if m.TurnIdentity != nil {
+		if err := m.TurnIdentity.Validate(m.Scope); err != nil {
+			return err
+		}
+	}
+
 	return m.validateRecords()
 }
 

@@ -68,7 +68,16 @@ SDK's HTTP 400 response; ingest retains its structured error envelope.
 - `GET /readyz` checks that Boyan can accept work safely
 
 Readiness fails if the standalone runtime reports a current readiness
-diagnostic.
+diagnostic. Startup finishes pending canonical erases, reconciles retained index
+metadata, then synchronously repairs durable scopes in bounded pages before
+accepting work. Missing, v1, dirty and never-created indexes recover without a
+new ingest or manual Sync call. Canonical versions and change sequences are not
+advanced merely to repair an index.
+
+Recovery time grows with unfinished work and durable scope contents. A canceled
+or failed repair fails startup explicitly; construct a new host to retry after
+cleanup. Shutdown cancels blocked startup recovery and drains its work. A ready
+host still cannot promise an arbitrary future minimum search watermark.
 
 ## Listener safety
 
@@ -132,6 +141,13 @@ preserved. A retention floor advancing beyond the committed watermark also force
 rebuild. Exact scopes
 serialize synchronization while independent scopes can progress separately.
 
+After pending erase recovery, startup enumerates durable scope-state keys,
+including scopes without a first checkpoint, and invokes serialized Sync outside
+storage callbacks. Portable stores without this optional enumeration capability
+retain lazy per-scope synchronization. Truncated large erases carry a durable
+rebuild marker instead of an unbounded revision list; adapters that cannot
+rebuild fail explicitly without advancing a false checkpoint.
+
 Committed activation is reconciled with the physical marker at startup. Cleanup
 preserves all referenced and in-flight generations, keeps at most one previous
 generation per scope, and removes abandoned builders after their handles close.
@@ -148,6 +164,36 @@ collected in pages of at most 256. Count overflow and serialized input beyond
 the independent 256 KiB default budget return `limit_exceeded`; increasing a
 record count does not increase the byte budget. Large scopes also increase
 reconciliation scan time, while page and retained-match memory stay bounded.
+
+## Interrupted erase and replay compatibility
+
+A scope erase journals bounded progress and fences new writes to its exact key
+and kind. Cancellation or a transient failure can leave pending work; repeat the
+same request or restart to resume. Successful response requires payload scrub
+and journal completion, not just logical denial. Replaying an old completed
+request cannot erase later writes. Scope-free raw payload maintenance writes are
+blocked while any journal is pending.
+
+Large outcomes report exact counts and omit both reference arrays above 2048
+combined references. This does not cap erasable scope history. Source forget
+still rejects excessive outcome references before denial. See the
+[API contracts](API.md#forget-outcomes-and-retries) for result fields and limits.
+
+New native raw references include scope key and kind. Legacy shared references
+cannot safely be scrubbed while preserving another owner. Such requests fail
+with a permanent conflict before denial, release their fence, and preserve
+foreign data. Unverifiable original input likewise conflicts before replay or a
+model call; replacing the producer fingerprint cannot bypass canonical content
+verification. There is no general foreign-record migration or operator repair
+command. Historical crash windows that never recorded their selected targets
+cannot reconstruct an unknowable old snapshot.
+
+Physical backups and supported logical exports retain recovery journals,
+fences, certificates and erased-payload tombstones. Restoring interrupted state
+still requires normal startup recovery. Payload API absence is logical cleanup;
+it does not promise forensic removal from disk, old backups or previous
+disposable index generations. Existing retention cleanup remains responsible
+for disposable generations.
 
 ## Diagnostics workflow
 

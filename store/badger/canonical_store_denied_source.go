@@ -53,7 +53,7 @@ func (s *CanonicalStore) DenySource(
 	denied := badgerDeniedSource{SourceID: sourceID, DeniedAt: deniedAt.UTC()}
 
 	if err := s.db.Update(func(txn *badger.Txn) error {
-		return putBadgerDenyRecord(txn, key, badgerRecordDeniedSource, denied)
+		return putFencedDenyRecord(txn, scope, key, badgerRecordDeniedSource, denied)
 	}); err != nil {
 		return canonicalStoreError("deny canonical source", err)
 	}

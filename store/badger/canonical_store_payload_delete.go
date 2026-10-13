@@ -34,7 +34,13 @@ func (s *CanonicalStore) DeletePayload(ctx context.Context, ref memory.PayloadRe
 		return err
 	}
 
-	if err := s.db.Update(func(txn *badger.Txn) error { return txn.Delete(key) }); err != nil {
+	if err := s.db.Update(func(txn *badger.Txn) error {
+		if err := checkScopeErasePayloadGuard(txn); err != nil {
+			return err
+		}
+
+		return txn.Delete(key)
+	}); err != nil {
 		return canonicalStoreError("delete payload", err)
 	}
 

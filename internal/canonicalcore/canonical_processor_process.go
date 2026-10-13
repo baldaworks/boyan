@@ -18,7 +18,7 @@ func (p *CanonicalTurnProcessor) ProcessTurn(
 	CanonicalMutationOutcome,
 	error,
 ) {
-	if p == nil || p.store == nil || p.extractor == nil {
+	if p == nil || p.store == nil {
 		return CanonicalMutationOutcome{}, PermanentError(CodeDisabled, "canonical turn processor is unavailable", nil)
 	}
 
@@ -35,22 +35,36 @@ func (p *CanonicalTurnProcessor) ProcessTurn(
 		return CanonicalMutationOutcome{}, err
 	}
 
-	if turnTextExceeds(turn, MaxDerivedTurnTextBytes) {
-		return CanonicalMutationOutcome{}, limitExceeded("canonical turn text exceeds the derived processing limit")
-	}
-
 	if err := checkContext(ctx); err != nil {
 		return CanonicalMutationOutcome{}, err
 	}
 
-	return p.processPreparedTurn(ctx, turn, derivation)
+	preflight, err := p.preflightCanonicalTurn(ctx, turn, derivation)
+	if err != nil {
+		return CanonicalMutationOutcome{}, err
+	}
+
+	if preflight.replay != nil {
+		return *preflight.replay, nil
+	}
+
+	return p.processPreparedTurn(ctx, turn, derivation, preflight.proof)
 }
 
 func (p *CanonicalTurnProcessor) processPreparedTurn(
 	ctx context.Context,
 	turn Turn,
 	derivation DerivationRef,
+	proof *CanonicalTurnIdentityResult,
 ) (CanonicalMutationOutcome, error) {
+	if p.extractor == nil {
+		return CanonicalMutationOutcome{}, PermanentError(CodeDisabled, "canonical turn extraction is unavailable", nil)
+	}
+
+	if turnTextExceeds(turn, MaxDerivedTurnTextBytes) {
+		return CanonicalMutationOutcome{}, limitExceeded("canonical turn text exceeds the derived processing limit")
+	}
+
 	candidates, err := p.extractCanonicalCandidates(ctx, turn, derivation)
 	if err != nil {
 		return CanonicalMutationOutcome{}, err
@@ -63,6 +77,10 @@ func (p *CanonicalTurnProcessor) processPreparedTurn(
 
 	mutation, err := p.buildCanonicalMutation(turn, derivation, scopeState, active, activeView, candidates)
 	if err != nil {
+		return CanonicalMutationOutcome{}, err
+	}
+
+	if err := p.bindCanonicalTurnIdentity(turn, &mutation, proof); err != nil {
 		return CanonicalMutationOutcome{}, err
 	}
 

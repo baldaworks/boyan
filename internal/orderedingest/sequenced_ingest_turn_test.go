@@ -11,11 +11,12 @@ func TestSequencedIngestRuntimeAcceptsAndReplaysTurn(t *testing.T) {
 	t.Parallel()
 
 	sequences := newMemoryIngestSequenceStore()
+	request := testSequencedTurn(t, 1, "fingerprint-1")
 
 	runtime, err := newSequencedIngestRuntimeWithParts(
 		sequences,
 		fakeCanonicalStore{},
-		fakeTurnProcessor{outcome: boyan.CanonicalMutationOutcome{ScopeVersion: 1, ChangeSeq: 1}},
+		newIdentityTurnProcessor(t, request.Turn, boyan.CanonicalMutationOutcome{ScopeVersion: 1, ChangeSeq: 1}),
 		boyan.LegacyDerivationRef(),
 		nil,
 		nil,
@@ -27,8 +28,6 @@ func TestSequencedIngestRuntimeAcceptsAndReplaysTurn(t *testing.T) {
 	requireNoError(t, runtime.Start(context.Background()), "Start() error = %v")
 
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
-
-	request := testSequencedTurn(t, 1, "fingerprint-1")
 
 	first, err := runtime.IngestSequencedTurn(context.Background(), request)
 	requireNoError(t, err, "IngestSequencedTurn(first) error = %v")

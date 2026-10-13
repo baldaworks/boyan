@@ -19,9 +19,10 @@ func writeCanonicalForgetOutcome(
 	}
 
 	change := memory.ScopeChange{
-		Sequence:    state.ChangeSeq,
-		OperationID: request.OperationID,
-		OccurredAt:  request.ForgottenAt.UTC(),
+		RequiresRebuild: outcome.ReferencesTruncated,
+		Sequence:        state.ChangeSeq,
+		OperationID:     request.OperationID,
+		OccurredAt:      request.ForgottenAt.UTC(),
 	}
 	for _, revision := range request.Revisions {
 		change.RevisionIDs = append(change.RevisionIDs, revision.RevisionID)

@@ -5,14 +5,33 @@ import (
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
-// Start satisfies Lifecycle. Projection generations are started lazily per
-// scope, after the canonical runtime is available.
+// Start reconciles retained indexes and synchronously repairs durable scopes.
+// Stores without optional scope pagination retain lazy per-scope synchronization.
 func (r *ProjectionRuntime) Start(ctx context.Context) error {
-	if r.maintenance != nil {
-		return r.maintenance.ReconcileProjection(ctx)
+	if r == nil || r.coordinator == nil {
+		return memory.PermanentError(memory.CodeDisabled, "projection runtime is unavailable", nil)
 	}
 
-	return nil
+	if ctx == nil {
+		return memory.PermanentError(memory.CodeInvalidDerived, "projection runtime context is required", nil)
+	}
+
+	if err := r.admitStartup(); err != nil {
+		return err
+	}
+	defer r.active.Done()
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	if r.maintenance != nil {
+		if err := r.maintenance.ReconcileProjection(ctx); err != nil {
+			return err
+		}
+	}
+
+	return r.syncDurableScopes(ctx)
 }
 
 // Close prevents new syncs and waits for in-flight projection work.

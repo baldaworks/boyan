@@ -5,6 +5,7 @@ import (
 	"io"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
+	"github.com/dgraph-io/badger/v4"
 )
 
 // ImportCanonicalLogical validates a logical export stream while applying it
@@ -49,6 +50,10 @@ func (s *CanonicalStore) ImportCanonicalLogicalWithOptions(
 			"canonical badger store is closed",
 			nil,
 		)
+	}
+
+	if err := s.db.View(func(txn *badger.Txn) error { return checkScopeErasePayloadGuard(txn) }); err != nil {
+		return CanonicalLogicalExportSummary{}, canonicalStoreError("import while erase pending", err)
 	}
 
 	return s.importCanonicalLogicalRecords(ctx, source, batchSize, options.Progress)

@@ -9,15 +9,12 @@ import (
 func (a *CanonicalForgetAdapter) ForgetSource(
 	ctx context.Context,
 	command memory.ForgetSourceCommand,
-) (
-	memory.ForgetOutcome,
-	error,
-) {
+) (memory.ForgetOutcome, error) {
 	if err := command.Validate(); err != nil {
 		return memory.ForgetOutcome{}, err
 	}
 
-	sourceID, err := a.loadSourceForgetID(ctx, command)
+	sourceID, err := a.store.CanonicalSourceID(ctx, command.Source.Scope, command.Source)
 	if err != nil {
 		return memory.ForgetOutcome{}, err
 	}
@@ -27,50 +24,27 @@ func (a *CanonicalForgetAdapter) ForgetSource(
 		return memory.ForgetOutcome{}, err
 	}
 
-	if outcome, found, err := a.loadSourceForgetOutcome(ctx, command.Source.Scope, operationID); err != nil || found {
-		if err != nil {
-			return memory.ForgetOutcome{}, err
-		}
+	state, err := a.store.LoadScopeState(ctx, command.Source.Scope)
+	if err != nil {
+		return memory.ForgetOutcome{}, err
+	}
 
-		if scrubErr := a.scrubForgetOutcome(
-			ctx,
+	request := memory.ScopeEraseRequest{
+		Kind: memory.ForgetKindSource, SourceID: sourceID, SourceRef: command.Source, Scope: command.Source.Scope,
+		OperationID: operationID, ExpectedScopeVersion: state.Version, ForgottenAt: command.ForgottenAt,
+		Fingerprint: memory.CanonicalForgetFingerprint(
+			operationID,
 			command.Source.Scope,
-			[]string{sourceID},
-			outcome.Revisions,
-		); scrubErr != nil {
-			return outcome, scrubErr
-		}
-
-		return outcome, nil
+			memory.ForgetKindSource,
+			command.Source,
+			"",
+		),
 	}
 
-	return a.applySourceForget(ctx, command, sourceID, operationID)
-}
-
-func (a *CanonicalForgetAdapter) applySourceForget(
-	ctx context.Context,
-	command memory.ForgetSourceCommand,
-	sourceID,
-	operationID string,
-) (memory.ForgetOutcome, error) {
-	targets, err := a.loadSourceForgetTargets(ctx, command, sourceID)
+	journal, err := a.store.RunScopeErase(ctx, request)
 	if err != nil {
 		return memory.ForgetOutcome{}, err
 	}
 
-	outcome, err := a.commitSourceForget(ctx, command, operationID, targets)
-	if err != nil {
-		return memory.ForgetOutcome{}, err
-	}
-
-	if scrubErr := a.scrubForgetOutcome(
-		ctx,
-		command.Source.Scope,
-		[]string{targets.sourceID},
-		outcome.Revisions,
-	); scrubErr != nil {
-		return outcome, scrubErr
-	}
-
-	return outcome, nil
+	return completedEraseOutcome(journal)
 }

@@ -27,6 +27,10 @@ func (c *ProjectionCoordinator) applyScopeChanges(
 			return applied, nil
 		}
 
+		if err := checkProjectionRebuildRequired(changes); err != nil {
+			return false, err
+		}
+
 		revisions, err := c.loadRevisions(ctx, scope, uniqueRevisionIDs(changes))
 		if err != nil {
 			return false, err

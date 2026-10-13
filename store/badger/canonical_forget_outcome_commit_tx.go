@@ -11,6 +11,10 @@ func (s *CanonicalStore) commitCanonicalForgetOutcome(
 	key []byte,
 	scopeKey []byte,
 ) (memory.ForgetOutcome, error) {
+	if err := checkScopeEraseFence(txn, request.Scope, ""); err != nil {
+		return memory.ForgetOutcome{}, err
+	}
+
 	if outcome, ok, err := loadCanonicalForgetOutcome(txn, request, key); ok || err != nil {
 		return outcome, err
 	}

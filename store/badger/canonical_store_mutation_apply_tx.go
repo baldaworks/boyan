@@ -11,6 +11,44 @@ func (s *CanonicalStore) applyCanonicalMutationTxn(
 	scopeKey []byte,
 	operationKey []byte,
 ) (memory.CanonicalMutationOutcome, error) {
+	if err := checkScopeEraseFence(txn, mutation.Scope, ""); err != nil {
+		return memory.CanonicalMutationOutcome{}, err
+	}
+
+	identity, err := prepareTurnIdentityMutation(txn, mutation)
+	if err != nil {
+		return memory.CanonicalMutationOutcome{}, err
+	}
+
+	if outcome, found, err := loadCanonicalMutationOutcome(txn, mutation, operationKey); found || err != nil {
+		if err != nil {
+			return memory.CanonicalMutationOutcome{}, err
+		}
+
+		if err := completeTurnIdentityReplay(txn, mutation, identity); err != nil {
+			return memory.CanonicalMutationOutcome{}, err
+		}
+
+		return outcome, nil
+	}
+
+	if identity.Forgotten {
+		return memory.CanonicalMutationOutcome{}, turnIdentityConflict("forgotten canonical source cannot be derived again")
+	}
+
+	if err := persistTurnCertificate(txn, mutation); err != nil {
+		return memory.CanonicalMutationOutcome{}, err
+	}
+
+	return s.applyUnfencedCanonicalMutationTxn(txn, mutation, scopeKey, operationKey)
+}
+
+func (s *CanonicalStore) applyUnfencedCanonicalMutationTxn(
+	txn *badger.Txn,
+	mutation memory.CanonicalMutation,
+	scopeKey []byte,
+	operationKey []byte,
+) (memory.CanonicalMutationOutcome, error) {
 	if outcome, ok, err := loadCanonicalMutationOutcome(txn, mutation, operationKey); ok || err != nil {
 		return outcome, err
 	}
@@ -51,4 +89,16 @@ func (s *CanonicalStore) applyCanonicalMutationTxn(
 	}
 
 	return outcome, nil
+}
+
+func completeTurnIdentityReplay(
+	txn *badger.Txn,
+	mutation memory.CanonicalMutation,
+	identity memory.CanonicalTurnIdentityResult,
+) error {
+	if mutation.TurnIdentity != nil && !identity.Found {
+		return turnIdentityConflict("committed canonical turn identity is unavailable")
+	}
+
+	return persistTurnCertificate(txn, mutation)
 }

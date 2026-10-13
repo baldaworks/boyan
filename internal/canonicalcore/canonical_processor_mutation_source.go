@@ -24,7 +24,9 @@ func (p *CanonicalTurnProcessor) appendCanonicalTurnSource(mutation *CanonicalMu
 		return "", PermanentError(CodeInvalidDerived, "encode canonical source payload", err)
 	}
 
-	sourcePayloadRecord, sourceRef, err := p.payload(canonicalPayloadID("source", sourceID), sourcePayload)
+	sourcePayloadRecord, sourceRef, err := p.payload(
+		canonicalScopedPayloadID(turn.Scope, "source", sourceID), sourcePayload,
+	)
 	if err != nil {
 		return "", err
 	}

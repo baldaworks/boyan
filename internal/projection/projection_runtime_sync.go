@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/baldaworks/boyan/internal/projectionsync"
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
@@ -58,7 +59,9 @@ func (r *ProjectionRuntime) syncScope(ctx context.Context, scope memory.Scope, s
 		generationID = resumedID
 		_, err := r.coordinator.Sync(ctx, scope, r.projection, generationID)
 
-		return err
+		if !r.rebuildAfterSync(err) {
+			return err
+		}
 	}
 
 	generationID = projectionGenerationID(r.projection, scope, serial, time.Now().UTC())
@@ -134,7 +137,11 @@ func (r *ProjectionRuntime) resumeScope(ctx context.Context, scope memory.Scope)
 	}
 
 	manifest, found, err := r.checkpoints.LoadActiveProjectionManifest(ctx, scope, r.projection)
-	if err == nil && found && manifest.Status == memory.ProjectionGenerationActive {
+	if err != nil {
+		return "", false, err
+	}
+
+	if found && manifest.Status == memory.ProjectionGenerationActive {
 		valid, err := r.retainedManifest(ctx, manifest)
 		if err != nil {
 			return "", false, err
@@ -158,4 +165,8 @@ func (r *ProjectionRuntime) retainedManifest(ctx context.Context, manifest memor
 	floor, err := retention.LoadProjectionRetentionFloor(ctx, manifest.Scope, r.projection)
 
 	return floor <= manifest.Watermark, err
+}
+
+func (r *ProjectionRuntime) rebuildAfterSync(err error) bool {
+	return r.rebuildable && errors.Is(err, projectionsync.ErrProjectionRebuildRequired)
 }

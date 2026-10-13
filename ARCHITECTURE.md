@@ -213,9 +213,17 @@ syncs leave the generation and checkpoint untouched; updates apply new changes.
 Dirty, missing, incompatible or retention-floor-invalid indexes rebuild from
 canonical active state and replay changes committed during the scan. Exact-scope
 synchronization serializes ingest, repair and forget-triggered projection work.
+A counted forget outcome can omit its reference arrays when they exceed the
+bounded result ceiling. Its durable change then requires a canonical rebuild;
+replaying that change as an empty delta cannot certify a generation.
+
 Physical retention keeps active and at most one previous generation per scope,
 while preserving durable references and in-flight builders. Startup reconciles
-committed marker switches before removing abandoned generations.
+committed marker switches before removing abandoned generations. Standalone
+startup first drains pending erase journals, then reconciles projection retention,
+pages durable scope states and synchronously synchronizes each scope, including
+scopes without a first manifest. Stores without optional scope pagination retain
+lazy synchronization. Repair failures or cancellation fail startup explicitly.
 
 Native kind is indexed by the disposable v2 schema; physical v1 generations
 rebuild from canonical state. Nonzero-minimum recall pins the physical
@@ -228,8 +236,25 @@ encoded item-ID order and retains only candidate matches; the scope version
 captured before scanning guards the final atomic mutation.
 
 The projection can lag and be repaired, but canonical state remains safe and
-authoritative. Readiness checks canonical maintenance diagnostics before
-accepting work.
+authoritative. Readiness checks canonical maintenance diagnostics and completes
+startup recovery before accepting work. It does not certify the watermark of a
+subsequent query; minimum-watermark search still checks its pinned generation.
+
+## Durable forgetting and immutable replay
+
+A payload-free erase journal records bounded traversal progress and the original
+operation identity. A transactionally enforced exact-scope fence orders supported
+writes against the target set. Denial, the single logical outcome and payload
+scrubbing resume across restart; completion releases the fence only after scrub.
+Durable blob ownership checks reject shared legacy targets before denial, and
+scrub tombstones prevent payload recreation through supported storage writes.
+
+Versioned content-free turn certificates bind normalized authoritative input.
+Identity verification precedes model derivation and receipt replay, with another
+check in the canonical commit transaction. A verified committed operation returns
+its original result without another model call, including after a lost ingest
+receipt. Valid legacy evidence can establish equivalence while preserving its
+immutable payload references; missing or ambiguous proof fails explicitly.
 
 ## Scope isolation
 
@@ -242,7 +267,10 @@ explicitly `personal` or `group`; the pair of key and kind defines isolation.
 Boyan validates this shape without resolving host-specific address semantics.
 It does not implement inheritance, fallback, or cross-scope promotion.
 
-All ingest, search, trace, and forget paths stay within one exact scope.
+All ingest, search, trace, and forget paths stay within one exact scope. New
+native payload IDs include both scope key and kind. Older shared payloads are
+not migrated across foreign records: forgetting fails closed before denial when
+exclusive ownership cannot be established.
 
 ## Derivation boundary
 

@@ -2,6 +2,7 @@ package orderedingest //nolint:testpackage // Exercises shared private test fixt
 
 import (
 	"context"
+	"testing"
 
 	boyan "github.com/baldaworks/boyan/pkg/memory"
 )
@@ -103,4 +104,62 @@ func (fakeCanonicalStore) ClaimDeliveryOutbox(
 
 func (fakeCanonicalStore) SettleDeliveryOutbox(context.Context, boyan.DeliverySettlementRequest) error {
 	return boyan.PermanentError(boyan.CodeDisabled, "unused in turn test", nil)
+}
+
+// identityTurnProcessor models committed authoritative input separately from a
+// producer's delivery fingerprint, so receipt tests exercise content checking.
+type identityTurnProcessor struct {
+	fakeTurnProcessor
+
+	fingerprint string
+}
+
+func (f identityTurnProcessor) VerifyCanonicalTurn(
+	_ context.Context,
+	turn boyan.Turn,
+) (boyan.CanonicalTurnIdentityResult, error) {
+	actual, err := boyan.CanonicalTurnFingerprint(turn)
+	if err != nil {
+		return boyan.CanonicalTurnIdentityResult{}, err
+	}
+
+	if actual != f.fingerprint {
+		return boyan.CanonicalTurnIdentityResult{}, boyan.PermanentError(
+			boyan.CodeConflict,
+			"authoritative test turn differs",
+			nil,
+		)
+	}
+
+	normalized, err := boyan.NormalizeCanonicalTurn(turn)
+	if err != nil {
+		return boyan.CanonicalTurnIdentityResult{}, err
+	}
+
+	source := boyan.CanonicalSourceRecord{SourceID: normalized.SourceID, Scope: normalized.Scope,
+		Sensitivity: boyan.SensitivityStandard, Retention: boyan.RetentionClassStandard,
+		Payload: boyan.PayloadRef{ID: "source-payload", Digest: "source-digest", ByteSize: 1},
+	}
+
+	proof := boyan.CanonicalTurnIdentityResult{Found: true, Source: source}
+	for _, message := range normalized.Messages {
+		proof.Messages = append(proof.Messages, boyan.MessageRecord{MessageID: message.MessageID,
+			SourceID: normalized.SourceID,
+			Role:     message.Role, Payload: boyan.PayloadRef{ID: "message-payload", Digest: "message-digest", ByteSize: 1}})
+	}
+
+	return proof, nil
+}
+
+func newIdentityTurnProcessor(
+	t *testing.T,
+	turn boyan.Turn,
+	outcome boyan.CanonicalMutationOutcome,
+) identityTurnProcessor {
+	t.Helper()
+
+	fingerprint, err := boyan.CanonicalTurnFingerprint(turn)
+	requireNoError(t, err, "committed turn fingerprint: %v")
+
+	return identityTurnProcessor{fakeTurnProcessor: fakeTurnProcessor{outcome: outcome}, fingerprint: fingerprint}
 }

@@ -11,12 +11,19 @@ func canonicalLogicalComponentCount(recordType string) (int, bool) {
 	switch recordType {
 	case badgerRecordScope, badgerRecordChange:
 		return canonicalScopeComponents, recordType == badgerRecordChange
-	case badgerRecordProvenanceForward,
+	case badgerRecordEraseLockRef, badgerRecordEraseSourceRef,
+		badgerRecordProvenanceForward,
 		badgerRecordProvenanceReverse,
 		badgerRecordSourceRevision,
 		badgerRecordProjectionManifest:
 		return canonicalEdgeComponents, false
-	case badgerRecordOperation,
+	case badgerRecordTurnCertificate, badgerRecordEraseSourceIdentity,
+		badgerRecordErasedBlob,
+		badgerRecordEraseBlobLock,
+		badgerRecordEraseJournal,
+		badgerRecordEraseFence,
+		badgerRecordEraseGuard,
+		badgerRecordOperation,
 		badgerRecordSource,
 		badgerRecordMessage,
 		badgerRecordItem,
@@ -28,6 +35,7 @@ func canonicalLogicalComponentCount(recordType string) (int, bool) {
 		badgerRecordPayload,
 		badgerRecordDeniedSource,
 		badgerRecordDeniedRevision,
+		badgerRecordForgetOutcome,
 		badgerRecordProjectionActive,
 		badgerRecordProjectionRetention,
 		badgerRecordProjectionCheckpoint:

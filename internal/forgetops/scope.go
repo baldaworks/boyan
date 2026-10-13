@@ -9,10 +9,7 @@ import (
 func (a *CanonicalForgetAdapter) ForgetScope(
 	ctx context.Context,
 	command memory.ForgetScopeCommand,
-) (
-	memory.ForgetOutcome,
-	error,
-) {
+) (memory.ForgetOutcome, error) {
 	if err := command.Validate(); err != nil {
 		return memory.ForgetOutcome{}, err
 	}
@@ -22,37 +19,38 @@ func (a *CanonicalForgetAdapter) ForgetScope(
 		return memory.ForgetOutcome{}, err
 	}
 
-	if outcome, found, err := a.loadScopeForgetOutcome(ctx, command.Scope, operationID); err != nil || found {
-		if err != nil {
-			return memory.ForgetOutcome{}, err
-		}
-
-		return outcome, nil
-	}
-
-	targets, err := a.loadScopeForgetTargets(ctx, command.Scope)
+	state, err := a.store.LoadScopeState(ctx, command.Scope)
 	if err != nil {
 		return memory.ForgetOutcome{}, err
 	}
 
-	if err := a.denyScopeForgetTargets(
-		ctx,
-		command.Scope,
-		targets.sourceIDs,
-		targets.revisionIDs,
-		command.ForgottenAt,
-	); err != nil {
-		return memory.ForgetOutcome{}, err
+	request := memory.ScopeEraseRequest{
+		Scope: command.Scope, OperationID: operationID, ExpectedScopeVersion: state.Version, ForgottenAt: command.ForgottenAt,
+		Fingerprint: memory.CanonicalForgetFingerprint(
+			operationID,
+			command.Scope,
+			memory.ForgetKindScope,
+			memory.SourceRef{},
+			command.RequestID,
+		),
 	}
 
-	outcome, err := a.commitScopeForget(ctx, command, operationID, targets)
+	journal, err := a.store.RunScopeErase(ctx, request)
 	if err != nil {
 		return memory.ForgetOutcome{}, err
 	}
 
-	if scrubErr := a.scrubForgetOutcome(ctx, command.Scope, targets.sourceIDs, outcome.Revisions); scrubErr != nil {
-		return outcome, scrubErr
+	return completedEraseOutcome(journal)
+}
+
+func scopeForgetOperationID(command memory.ForgetScopeCommand) (string, error) {
+	return memory.CanonicalForgetOperationID(memory.ForgetKindScope, command.Scope, memory.SourceRef{}, command.RequestID)
+}
+
+func completedEraseOutcome(journal memory.ScopeEraseJournal) (memory.ForgetOutcome, error) {
+	if journal.Stage != memory.ScopeEraseComplete || journal.Outcome == nil {
+		return memory.ForgetOutcome{}, memory.RetryableError(memory.CodeConflict, "canonical erase remains incomplete", nil)
 	}
 
-	return outcome, nil
+	return *journal.Outcome, nil
 }

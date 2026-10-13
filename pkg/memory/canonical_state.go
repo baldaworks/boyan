@@ -20,6 +20,9 @@ type ScopeChange struct {
 	OperationID string    `json:"operation_id"`
 	OccurredAt  time.Time `json:"occurred_at"`
 	RevisionIDs []string  `json:"revision_ids,omitempty"`
+	// RequiresRebuild marks changes whose complete target references exceed the
+	// bounded delta representation. Such entries must never advance via Apply.
+	RequiresRebuild bool `json:"requires_rebuild,omitempty"`
 }
 
 // Validate verifies one exact-scope canonical state header.
