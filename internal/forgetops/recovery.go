@@ -12,6 +12,10 @@ const pendingErasePageSize = 128
 // RecoverPendingScopeErases drains original durable operations before readiness.
 // A compatibility rejection is safe only after its locks and fence are released.
 func RecoverPendingScopeErases(ctx context.Context, store *badger.CanonicalStore) error {
+	if err := store.ResumeRestoreBeforeEraseRecovery(ctx); err != nil {
+		return err
+	}
+
 	var cursor []byte
 	for {
 		journals, next, err := store.ListPendingScopeErases(ctx, cursor, pendingErasePageSize)

@@ -186,3 +186,29 @@ func (s *CanonicalStore) syncPrivacyRestoreDB() error {
 
 	return s.db.Sync()
 }
+
+// ResumeRestoreBeforeEraseRecovery resumes only a validated restore before
+// startup erase recovery. Ordinary stores retain their legacy recovery order;
+// an incomplete loading restore must be retried with a complete archive.
+func (s *CanonicalStore) ResumeRestoreBeforeEraseRecovery(ctx context.Context) error {
+	if err := canonicalContextError(ctx); err != nil {
+		return err
+	}
+
+	if s == nil {
+		return invalidSourcePrivacy()
+	}
+
+	s.maintenanceMu.Lock()
+	defer s.maintenanceMu.Unlock()
+
+	if s.db == nil {
+		return invalidSourcePrivacy()
+	}
+
+	if !s.restoreBlocked.Load() {
+		return nil
+	}
+
+	return s.resumeValidatedPrivacyRestore(ctx)
+}

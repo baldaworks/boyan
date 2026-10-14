@@ -52,8 +52,11 @@ func (s *CanonicalStore) ImportCanonicalLogicalWithOptions(
 		)
 	}
 
-	if err := s.db.View(func(txn *badger.Txn) error { return checkScopeErasePayloadGuard(txn) }); err != nil {
-		return CanonicalLogicalExportSummary{}, canonicalStoreError("import while erase pending", err)
+	loadingRetry := s.restoreBlocked.Load() && s.restorePhase == restoreLoading
+	if !loadingRetry {
+		if err := s.db.View(func(txn *badger.Txn) error { return checkScopeErasePayloadGuard(txn) }); err != nil {
+			return CanonicalLogicalExportSummary{}, canonicalStoreError("import while erase pending", err)
+		}
 	}
 
 	return s.importPrivacyLogicalLocked(ctx, source, batchSize, options.Progress)

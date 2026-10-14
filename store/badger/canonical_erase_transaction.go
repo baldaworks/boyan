@@ -28,6 +28,10 @@ func (s *CanonicalStore) eraseTransaction(ctx context.Context, write bool, fn fu
 		return eraseStoreFailure("canonical badger store is closed", nil)
 	}
 
+	if s.restoreBlocked.Load() {
+		return restoreUnavailable()
+	}
+
 	guarded := func(txn *badger.Txn) error {
 		if err := fn(txn); err != nil {
 			return err
