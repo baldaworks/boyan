@@ -256,6 +256,35 @@ its original result without another model call, including after a lost ingest
 receipt. Valid legacy evidence can establish equivalence while preserving its
 immutable payload references; missing or ambiguous proof fails explicitly.
 
+## Source privacy and bounded trace
+
+Badger atomically merges source privacy with every canonical writer. The
+fixed-version aggregate binds exact scope, source, immutable payload and bounded
+message membership. Sensitive classification is sticky; incomplete evidence is
+unknown and cannot become standard through a later subset. Classification uses
+validated revision evidence and provenance, not source defaults, absent reverse
+indexes or secret detection. Benign recall eligibility remains independent.
+
+Trace first authorizes its bounded metadata closure before raw content reads.
+Any sensitive or unknown source denies the entire graph, including a benign
+root. Source messages use validated certificate membership or prepared complete
+membership with at most 32 message IDs per source read directly by key, ordered
+by the existing role/ID rules; there is no whole-scope message scan. After all
+content reads, one final Badger transaction rechecks captured scope version, immutable source/revision
+bindings, denial and erase guards, privacy readiness and context. This is the
+read's linearization point; later commits do not revoke a completed read.
+
+Preparation exclusively scans authoritative sources, messages and revisions in
+pages of at most 32 keys, checks 4 MiB value/payload bounds before copying bytes,
+and publishes the fixed-version completeness marker last. It reconstructs
+supported native capture from a bound certificate or complete validated owned
+message history with classification evidence, and full certifiable legacy
+history. Sensitive history stays sensitive and unsupported history stays
+unknown. Unattributable opaque history marks its exact scope incomplete, which can also deny later new
+sources in that scope. Cancellation leaves readiness unpublished and the next
+attempt restarts the bounded full pass. This work occurs once at startup or
+restore, never as a per-trace history scan.
+
 ## Scope isolation
 
 Scope keys are exact canonical locators supplied by the host in
@@ -284,6 +313,14 @@ The model runtime does not choose:
 - authoritative timestamps
 - lifecycle state
 - provenance authority outside validated evidence
+
+Each model invocation allocates one cryptographically random ephemeral session
+ID independent of operation, stage and scope. The real ADK in-memory service
+rejects occupied IDs; Boyan never deletes a preexisting session to make room.
+Cleanup is installed immediately after successful creation and deletes only the
+creator's state with an independent context, including failure and cancellation.
+Entropy/create failures are retryable model failures; deadline expiry is a
+timeout. This changes no canonical IDs or durable stage completion.
 
 ## Standalone safety defaults
 
@@ -327,8 +364,18 @@ races. The producer fingerprint is separate delivery metadata. Scenarios and
 profile retain independent durable completion; forget retains content-free
 certificates and scope markers without restoring erased payloads.
 
-Logical exports and native backups preserve certificates, capability markers
-and inherited grounding metadata. Maintenance validates bounded new structural
-metadata against its key and version; native restore validates integrity before
-reporting success. Failed restore destinations must remain unavailable because
-Badger Load is not an atomic replacement. Older proof-free data remains unproven.
+Logical exports and native backups preserve certificates, capability markers,
+inherited grounding metadata and restrictive source privacy. Integrity checks
+validate versions, finite staging states, exact key/source/payload bindings and
+complete membership against authoritative records before forced reconstruction;
+imported standard labels, completeness bits and readiness never establish trust.
+
+Restore uses a fixed local loading/validated fence outside Badger's copied MVCC
+stream. Loading remains unavailable across failures and reopen. A complete
+validated load is synced before the validated fence is synced; forced privacy
+preparation is synced again before fence removal and directory sync. A validated
+interruption can resume preparation; a partial loading interruption requires a
+complete retry. Native full and incremental backups remain supported. A single
+unlinked temporary spool and two sequential passes preserve restrictive incoming
+and destination history across versions and tombstones without a history-sized
+map. See [operator recovery limits](docs/OPERATIONS.md#source-privacy-and-restore-upgrades).

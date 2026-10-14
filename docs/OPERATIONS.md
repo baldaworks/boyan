@@ -68,9 +68,10 @@ SDK's HTTP 400 response; ingest retains its structured error envelope.
 - `GET /readyz` checks that Boyan can accept work safely
 
 Readiness fails if the standalone runtime reports a current readiness
-diagnostic. Startup finishes pending canonical erases, reconciles retained index
-metadata, then synchronously repairs durable scopes in bounded pages before
-accepting work. Missing, v1, dirty and never-created indexes recover without a
+diagnostic. Startup finishes pending canonical erases, then prepares source
+privacy before projection repair, sequenced writers and public readers can serve
+work. It reconciles retained index metadata and synchronously repairs durable
+scopes in bounded pages before accepting work. Missing, v1, dirty and never-created indexes recover without a
 new ingest or manual Sync call. Canonical versions and change sequences are not
 advanced merely to repair an index.
 
@@ -189,8 +190,8 @@ verification. There is no general foreign-record migration or operator repair
 command. Historical crash windows that never recorded their selected targets
 cannot reconstruct an unknowable old snapshot.
 
-Physical backups and supported logical exports retain recovery journals,
-fences, certificates and erased-payload tombstones. Restoring interrupted state
+Physical backups and supported logical exports retain erase recovery journals
+and fences, certificates and erased-payload tombstones. Restoring interrupted state
 still requires normal startup recovery. Payload API absence is logical cleanup;
 it does not promise forensic removal from disk, old backups or previous
 disposable index generations. Existing retention cleanup remains responsible
@@ -225,15 +226,89 @@ Take a trustworthy backup before upgrading a writer. Supported physical and
 logical roundtrips preserve boundary proof, capability markers and inherited
 bounds/trust metadata, including forgotten replay evidence. Old proof-free
 imports remain unproven. Integrity checks reject malformed new structural proof
-records. Native restore checks integrity before success, but Badger Load and
-streaming logical import are not atomic replacements: keep any failed
-destination unavailable and restore into an empty destination from a trustworthy
-backup rather than serving partially loaded state.
+records. Native restore and logical import validate integrity and reconstruct
+privacy before success. They are not atomic replacements; follow the
+[restore recovery rules](#source-privacy-and-restore-upgrades) rather than serving
+partially loaded state.
 
 Do not run an older writer against a store written under these contracts; it can
 bypass certification or inherited-bound enforcement. A deployed rollback needs
 a trustworthy pre-upgrade backup. Never strip certificates, capability markers
-or grounding metadata to bypass a conflict.
+or grounding/privacy metadata to bypass a conflict.
+
+## Source privacy and restore upgrades
+
+Take a trustworthy pre-upgrade backup. Do not run an older writer against an
+upgraded store, including during rollback: it can add history without required
+privacy/proof metadata. A deployed downgrade requires a trustworthy pre-upgrade
+backup. Never remove readiness, privacy aggregates, scope-incomplete flags,
+certificates or grounding metadata to bypass a denial or conflict.
+
+Source privacy follows validated classification history, not automatic secret
+recognition. Sensitive or unknown history denies a complete raw trace even when
+its root is benign; benign recall remains available. Supported complete old
+native capture (a bound certificate or complete validated owned message history
+with classification evidence) and full certifiable legacy history can reconstruct
+standard classification. Missing, opaque, ambiguous or unsupported history
+remains unknown. Unattributable opaque history can mark its exact scope key/kind
+incomplete and deny later new sources there; unrelated scopes remain independent.
+Known sensitive/unknown classification and scope-incomplete restrictions remain
+monotone through writes, reconstruction and restore.
+
+Older stores require `PrepareSourcePrivacy(ctx)` before direct canonical Trace
+or writers can operate; unprepared Trace returns an empty `unavailable` result.
+Standalone startup calls preparation after pending erase recovery and before
+serving work. The exclusive pass scans authoritative sources, messages and
+revisions in pages of at most 32 keys, bounds per-source membership at 32 IDs,
+and checks 4 MiB encoded-value/payload bounds before copying bytes. It publishes
+the fixed-version completion marker last. Work and startup delay grow with
+stored history, while page memory stays bounded. Cancellation/failure leaves
+readiness unpublished; the next attempt restarts the full bounded pass. Trace
+itself performs source-local bounded reads rather than replaying full history.
+
+Supported native full/incremental backups and logical exports retain privacy and
+proof metadata. Integrity validates original imported metadata, including member
+ownership and complete-capture bindings, before forced reconstruction. Copied
+standard labels, membership bits and ready markers never establish authority.
+Restrictive destination and retained incoming versions survive native restore,
+including tombstones; incremental chains use the returned backup cursor as
+`since`, without adding one.
+
+Restore maintains `.boyan-restore-privacy`, a fixed local loading/validated fence
+outside the copied Badger MVCC keyspace. Trace, recall and readiness remain
+unavailable while fenced, including after reopening, so copied higher-version
+ready markers cannot publish partially loaded data. Native restore spools one
+unlinked, mode-0600 temporary artifact for two sequential passes. Temporary disk
+use grows linearly with backup size. Encoded native frames have a 256 MiB
+operational limit, checked before allocation and on rewritten output; this is
+Boyan's bound, not an upstream Badger hard maximum. Privacy values retain their
+separate 4 MiB bound. Oversized native frames return `limit_exceeded` and leave
+the destination fenced.
+
+A complete load/replay passes integrity and syncs Badger before syncing the
+validated fence. Forced privacy preparation then syncs Badger again before
+removing the fence and syncing its directory. A crash or cancellation during
+loading requires a complete valid backup/import retry, or restoration into a
+fresh destination from trustworthy data; `PrepareSourcePrivacy` alone cannot
+certify a partial stream. An interruption after validation can resume preparation
+through startup or `PrepareSourcePrivacy(ctx)`, after rechecking integrity. Do
+not delete the fence or manually publish readiness. These are library/startup
+recovery mechanisms; this release adds no restore or repair CLI.
+
+Concurrent derivation calls use one cryptographically random ephemeral ADK
+session ID per invocation, independently of stage, operation and scope. Occupied
+sessions are never deleted to create another call's state. Only a successful
+creator installs cleanup, using an independent context even after cancellation
+or malformed output. Canonical operation IDs and durable stage outcomes remain
+unchanged; entropy/create failures are retryable model failures and deadline
+expiry is a timeout.
+
+New HTTP Turn fingerprints use the canonical normalized input hash in a
+versioned Turn namespace. Old raw-hash receipts remain immutable and replay
+without effects only with a full certificate or full stored Turn proof. Lossy
+uncertified native headers cannot authorize receipt replay, even when the raw
+fingerprint matches; unprovable history returns safe HTTP 409. Boundary
+fingerprint rules remain unchanged. See [canonical replay](API.md#canonical-turn-replay).
 
 ## Diagnostics workflow
 

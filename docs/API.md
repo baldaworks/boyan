@@ -97,13 +97,31 @@ Accepts the same envelope shape, but the payload is a validated
 
 ## Canonical turn replay
 
-Turn identity is independent of the producer delivery fingerprint. Before a
-model call or replaying a saved TURN receipt, Boyan verifies a versioned content
-certificate covering the complete normalized Turn: exact scope, conversation
-and lineage fields, timestamps, status, ordered messages and tool fields.
-Generated message/source IDs, an omitted success status and equivalent UTC
-instants normalize consistently. Reusing a canonical turn identity with changed
-content returns `conflict`, even with an unchanged delivery fingerprint.
+Turn delivery fingerprints retain full envelope validation and delegate payload
+equality to `CanonicalTurnFingerprint`. The transport representation is
+`boyan-ingest-fingerprint:turn:v1:<canonical hash>`. Equivalent UTC instants,
+omitted/explicit success status and omitted/generated source or message IDs
+therefore share one fingerprint. Producer and sequence remain receipt locators;
+the exact scope key and kind define independent ordering lanes and canonical
+identity. Boundary fingerprints retain their existing behavior.
+
+Saved TURN receipt replay requires full input proof covering exact scope,
+conversation and lineage, instant, status, ordered messages and tool fields.
+Changed input cannot authorize receipt replay through a caller-supplied matching
+delivery fingerprint. Model preflight separately uses the existing canonical
+identity verifier; generic legacy reconstruction retains the weaker proof
+limitations described below.
+
+Old raw-hash receipts remain immutable. Replay validates receipt shape and exact
+producer/scope/sequence ownership, then Kind, ExportID and exact scope, and
+requires complete immutable input proof even when the delivery fingerprint
+matches. A validated certificate or full stored Turn can provide that proof;
+missing capability/source, ambiguous evidence or an uncertified lossy native
+header returns permanent `conflict`/HTTP 409. Corrupt proof errors propagate
+through the content-safe error envelope. No guessed old wire representation is
+used, and a proven duplicate repeats no processor/model or canonical effects.
+The Go result field `CanonicalTurnIdentityResult.FullInputVerified` reports this
+proof strength for the current call; it is not persisted metadata.
 
 If canonical commit succeeded but receipt persistence failed, retrying the same
 verified turn completes the receipt without invoking the model again. This also
@@ -111,13 +129,12 @@ works after reopening storage and when the model is unavailable. A certified
 forgotten turn can replay an existing canonical operation; it cannot create a
 new derivation or restore erased content.
 
-Old data requires verifiable original source/message evidence. Missing or
-ambiguous evidence returns an explicit `conflict` before model execution or
-mutation. Supported uniquely owned native legacy records retain their original
-payload references. Native legacy tool metadata alone cannot prove the order of
-multiple tools; full original Turn evidence is required in that case. The older
-ExportID-keyed source namespace is rejected when its original identity cannot
-be certified safely.
+Generic legacy identity verification can still use supported uniquely owned
+native records while retaining original payload references. That reconstruction
+is weaker than full receipt replay proof: a native header omits lineage and
+cannot alone authorize receipt replay, even with a matching raw fingerprint.
+Full original Turn evidence remains supported. The older ExportID-keyed source
+namespace is rejected when its original identity cannot be certified safely.
 
 ## Structured derivation output
 
@@ -305,9 +322,24 @@ The root identity is the identity returned by native search. Existing migrated
 revisions retain their `atom`, `scenario` or `profile` representation and strict
 legacy identity validation. A closed graph can contain both representations.
 
-Sensitive or forgotten records/sources are unavailable to trace; a failure
-returns no partial graph. Recalled text and raw source messages remain
-untrusted reference data.
+Trace authorizes every source in the graph before reading raw context. A source
+with sensitive or unknown validated history makes the entire request fail with
+`forgotten` and an empty graph, including a benign revision sharing that source.
+Direct sensitive revisions and forgotten sources also deny the graph. Benign
+recall remains unchanged; labels are classification authority, not automatic
+secret detection. Malformed privacy bindings return `store_failure`; an older
+unprepared store returns `unavailable` until `PrepareSourcePrivacy(ctx)` completes.
+
+Message retrieval uses validated complete membership of at most 32 message IDs
+per source, read directly by key with additional bounded metadata/payload reads.
+It does not scan unrelated scope history. Existing graph shape and role/ID
+ordering remain intact. The final transaction rechecks privacy, scope version,
+immutable bindings, denial/erase guards and context after all content reads.
+Concurrent changes before that point return an empty failure; changes after a
+successful barrier do not revoke the completed read. Existing native tool-trace
+limitations remain: compact native message metadata lacks tool name/call fields
+needed to construct a valid raw Turn. This release adds no tool-trace support.
+Recalled text and raw source messages remain untrusted reference data.
 
 ## Boundary model-input limits
 

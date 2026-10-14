@@ -91,12 +91,40 @@ native-semantic-only old scopes may establish certification safely. Do not run
 old writers against upgraded state or delete proof/bounds metadata. Deployed
 rollback requires a trustworthy pre-upgrade backup.
 
+## Privacy and retry compatibility
+
+Release checks cover same-message and separate-message mixed sources, unknown
+legacy history, whole-graph denial with benign recall, bounded source-local
+Trace reads and the final privacy barrier under sensitive writes, forget, erase
+and cancellation. Supported standard native/legacy history stays available after
+preparation. Direct unprepared readers fail unavailable; interrupted preparation
+restarts without publishing readiness. Classification labels do not promise
+secret detection, and existing native tool-trace limitations remain.
+
+Native full/incremental and logical roundtrips must retain sensitive, completed
+unknown and scope-incomplete restrictions. Check forged/malformed imported
+metadata, higher-MVCC copied readiness, failed loading across reopen and
+validated preparation restart. The external restore fence and both Badger sync
+boundaries must precede availability. Preserve the 256 MiB operational native
+frame bound, bounded memory and linear temporary spool disk cost. Follow the
+[source privacy upgrade restrictions](docs/OPERATIONS.md#source-privacy-and-restore-upgrades);
+never use an old writer or strip metadata/fences, including during rollback.
+
+Runtime checks use actual ADK session ownership under overlapping calls,
+cancellation and failures. HTTP checks compare Turn transport equality with the
+sole canonical fingerprint authority, including UTC/default/generated-ID retries
+after restart, changed-input rejection and independent exact-scope lanes. Keep
+explicit pre-upgrade raw-hash receipt fixtures: full certificate/full stored Turn
+proof authorizes immutable duplicate outcomes with no repeated effects; lossy
+uncertified native headers fail HTTP 409 even with a matching fingerprint.
+Boundary fingerprints and canonical stable IDs remain unchanged.
+
 ## Integrated delivery
 
 For an approved Prism story, delivery includes integrating all approved
 changes into target `main` and pushing `origin/main` under the existing user
 authorization. Record the integrated revision and confirm the remote contains it.
-Run the required gates above freshly on the integrated state; successful branch
+Run all seven required gates above freshly on the final integrated state; successful branch
 checks alone do not establish delivered correctness.
 
 The separate Prism Verify phase checks the integrated evidence and all child

@@ -138,6 +138,19 @@ surfaces.
 
 See [docs/API.md](docs/API.md) and [docs/openapi.yaml](docs/openapi.yaml).
 
+Trace denies the whole raw source when its validated history is sensitive or
+unknown, even when the requested revision is benign; benign recall remains
+available. These labels describe stored classification, not automatic secret
+detection. Startup prepares supported older stores before serving work. Take a
+trustworthy pre-upgrade backup and follow the
+[upgrade and restore restrictions](docs/OPERATIONS.md#source-privacy-and-restore-upgrades);
+older writers must never access upgraded state.
+
+HTTP Turn retries use canonical input equality, including equivalent UTC
+instants, supported default status and generated IDs. Older raw-hash receipts
+replay only with complete immutable input proof. Concurrent model invocations
+own separate temporary ADK sessions; canonical operation identities stay stable.
+
 ## Go packages
 
 - `pkg/boyan` is the public host embedding and lifecycle API.
