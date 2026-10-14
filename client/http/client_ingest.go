@@ -17,7 +17,7 @@ func (c *Client) IngestTurn(
 		return memory.IngestReceipt{}, err
 	}
 
-	return c.do(ctx, "/v1/ingest/turns", envelope)
+	return c.do(ctx, "/v1/ingest/turns", envelope, envelope.Payload.ExportID)
 }
 
 func (c *Client) IngestBoundary(
@@ -31,5 +31,5 @@ func (c *Client) IngestBoundary(
 		return memory.IngestReceipt{}, err
 	}
 
-	return c.do(ctx, "/v1/ingest/boundaries", envelope)
+	return c.do(ctx, "/v1/ingest/boundaries", envelope, envelope.Payload.ExportID)
 }

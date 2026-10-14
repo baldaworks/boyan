@@ -10,7 +10,9 @@ import (
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
-func (c *Client) do(ctx context.Context, path string, payload any) (memory.IngestReceipt, error) {
+func (c *Client) do(
+	ctx context.Context, path string, payload any, expectedExportID string,
+) (memory.IngestReceipt, error) {
 	if c == nil || c.base == nil || c.client == nil {
 		return memory.IngestReceipt{}, memory.PermanentError(memory.CodeDisabled, "http ingest client is unavailable", nil)
 	}
@@ -42,10 +44,10 @@ func (c *Client) do(ctx context.Context, path string, payload any) (memory.Inges
 	}
 	defer resp.Body.Close()
 
-	return decodeIngestResponse(resp)
+	return decodeIngestResponse(resp, expectedExportID)
 }
 
-func decodeIngestResponse(resp *stdhttp.Response) (memory.IngestReceipt, error) {
+func decodeIngestResponse(resp *stdhttp.Response, expectedExportID string) (memory.IngestReceipt, error) {
 	if resp.StatusCode == stdhttp.StatusOK {
 		var receipt memory.IngestReceipt
 		if err := decodeResponse(resp.Body, &receipt); err != nil {
@@ -61,6 +63,14 @@ func decodeIngestResponse(resp *stdhttp.Response) (memory.IngestReceipt, error) 
 
 		if err := receipt.Validate(); err != nil {
 			return memory.IngestReceipt{}, err
+		}
+
+		if receipt.ExportID != expectedExportID {
+			return memory.IngestReceipt{}, memory.PermanentError(
+				memory.CodeInvalidDerived,
+				"client response export identity does not match request",
+				nil,
+			)
 		}
 
 		return receipt, nil
