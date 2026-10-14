@@ -5,7 +5,6 @@ import (
 	"io"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
-	"github.com/dgraph-io/badger/v4"
 )
 
 const defaultBadgerRestorePendingWrites = 128
@@ -35,7 +34,23 @@ func (s *CanonicalStore) RestoreCanonicalBackup(ctx context.Context, source io.R
 		return memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
 
-	if err := s.db.Load(source, maxPendingWrites); err != nil {
+	return s.restorePrivacyBackupLocked(ctx, source, maxPendingWrites)
+}
+
+func (s *CanonicalStore) restorePrivacyBackupLocked(ctx context.Context, source io.Reader, maxPendingWrites int) error {
+	loadingRetry := s.restoreBlocked.Load() && s.restorePhase == restoreLoading
+	if err := s.beginPrivacyRestore(); err != nil {
+		return canonicalStoreError("fence canonical restore", err)
+	}
+
+	completed := false
+	defer func() {
+		if !completed {
+			_ = s.unpublishRestoreReadiness()
+		}
+	}()
+
+	if err := s.loadNativePrivacyBackup(ctx, source, maxPendingWrites, loadingRetry); err != nil {
 		return canonicalStoreError("restore canonical backup", err)
 	}
 
@@ -43,7 +58,13 @@ func (s *CanonicalStore) RestoreCanonicalBackup(ctx context.Context, source io.R
 		return err
 	}
 
-	return s.db.View(func(txn *badger.Txn) error { return verifyCanonicalIntegrityTxn(ctx, txn) })
+	if err := s.completePrivacyRestore(ctx); err != nil {
+		return canonicalStoreError("validate restored privacy", err)
+	}
+
+	completed = true
+
+	return nil
 }
 
 func normalizeBadgerRestorePendingWrites(maxPendingWrites int) (int, error) {

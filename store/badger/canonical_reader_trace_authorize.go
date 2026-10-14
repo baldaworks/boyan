@@ -44,8 +44,8 @@ func authorizeTraceSource(txn *badger.Txn, scope memory.Scope, id string) (memor
 	return source, nil
 }
 
-func traceScopeVersion(txn *badger.Txn, scope memory.Scope) (uint64, error) {
-	if err := requireSourcePrivacyReady(txn); err != nil {
+func (r *CanonicalReader) traceScopeVersion(txn *badger.Txn, scope memory.Scope) (uint64, error) {
+	if err := r.store.requireSourcePrivacyReady(txn); err != nil {
 		return 0, err
 	}
 
@@ -72,7 +72,9 @@ func (r *CanonicalReader) traceReadTxn(ctx context.Context, read func(*badger.Tx
 		return err
 	}
 
-	r.store.maintenanceMu.RLock()
+	if r.store.restoreBlocked.Load() || !r.store.maintenanceMu.TryRLock() {
+		return restoreUnavailable()
+	}
 	defer r.store.maintenanceMu.RUnlock()
 
 	if r.store.db == nil {
@@ -92,7 +94,7 @@ func (r *CanonicalReader) traceReadTxn(ctx context.Context, read func(*badger.Tx
 // trace linearization point; subsequent writes cannot invalidate that read.
 func (r *CanonicalReader) finalTracePrivacyBarrier(ctx context.Context, scope memory.Scope, graph traceGraph) error {
 	return r.traceReadTxn(ctx, func(txn *badger.Txn) error {
-		version, err := traceScopeVersion(txn, scope)
+		version, err := r.traceScopeVersion(txn, scope)
 		if err != nil {
 			return err
 		}

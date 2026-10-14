@@ -61,8 +61,8 @@ func initializeEmptySourcePrivacy(db *badger.DB) error {
 	})
 }
 
-func checkCanonicalWriterFence(txn *badger.Txn, scope memory.Scope) error {
-	if err := requireSourcePrivacyReady(txn); err != nil {
+func (s *CanonicalStore) checkCanonicalWriterFence(txn *badger.Txn, scope memory.Scope) error {
+	if err := s.requireSourcePrivacyReady(txn); err != nil {
 		return err
 	}
 

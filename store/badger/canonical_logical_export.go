@@ -8,6 +8,7 @@ import (
 	"io"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
+	"github.com/dgraph-io/badger/v4"
 )
 
 // ExportCanonicalLogical writes a deterministic, backend-neutral JSONL
@@ -27,6 +28,14 @@ func (s *CanonicalStore) ExportCanonicalLogical(ctx context.Context, destination
 
 	if s.db == nil {
 		return memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
+	}
+
+	if s.restoreBlocked.Load() {
+		return restoreUnavailable()
+	}
+
+	if err := s.db.View(func(txn *badger.Txn) error { return verifyCanonicalIntegrityTxn(ctx, txn) }); err != nil {
+		return err
 	}
 
 	writer := bufio.NewWriter(destination)

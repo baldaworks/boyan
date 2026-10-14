@@ -15,28 +15,20 @@ func (r *CanonicalReader) loadCanonicalView(
 	revisionID string,
 	activeOnly bool,
 ) (canonicalRecallView, bool, error) {
-	if err := scope.Validate(); err != nil {
+	if err := r.validateCanonicalViewRequest(scope, revisionID); err != nil {
 		return canonicalRecallView{}, false, err
 	}
 
-	if strings.TrimSpace(revisionID) == "" {
-		return canonicalRecallView{}, false, memory.PermanentError(
-			memory.CodeInvalidDerived,
-			"canonical revision id is required",
-			nil,
-		)
-	}
-
-	if !r.hasOpenStore() {
-		return canonicalRecallView{}, false, memory.PermanentError(
-			memory.CodeStoreFailure,
-			"canonical reader store is closed",
-			nil,
-		)
+	if r.store.restoreBlocked.Load() {
+		return canonicalRecallView{}, false, restoreUnavailable()
 	}
 
 	r.store.maintenanceMu.RLock()
 	defer r.store.maintenanceMu.RUnlock()
+
+	if r.store.restoreBlocked.Load() {
+		return canonicalRecallView{}, false, restoreUnavailable()
+	}
 
 	view := canonicalRecallView{state: memory.RevisionStateActive}
 
@@ -61,6 +53,22 @@ func (r *CanonicalReader) loadCanonicalView(
 	}
 
 	return view, true, nil
+}
+
+func (r *CanonicalReader) validateCanonicalViewRequest(scope memory.Scope, revisionID string) error {
+	if err := scope.Validate(); err != nil {
+		return err
+	}
+
+	if strings.TrimSpace(revisionID) == "" {
+		return memory.PermanentError(memory.CodeInvalidDerived, "canonical revision id is required", nil)
+	}
+
+	if !r.hasOpenStore() {
+		return memory.PermanentError(memory.CodeStoreFailure, "canonical reader store is closed", nil)
+	}
+
+	return nil
 }
 
 func (r *CanonicalReader) hasOpenStore() bool { return r != nil && r.store != nil && r.store.db != nil }

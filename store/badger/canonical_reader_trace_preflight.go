@@ -50,7 +50,7 @@ func (r *CanonicalReader) preflightTraceGraph(ctx context.Context, request memor
 		sourceIDs:    make(map[string]memory.CanonicalSourceRecord),
 	}
 	err := r.traceReadTxn(ctx, func(txn *badger.Txn) error {
-		version, err := traceScopeVersion(txn, request.Scope)
+		version, err := r.traceScopeVersion(txn, request.Scope)
 		if err != nil {
 			return err
 		}

@@ -14,7 +14,7 @@ func (s *CanonicalStore) applyCanonicalMutationTxn(
 	scopeKey []byte,
 	operationKey []byte,
 ) (memory.CanonicalMutationOutcome, error) {
-	if err := checkCanonicalWriterFence(txn, mutation.Scope); err != nil {
+	if err := s.checkCanonicalWriterFence(txn, mutation.Scope); err != nil {
 		return memory.CanonicalMutationOutcome{}, err
 	}
 

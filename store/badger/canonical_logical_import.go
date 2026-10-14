@@ -56,5 +56,39 @@ func (s *CanonicalStore) ImportCanonicalLogicalWithOptions(
 		return CanonicalLogicalExportSummary{}, canonicalStoreError("import while erase pending", err)
 	}
 
-	return s.importCanonicalLogicalRecords(ctx, source, batchSize, options.Progress)
+	return s.importPrivacyLogicalLocked(ctx, source, batchSize, options.Progress)
+}
+
+func (s *CanonicalStore) importPrivacyLogicalLocked(ctx context.Context, source io.Reader, batchSize int,
+	progress func(CanonicalLogicalImportProgress) error) (CanonicalLogicalExportSummary, error) {
+	loadingRetry := s.restoreBlocked.Load() && s.restorePhase == restoreLoading
+	if err := s.beginPrivacyRestore(); err != nil {
+		return CanonicalLogicalExportSummary{}, err
+	}
+
+	completed := false
+	defer func() {
+		if !completed {
+			_ = s.unpublishRestoreReadiness()
+		}
+	}()
+
+	if err := s.db.View(func(txn *badger.Txn) error {
+		return verifyCanonicalIntegrityMode(ctx, txn, !loadingRetry)
+	}); err != nil {
+		return CanonicalLogicalExportSummary{}, err
+	}
+
+	summary, err := s.importCanonicalLogicalRecords(ctx, source, batchSize, progress)
+	if err != nil {
+		return CanonicalLogicalExportSummary{}, err
+	}
+
+	if err := s.completePrivacyRestore(ctx); err != nil {
+		return CanonicalLogicalExportSummary{}, err
+	}
+
+	completed = true
+
+	return summary, nil
 }

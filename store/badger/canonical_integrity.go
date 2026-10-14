@@ -38,6 +38,10 @@ func (s *CanonicalStore) VerifyCanonicalIntegrity(ctx context.Context) error {
 }
 
 func verifyCanonicalIntegrityTxn(ctx context.Context, txn *badger.Txn) error {
+	return verifyCanonicalIntegrityMode(ctx, txn, true)
+}
+
+func verifyCanonicalIntegrityMode(ctx context.Context, txn *badger.Txn, bindings bool) error {
 	iterator := txn.NewIterator(badger.DefaultIteratorOptions)
 	defer iterator.Close()
 
@@ -47,6 +51,10 @@ func verifyCanonicalIntegrityTxn(ctx context.Context, txn *badger.Txn) error {
 		}
 
 		item := iterator.Item()
+
+		if item.ValueSize() > maxCanonicalLogicalLineBytes {
+			return invalidSourcePrivacy()
+		}
 
 		encoded, err := item.ValueCopy(nil)
 		if err != nil {
@@ -60,6 +68,17 @@ func verifyCanonicalIntegrityTxn(ctx context.Context, txn *badger.Txn) error {
 
 		if err := validateStoredCanonicalProof(item.Key(), envelope); err != nil {
 			return memory.PermanentError(memory.CodeStoreFailure, "canonical proof integrity check failed", nil)
+		}
+
+		components, _, err := decodeCanonicalLogicalKey(item.Key())
+		if err != nil {
+			return err
+		}
+
+		if bindings {
+			if err := validateStoredPrivacyBindings(txn, components, envelope); err != nil {
+				return invalidSourcePrivacy()
+			}
 		}
 	}
 

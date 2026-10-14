@@ -46,5 +46,12 @@ func openWithConfig(directory string, config Config) (*CanonicalStore, error) {
 		return nil, fmt.Errorf("initialize canonical source privacy: %w", err)
 	}
 
-	return &CanonicalStore{db: db}, nil
+	store := &CanonicalStore{db: db}
+	if err := store.loadRestoreFence(); err != nil {
+		_ = db.Close()
+
+		return nil, err
+	}
+
+	return store, nil
 }

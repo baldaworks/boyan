@@ -41,6 +41,10 @@ func canonicalLogicalExportRecord(item *badger.Item) (CanonicalLogicalExportReco
 		return CanonicalLogicalExportRecord{}, false, nil
 	}
 
+	if item.ValueSize() > maxCanonicalLogicalLineBytes {
+		return CanonicalLogicalExportRecord{}, false, invalidSourcePrivacy()
+	}
+
 	envelope, err := item.ValueCopy(nil)
 	if err != nil {
 		return CanonicalLogicalExportRecord{}, false, err

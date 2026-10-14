@@ -31,6 +31,10 @@ func (s *CanonicalStore) WriteCanonicalBackup(
 		return 0, memory.PermanentError(memory.CodeStoreFailure, "canonical badger store is closed", nil)
 	}
 
+	if s.restoreBlocked.Load() {
+		return 0, restoreUnavailable()
+	}
+
 	version, err := s.db.Backup(destination, since)
 	if err != nil {
 		return 0, canonicalStoreError("write canonical backup", err)

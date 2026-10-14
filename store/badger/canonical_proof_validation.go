@@ -18,7 +18,7 @@ func isCanonicalProofRecord(recordType string) bool {
 // Legacy revision bodies remain opaque when no inherited trust is asserted.
 func validateCanonicalProofRecord(components []string, envelope memory.RecordEnvelope) error {
 	if len(components) == 0 || !isCanonicalProofRecord(components[0]) {
-		return nil
+		return validateCanonicalPrivacyRecord(components, envelope)
 	}
 
 	if len(components) != canonicalRecordComponents || envelope.RecordType != components[0] {
@@ -114,9 +114,10 @@ func invalidCanonicalProof() error {
 }
 
 func validateStoredCanonicalProof(key []byte, envelope memory.RecordEnvelope) error {
-	selected := isCanonicalProofRecord(envelope.RecordType)
+	selected := isCanonicalProofRecord(envelope.RecordType) || isCanonicalPrivacyRecord(envelope.RecordType)
 
-	for _, kind := range []string{badgerRecordBoundaryCertificate, badgerRecordBoundaryCapability, badgerRecordRevision} {
+	for _, kind := range []string{badgerRecordBoundaryCertificate, badgerRecordBoundaryCapability, badgerRecordRevision,
+		badgerRecordSourcePrivacy, badgerRecordSourcePrivacyReady, badgerRecordSourcePrivacyScope} {
 		prefix, _ := memory.TupleKey(canonicalNamespace, canonicalVersion, kind)
 		selected = selected || bytes.HasPrefix(key, prefix)
 	}
@@ -126,7 +127,8 @@ func validateStoredCanonicalProof(key []byte, envelope memory.RecordEnvelope) er
 	}
 
 	components, _, err := decodeCanonicalLogicalKey(key)
-	if err != nil || len(components) == 0 || !isCanonicalProofRecord(components[0]) {
+	if err != nil || len(components) == 0 ||
+		(!isCanonicalProofRecord(components[0]) && !isCanonicalPrivacyRecord(components[0])) {
 		return invalidCanonicalProof()
 	}
 

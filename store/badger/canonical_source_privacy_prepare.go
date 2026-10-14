@@ -28,6 +28,10 @@ func (s *CanonicalStore) PrepareSourcePrivacy(ctx context.Context) error {
 		return invalidSourcePrivacy()
 	}
 
+	if s.restoreBlocked.Load() {
+		return s.resumeValidatedPrivacyRestore(ctx)
+	}
+
 	return s.prepareSourcePrivacyLocked(ctx, false)
 }
 

@@ -164,7 +164,14 @@ func assertCorruptProofRestoreRejected(t *testing.T, source *CanonicalStore) {
 	t.Helper()
 
 	var backup bytes.Buffer
-	if _, err := source.WriteCanonicalBackup(context.Background(), &backup, 0); err != nil {
+	if _, err := source.WriteCanonicalBackup(context.Background(), &backup, 0); err == nil {
+		t.Fatal("native backup accepted corrupt or unavailable source")
+	}
+
+	// Build deliberately corrupt input below the supported validating backup API.
+	backup.Reset()
+
+	if _, err := source.db.Backup(&backup, 0); err != nil {
 		t.Fatal(err)
 	}
 
