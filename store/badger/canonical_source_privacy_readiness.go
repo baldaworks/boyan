@@ -23,7 +23,7 @@ func sourcePrivacyReadinessKey() []byte {
 func requireSourcePrivacyReady(txn *badger.Txn) error {
 	var marker sourcePrivacyReadiness
 
-	err := getCanonicalRecord(txn, sourcePrivacyReadinessKey(), badgerRecordSourcePrivacyReady, &marker)
+	err := getPrivacyPreparationRecord(txn, sourcePrivacyReadinessKey(), badgerRecordSourcePrivacyReady, &marker)
 	if errors.Is(err, badger.ErrKeyNotFound) {
 		return memory.RetryableError(memory.CodeUnavailable, "canonical source privacy is not prepared", nil)
 	}

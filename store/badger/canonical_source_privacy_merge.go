@@ -41,7 +41,7 @@ func mergeMutationSourcePrivacy(
 		}
 	}
 
-	return nil
+	return initializeNewPrivacyMembership(txn, mutation, fresh)
 }
 
 func mergeOneSourcePrivacy(txn *badger.Txn, scope memory.Scope, sourceID, state string, fresh bool) error {
@@ -95,6 +95,15 @@ func invalidatePrivacyExtensions(states map[string]string, fresh, extensions map
 func validateStandardPrivacyState(txn *badger.Txn, source memory.CanonicalSourceRecord, state string) (string, error) {
 	if state != sourcePrivacyStandard {
 		return state, nil
+	}
+
+	incomplete, err := privacyScopeIncomplete(txn, source.Scope)
+	if err != nil {
+		return "", err
+	}
+
+	if incomplete {
+		return sourcePrivacyUnknown, nil
 	}
 
 	valid, err := validatePrivacySourcePayload(txn, source)

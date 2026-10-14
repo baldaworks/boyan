@@ -16,6 +16,7 @@ type CanonicalStore struct {
 	// maintenanceMu excludes lifecycle/maintenance operations while allowing
 	// independent canonical mutations to use Badger's own concurrency control.
 	maintenanceMu                 sync.RWMutex
+	afterSourcePrivacyBatch       func(string, int) error              // Test-only bounded batch/cancellation seam.
 	beforeScopeEraseBatchCommit   func(memory.ScopeEraseJournal) error // test fault-injection seam; nil in production.
 	beforeCanonicalMutationCommit func() error                         // test fault-injection seam; nil in production.
 }

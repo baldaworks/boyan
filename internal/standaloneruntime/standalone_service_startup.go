@@ -15,6 +15,10 @@ func (s *standaloneService) startComponents(ctx context.Context) error {
 		return err
 	}
 
+	if err := s.store.PrepareSourcePrivacy(ctx); err != nil {
+		return err
+	}
+
 	if err := s.projection.Start(ctx); err != nil {
 		return err
 	}

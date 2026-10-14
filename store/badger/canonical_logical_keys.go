@@ -19,7 +19,8 @@ func canonicalLogicalComponentCount(recordType string) (int, bool) {
 		badgerRecordSourceRevision,
 		badgerRecordProjectionManifest:
 		return canonicalEdgeComponents, false
-	case badgerRecordSourcePrivacy, badgerRecordBoundaryCapability, badgerRecordBoundaryCertificate,
+	case badgerRecordSourcePrivacyScope, badgerRecordSourcePrivacy,
+		badgerRecordBoundaryCapability, badgerRecordBoundaryCertificate,
 		badgerRecordTurnCertificate, badgerRecordEraseSourceIdentity,
 		badgerRecordErasedBlob,
 		badgerRecordEraseBlobLock,

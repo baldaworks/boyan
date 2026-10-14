@@ -12,6 +12,10 @@ import (
 // Classification must bind the raw representation that trace will return.
 // A different message table cannot certify an embedded Turn's text.
 func readPrivacySourcePayload(txn *badger.Txn, source memory.CanonicalSourceRecord) ([]byte, error) {
+	if source.Payload.ByteSize > maxCanonicalLogicalLineBytes {
+		return nil, invalidSourcePrivacy()
+	}
+
 	key, err := payloadRecordKey(source.Payload)
 	if err != nil {
 		return nil, err
@@ -19,7 +23,7 @@ func readPrivacySourcePayload(txn *badger.Txn, source memory.CanonicalSourceReco
 
 	var payload []byte
 
-	err = getCanonicalRecord(txn, key, badgerRecordPayload, &payload)
+	err = getPrivacyPreparationRecord(txn, key, badgerRecordPayload, &payload)
 	if errors.Is(err, badger.ErrKeyNotFound) {
 		return nil, nil
 	}
