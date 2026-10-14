@@ -7,6 +7,10 @@ func (r RecallResponse) Validate(request RecallRequest) error {
 		return PermanentError(CodeScopeViolation, "recall response scope or trust marker is invalid", nil)
 	}
 
+	if r.ScopeChangeSeq < request.MinScopeChangeSeq {
+		return RetryableError(CodeConflict, "recall response is below the requested consistency sequence", nil)
+	}
+
 	if len(r.Results) > request.Limit {
 		return limitExceeded("recall response exceeds the requested limit")
 	}
