@@ -120,6 +120,10 @@ receipts. A mismatched acknowledgement returns an empty receipt and a safe
 `invalid_derived` / `permanent` error. Matching receipts retain all returned
 fields. This is client response validation; it does not introduce automatic
 resends or verify equality of every field associated with the same export.
+The typed client rejects redirects to a different scheme or authority, including
+when a caller supplies its own `http.Client`. Transport and client deadlines are
+reported as retryable `timeout`; unknown wire error codes or classes fail closed
+as `invalid_derived`.
 
 ## Canonical turn replay
 
@@ -288,6 +292,11 @@ Zero-valued fields may be omitted in JSON; old stored outcomes without counts
 remain decodable. This result bound is separate from the model-input limit.
 Source forget retains its one-source outcome contract; excessive revision
 references return `limit_exceeded` before denial.
+
+New outcomes persist `forgotten_at` as part of the durable acknowledgement, so
+immediate and post-restart replay return the original timestamp. Legacy outcomes
+that predate this field remain readable and use the current retry timestamp because
+no authoritative historical value exists in those records.
 
 The MCP completion boundary also binds each acknowledgement to its request:
 `boyan.forget_scope` requires a scope outcome; `boyan.forget_source` requires a

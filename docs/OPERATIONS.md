@@ -26,6 +26,11 @@ Boyan loads configuration in this order:
 
 See [../boyan.example.yaml](../boyan.example.yaml).
 
+YAML keys are decoded strictly at every static level, including fields inside
+provider definitions; unknown keys fail startup. Provider IDs remain dynamic and
+may contain dots. Negative timeout, byte-limit, interval and discard-ratio values
+are invalid. Zero-valued optional bounds retain their documented default behavior.
+
 ## Current defaults
 
 - `state_dir`: `./.state/boyan`
