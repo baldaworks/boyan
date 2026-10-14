@@ -120,6 +120,30 @@ func TestCanonicalReplayAcceptsLegacyChangeWithoutScopeVersion(t *testing.T) {
 	}
 }
 
+func TestLoadCanonicalOperationRejectsMissingBoundChange(t *testing.T) {
+	ctx := context.Background()
+	store, err := OpenCanonicalStore(t.TempDir())
+	requireEraseTestNoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	scope := memory.Scope{Key: "test:missing-bound-change", Kind: memory.ScopeKindPersonal}
+	request := memory.CanonicalOperationCommitRequest{
+		Scope: scope, OperationID: "missing-change", Fingerprint: "missing-change-fingerprint",
+		CommittedAt: time.Date(2026, time.October, 14, 1, 2, 3, 0, time.UTC),
+	}
+	outcome, err := store.CommitCanonicalOperation(ctx, request)
+	requireEraseTestNoError(t, err)
+	changeKey, err := badgerScopeChangeKey(scope, outcome.ChangeSeq)
+	requireEraseTestNoError(t, err)
+	requireEraseTestNoError(t, store.db.Update(func(txn *badger.Txn) error { return txn.Delete(changeKey) }))
+
+	_, found, err := store.LoadCanonicalOperation(ctx, scope, request.OperationID)
+	if found {
+		t.Fatal("operation with a missing bound change reported as found")
+	}
+	assertCanonicalStoreFailure(t, err)
+}
+
 func assertCanonicalStoreFailure(t *testing.T, err error) {
 	t.Helper()
 

@@ -41,6 +41,11 @@ func (p *BleveRecallProjection) activateGeneration(
 	}
 
 	p.mu.RLock()
+	if p.closed {
+		p.mu.RUnlock()
+
+		return projectionClosedError()
+	}
 	root := p.root
 	p.mu.RUnlock()
 
@@ -57,13 +62,23 @@ func (p *BleveRecallProjection) activateGeneration(
 		markerPath = filepath.Join(root, bleveScopedActivePrefix+scopeKey)
 	}
 
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		_ = index.Close()
+
+		return projectionClosedError()
+	}
+
 	if err := writeActiveGenerationMarker(markerPath, id); err != nil {
+		p.mu.Unlock()
 		_ = index.Close()
 
 		return err
 	}
 
-	previous := p.swapActiveGeneration(scopeKey, id, index, scoped)
+	previous := p.swapActiveGenerationLocked(scopeKey, id, index, scoped)
+	p.mu.Unlock()
 	if previous != nil {
 		return previous.Close()
 	}

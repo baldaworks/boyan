@@ -60,18 +60,20 @@ func (s *CanonicalStore) LoadCanonicalOperation(
 	}
 
 	var stored badgerCanonicalOperation
+	operationFound := false
 
 	err = s.db.View(func(txn *badger.Txn) error {
 		if err := getCanonicalRecord(txn, key, badgerRecordOperation, &stored); err != nil {
 			return err
 		}
+		operationFound = true
 		if _, _, err := canonicalOperationRecord(stored); err != nil {
 			return err
 		}
 
 		return validateCanonicalOutcomeBinding(txn, scope, operationID, stored.Outcome)
 	})
-	if errors.Is(err, badger.ErrKeyNotFound) {
+	if errors.Is(err, badger.ErrKeyNotFound) && !operationFound {
 		return memory.CanonicalOperationRecord{}, false, nil
 	}
 

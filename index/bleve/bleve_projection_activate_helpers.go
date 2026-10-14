@@ -27,10 +27,11 @@ func writeActiveGenerationMarker(markerPath, id string) error {
 	return nil
 }
 
-func (p *BleveRecallProjection) swapActiveGeneration(scopeKey, id string, index bleve.Index, scoped bool) bleve.Index {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
+func (p *BleveRecallProjection) swapActiveGenerationLocked(
+	scopeKey, id string,
+	index bleve.Index,
+	scoped bool,
+) bleve.Index {
 	if scoped {
 		previous := p.activeByScope[scopeKey]
 		p.activeByScope[scopeKey] = index

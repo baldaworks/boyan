@@ -34,6 +34,24 @@ func TestBleveProjectionRejectsOperationsAfterClose(t *testing.T) {
 	}
 }
 
+func TestBleveProjectionCannotReactivateAfterClose(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	projection, err := bleve.Open(root)
+	requireNoError(t, err, "Open() error = %v")
+	generation, err := projection.NewGeneration("committed")
+	requireNoError(t, err, "NewGeneration() error = %v")
+	requireNoError(t, generation.Commit(context.Background()), "Commit() error = %v")
+	requireNoError(t, generation.Close(), "generation Close() error = %v")
+	requireNoError(t, projection.Close(), "Close() error = %v")
+
+	assertUnavailable(t, projection.ActivateGeneration(context.Background(), "committed"))
+	assertUnavailable(t, projection.ActivateGenerationForScope(context.Background(), boyan.Scope{
+		Key: "test:closed", Kind: boyan.ScopeKindPersonal,
+	}, "committed"))
+}
+
 func assertUnavailable(t *testing.T, err error) {
 	t.Helper()
 	code, class, ok := boyan.ClassifyError(err)
