@@ -77,6 +77,26 @@ derivation:
 	assertServeHostConfig(t, received, constructorCalls, runCalls)
 }
 
+func TestServeCommandRejectsPositionalArguments(t *testing.T) {
+	previousNewServeHost := newServeHost
+	t.Cleanup(func() { newServeHost = previousNewServeHost })
+
+	constructorCalls := 0
+	newServeHost = func(context.Context, boyan.Config) (serveRunner, error) {
+		constructorCalls++
+		return serveRunnerFunc(func(context.Context) error { return nil }), nil
+	}
+
+	command := newServeCommand(new(string))
+	command.SetArgs([]string{"unexpected"})
+	if err := command.Execute(); err == nil {
+		t.Fatal("Execute() error = nil, want positional-argument rejection")
+	}
+	if constructorCalls != 0 {
+		t.Fatalf("host constructor calls = %d, want 0", constructorCalls)
+	}
+}
+
 func assertServeHostConfig(t *testing.T, received boyan.Config, constructorCalls, runCalls int) {
 	t.Helper()
 

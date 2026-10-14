@@ -33,6 +33,10 @@ func LoadConfig(configPath string) (Config, error) {
 			return Config{}, fmt.Errorf("read Boyan config: %w", err)
 		}
 
+		if err := validateConfigKeys(data); err != nil {
+			return Config{}, err
+		}
+
 		providerIDs, err = configuredProviderIDs(data)
 		if err != nil {
 			return Config{}, err

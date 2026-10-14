@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -15,6 +16,21 @@ import (
 	"github.com/normahq/runtime/v2/agentconfig"
 	runtimeconfig "github.com/normahq/runtime/v2/appconfig"
 )
+
+func TestNewRejectsCanceledContextBeforeOpeningResources(t *testing.T) {
+	config := testHostConfig(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	host, err := boyan.New(ctx, config)
+	if host != nil || !errors.Is(err, context.Canceled) {
+		t.Fatalf("New(canceled) = host:%v error:%v, want nil context.Canceled", host, err)
+	}
+
+	if _, statErr := os.Stat(config.StateDir); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("state directory stat error = %v, want not-exist", statErr)
+	}
+}
 
 func TestHostLifecycleUsesRuntimeSeam(t *testing.T) {
 	t.Parallel()

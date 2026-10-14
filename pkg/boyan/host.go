@@ -46,7 +46,13 @@ type Host struct {
 }
 
 // New composes and preflights a Boyan host.
-func New(_ context.Context, config Config) (*Host, error) {
+func New(ctx context.Context, config Config) (*Host, error) {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
+
 	normalized, err := config.normalized()
 	if err != nil {
 		return nil, err

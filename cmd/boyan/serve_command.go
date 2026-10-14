@@ -21,6 +21,7 @@ func newServeCommand(configPath *string) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "serve",
 		Short: "Run the standalone Boyan local service.",
+		Args:  cobra.NoArgs,
 		Long: strings.TrimSpace(("\nRun the standalone Boyan service on one loopback HTTP liste" +
 			"ner.\n\nThe listener serves:\n  - /livez\n  - /readyz\n  - /v1/in" +
 			"gest/turns\n  - /v1/ingest/boundaries\n  - /mcp\n")),

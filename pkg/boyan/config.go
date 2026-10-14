@@ -120,15 +120,24 @@ func (config Config) normalized() (Config, error) {
 		return Config{}, err
 	}
 
-	if config.HTTP.RequestTimeout <= 0 {
+	if config.HTTP.RequestTimeout < 0 {
+		return Config{}, fmt.Errorf("Boyan HTTP request timeout must not be negative")
+	}
+	if config.HTTP.RequestTimeout == 0 {
 		config.HTTP.RequestTimeout = defaults.HTTP.RequestTimeout
 	}
 
-	if config.HTTP.ShutdownTimeout <= 0 {
+	if config.HTTP.ShutdownTimeout < 0 {
+		return Config{}, fmt.Errorf("Boyan HTTP shutdown timeout must not be negative")
+	}
+	if config.HTTP.ShutdownTimeout == 0 {
 		config.HTTP.ShutdownTimeout = defaults.HTTP.ShutdownTimeout
 	}
 
-	if config.HTTP.MaxBodyBytes <= 0 {
+	if config.HTTP.MaxBodyBytes < 0 {
+		return Config{}, fmt.Errorf("Boyan HTTP body limit must not be negative")
+	}
+	if config.HTTP.MaxBodyBytes == 0 {
 		config.HTTP.MaxBodyBytes = defaults.HTTP.MaxBodyBytes
 	}
 
@@ -147,19 +156,31 @@ func (config Config) normalizeDerivation(defaults Config) (Config, error) {
 	}
 
 	config.Derivation.WorkingDir = filepath.Clean(workingDir)
-	if config.Derivation.Timeout <= 0 {
+	if config.Derivation.Timeout < 0 {
+		return Config{}, fmt.Errorf("Boyan derivation timeout must not be negative")
+	}
+	if config.Derivation.Timeout == 0 {
 		config.Derivation.Timeout = defaults.Derivation.Timeout
 	}
 
-	if config.Derivation.MaxOutputBytes <= 0 {
+	if config.Derivation.MaxOutputBytes < 0 {
+		return Config{}, fmt.Errorf("Boyan derivation output limit must not be negative")
+	}
+	if config.Derivation.MaxOutputBytes == 0 {
 		config.Derivation.MaxOutputBytes = defaults.Derivation.MaxOutputBytes
 	}
 
-	if config.Maintenance.ValueLogGCInterval <= 0 {
+	if config.Maintenance.ValueLogGCInterval < 0 {
+		return Config{}, fmt.Errorf("Boyan maintenance GC interval must not be negative")
+	}
+	if config.Maintenance.ValueLogGCInterval == 0 {
 		config.Maintenance.ValueLogGCInterval = defaults.Maintenance.ValueLogGCInterval
 	}
 
-	if config.Maintenance.DiscardRatio <= 0 || config.Maintenance.DiscardRatio >= 1 {
+	if config.Maintenance.DiscardRatio < 0 || config.Maintenance.DiscardRatio >= 1 {
+		return Config{}, fmt.Errorf("Boyan maintenance discard ratio must be in [0,1)")
+	}
+	if config.Maintenance.DiscardRatio == 0 {
 		config.Maintenance.DiscardRatio = defaults.Maintenance.DiscardRatio
 	}
 
