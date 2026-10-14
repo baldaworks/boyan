@@ -49,8 +49,34 @@ export BOYAN_DERIVATION_PROVIDER=memory
 ```
 
 `BOYAN_DERIVATION_PROVIDER` works without a YAML file or a `derivation.provider`
-key in YAML. Environment values override YAML values. Nested runtime provider
-configuration is usually easiest to manage in YAML.
+key in YAML. Environment values override YAML values. For a provider already
+listed under `derivation.runtime.providers` in YAML, supported optional fields
+can also come from the environment when omitted from YAML. For example:
+
+```bash
+export BOYAN_DERIVATION_RUNTIME_PROVIDERS_MEMORY_OPENAI_API_KEY=your-key
+```
+
+This requires a YAML provider ID `memory`; environment variables alone do not
+create provider registry entries. Prefix the following field paths with
+`BOYAN_DERIVATION_RUNTIME_PROVIDERS_<ID>_`, uppercase them and replace dots with
+underscores:
+
+| Provider fields | Supported paths |
+| --- | --- |
+| Common | `type`, `mcp_servers`, `system_instructions` |
+| Hosted API | `openai.api_key`, `openai.model`, `aistudio.api_key`, `aistudio.model` |
+| Pool | `pool.members` |
+| ACP blocks | `cmd`, `extra_args`, `model`, `reasoning_effort`, `mode`, `bridge_version` |
+
+ACP paths include the block name: `generic_acp`, `gemini_acp`, `codex_acp`,
+`opencode_acp`, `copilot_acp`, `claude_code_acp` or `grok_acp`. List fields use
+comma-separated values, rather than shell argument splitting. This finite catalog
+matches the pinned runtime schema; it does not discover arbitrary nested maps.
+Unset or empty overrides leave YAML values and absent optional blocks unchanged.
+Attempted overrides for dotted provider IDs or IDs that collide after case
+folding and dot-to-underscore conversion fail explicitly. Invalid typed values
+return a contextual decode error without echoing their values.
 
 ## HTTP body limits
 
@@ -58,6 +84,11 @@ configuration is usually easiest to manage in YAML.
 tool execution. `http.request_timeout` bounds upload time, including stalled
 partial bodies. Once the body is fully read, that socket deadline is cleared.
 Ingest processing then has its own context bounded by the same configured timeout;
+accepted work still queued behind another request in the same scope returns a
+retryable timeout promptly when that context ends and does not execute. Once a
+worker owns the callback, the caller waits for completion so callback resources
+and returned outcomes retain their safe lifetime; an active callback must honor
+its context for prompt termination.
 MCP tools retain their tool timeouts. Long-lived MCP GET/SSE streams have no
 upload or blanket write deadline. Oversized or unreadable MCP bodies receive the
 SDK's HTTP 400 response; ingest retains its structured error envelope.
@@ -68,7 +99,8 @@ SDK's HTTP 400 response; ingest retains its structured error envelope.
 - `GET /readyz` checks that Boyan can accept work safely
 
 Readiness fails if the standalone runtime reports a current readiness
-diagnostic. Startup finishes pending canonical erases, then prepares source
+diagnostic. Startup first rejects incomplete loading restores or resumes validated
+restore preparation, then finishes pending canonical erases and prepares source
 privacy before projection repair, sequenced writers and public readers can serve
 work. It reconciles retained index metadata and synchronously repairs durable
 scopes in bounded pages before accepting work. Missing, v1, dirty and never-created indexes recover without a
@@ -156,7 +188,9 @@ Badger remains authoritative; deleting canonical records is not an index repair
 procedure.
 
 A search requesting `min_scope_change_seq` can return a retryable `conflict`
-while its checkpoint lags, is dirty, or changes during the query. Let normal
+while its checkpoint lags, is dirty, or changes during the query. A canonical
+commit and projection synchronization after the request captures its initial
+watermark can also return a retryable conflict; retry the same search. Let normal
 synchronization/repair complete and retry; readiness alone does not certify a
 particular scope's search watermark.
 
@@ -257,8 +291,10 @@ monotone through writes, reconstruction and restore.
 
 Older stores require `PrepareSourcePrivacy(ctx)` before direct canonical Trace
 or writers can operate; unprepared Trace returns an empty `unavailable` result.
-Standalone startup calls preparation after pending erase recovery and before
-serving work. The exclusive pass scans authoritative sources, messages and
+For ordinary stores, standalone startup calls preparation after pending erase
+recovery and before serving work. Restoring stores first complete the narrow
+validated-restore preflight; loading restores cannot advance erase journals.
+The exclusive pass scans authoritative sources, messages and
 revisions in pages of at most 32 keys, bounds per-source membership at 32 IDs,
 and checks 4 MiB encoded-value/payload bounds before copying bytes. It publishes
 the fixed-version completion marker last. Work and startup delay grow with
@@ -290,7 +326,12 @@ validated fence. Forced privacy preparation then syncs Badger again before
 removing the fence and syncing its directory. A crash or cancellation during
 loading requires a complete valid backup/import retry, or restoration into a
 fresh destination from trustworthy data; `PrepareSourcePrivacy` alone cannot
-certify a partial stream. An interruption after validation can resume preparation
+certify a partial stream. A loading-fenced logical destination accepts a complete
+valid retry even if the interrupted stream imported pending erase metadata.
+Erase recovery and mutations remain fenced during loading, including failed
+startup attempts, so they cannot alter that metadata before retry validation.
+Ordinary live stores retain their pending-erase import guard. An interruption
+after validation can resume preparation
 through startup or `PrepareSourcePrivacy(ctx)`, after rechecking integrity. Do
 not delete the fence or manually publish readiness. These are library/startup
 recovery mechanisms; this release adds no restore or repair CLI.

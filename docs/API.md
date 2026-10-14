@@ -95,6 +95,12 @@ Accepts the same envelope shape, but the payload is a validated
 - successful outcomes are idempotent by producer, scope, sequence, and payload
 - same-scope ordering is enforced by the sequenced ingest runtime
 
+An accepted request still queued in its scope lane returns a retryable `timeout`
+promptly when its context ends, without executing or creating its receipt.
+Remaining queued requests retain FIFO order and the canceled slot is reusable.
+After a worker takes ownership, the caller awaits callback completion even if
+canceled, preserving outcome and resource lifetime. HTTP maps timeout to `504`.
+
 Envelope or payload validation failures return `400 Bad Request`, including
 unsupported payload schemas, invalid boundary reasons and stable identity
 mismatches. The structured error retains the original `code` and `class`, even
@@ -279,6 +285,14 @@ remain decodable. This result bound is separate from the model-input limit.
 Source forget retains its one-source outcome contract; excessive revision
 references return `limit_exceeded` before denial.
 
+The MCP completion boundary also binds each acknowledgement to its request:
+`boyan.forget_scope` requires a scope outcome; `boyan.forget_source` requires a
+source outcome with the exact requested scope, export, conversation and source-turn
+identity. A wrong kind or target returns a safe `invalid_derived` failure without
+outcome data. Foreign-scope outcomes retain scope validation. Matching idempotent
+acknowledgements and truncated scope summaries remain supported; portable
+`operation_id` values do not acquire new canonical identity rules.
+
 Retry the same scope request identity after cancellation or a retryable failure.
 A durable fence rejects new writes to that exact key and kind until recovery
 finishes. Completed old-request replay retains its original outcome and leaves
@@ -327,6 +341,15 @@ rebuild or a concurrent checkpoint change, the request returns a retryable
 remains empty. Without a nonzero minimum, bounded canonical fallback remains
 available. Portable `RecallProjection` adapters must implement the optional
 `ConsistentRecallProjection` capability to serve nonzero minimum requests.
+
+Public `RecallResponse.Validate(request)` and the MCP success boundary also reject
+an advertised `scope_change_seq` below a nonzero requested minimum, including an
+omitted or zero counter, with retryable `conflict`. Matching or higher counters
+pass this necessary response check, including empty responses; they do not replace
+the physical checkpoint proof above. A legitimate commit/sync interleaving after
+the initial canonical snapshot returns an empty retryable conflict when a fresh
+canonical counter covers the projection hits. Metadata still ahead of canonical
+state remains a permanent conflict.
 
 ## Trace representation
 
