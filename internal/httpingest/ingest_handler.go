@@ -18,7 +18,7 @@ func ingestHandler[P interface{ Validate() error }](
 		) (memory.IngestReceipt, error) {
 			var envelope memory.IngestEnvelope[P]
 			if err := decodeEnvelope(body, &envelope); err != nil {
-				return memory.IngestReceipt{}, err
+				return memory.IngestReceipt{}, &requestValidationError{err: err}
 			}
 
 			if err := envelope.Validate(
@@ -28,7 +28,7 @@ func ingestHandler[P interface{ Validate() error }](
 					return payload.Validate()
 				},
 			); err != nil {
-				return memory.IngestReceipt{}, err
+				return memory.IngestReceipt{}, &requestValidationError{err: err}
 			}
 
 			digest, err := fingerprint(envelope)

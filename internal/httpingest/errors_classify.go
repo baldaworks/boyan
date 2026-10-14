@@ -1,12 +1,28 @@
 package httpingest
 
 import (
+	"errors"
 	stdhttp "net/http"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
+// requestValidationError marks failures at the explicit HTTP validation boundary.
+// Execution failures retain their ordinary classification, even if permanent.
+type requestValidationError struct {
+	err error
+}
+
+func (e *requestValidationError) Error() string { return e.err.Error() }
+
+func (e *requestValidationError) Unwrap() error { return e.err }
+
 func statusFromError(err error) int {
+	var validationErr *requestValidationError
+	if errors.As(err, &validationErr) {
+		return stdhttp.StatusBadRequest
+	}
+
 	code, class, ok := memory.ClassifyError(err)
 	if !ok {
 		return stdhttp.StatusInternalServerError
