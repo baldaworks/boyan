@@ -2,7 +2,6 @@ package derivation
 
 import (
 	"context"
-	"io"
 )
 
 // Close releases resources owned by the isolated derivation runtime.
@@ -21,15 +20,11 @@ func (i *Invoker) Close(context.Context) error {
 	i.closed = true
 	runtime := i.runtime
 	i.runtime = nil
+	building := i.building
 	i.mu.Unlock()
 
-	if runtime == nil || runtime.agent == nil {
-		return nil
+	if building != nil {
+		building.finish()
 	}
-
-	if closer, ok := runtime.agent.(io.Closer); ok {
-		return closer.Close()
-	}
-
-	return nil
+	return closeBuiltRuntime(runtime)
 }

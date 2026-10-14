@@ -41,6 +41,19 @@ type builtRuntime struct {
 
 type runnerBuilder func(agent adkagent.Agent, stateStore runStateStore, appName string) (eventRunner, error)
 
+type runtimeBuildState struct {
+	done chan struct{}
+	once sync.Once
+}
+
+func newRuntimeBuildState() *runtimeBuildState {
+	return &runtimeBuildState{done: make(chan struct{})}
+}
+
+func (s *runtimeBuildState) finish() {
+	s.once.Do(func() { close(s.done) })
+}
+
 // Invoker is the Boyan-owned StructuredInvoker backed by an isolated provider
 // runtime. It keeps ephemeral ADK run state private to derivation work and
 // never shares that state with user-facing conversations.
@@ -55,8 +68,9 @@ type Invoker struct {
 	maxBytes   int
 	timeout    time.Duration
 
-	runtime *builtRuntime
-	closed  bool
+	runtime  *builtRuntime
+	building *runtimeBuildState
+	closed   bool
 }
 
 var _ structuredderive.StructuredInvoker = (*Invoker)(nil)

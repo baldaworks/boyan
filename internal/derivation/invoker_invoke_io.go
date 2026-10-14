@@ -33,6 +33,10 @@ func marshalStructuredInvocationInput(request structuredderive.StructuredInvocat
 }
 
 func validateStructuredInvocationOutput(ctx context.Context, output string, maxBytes int) ([]byte, error) {
+	if ctx.Err() != nil {
+		return nil, derivationContextError(ctx, "run Boyan derivation")
+	}
+
 	if strings.TrimSpace(output) == "" {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return nil, memory.RetryableError(memory.CodeTimeout, "Boyan derivation timed out", nil)
@@ -46,4 +50,12 @@ func validateStructuredInvocationOutput(ctx context.Context, output string, maxB
 	}
 
 	return []byte(output), nil
+}
+
+func derivationContextError(ctx context.Context, action string) error {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return memory.RetryableError(memory.CodeTimeout, action+" timed out", nil)
+	}
+
+	return memory.RetryableError(memory.CodeModelFailure, action+" was canceled", nil)
 }

@@ -3,6 +3,7 @@ package structuredderive
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
@@ -11,6 +12,9 @@ import (
 func (d *Deriver) invoke(ctx context.Context, request StructuredInvocation, output any) error {
 	if ctx == nil {
 		return memory.PermanentError(memory.CodeInvalidDerived, "derivation context is required", nil)
+	}
+	if ctx.Err() != nil {
+		return deriverContextError(ctx)
 	}
 
 	if len(request.InputJSON) > d.maxInputBytes {
@@ -30,12 +34,23 @@ func (d *Deriver) invoke(ctx context.Context, request StructuredInvocation, outp
 	if err != nil {
 		return classifyDeriverError(err)
 	}
+	if ctx.Err() != nil {
+		return deriverContextError(ctx)
+	}
 
 	if len(raw) == 0 || len(raw) > d.maxOutputBytes {
 		return memory.PermanentError(memory.CodeLimitExceeded, "derivation output exceeds the configured limit", nil)
 	}
 
 	return decodeDerivedOutput(raw, request.Stage, output)
+}
+
+func deriverContextError(ctx context.Context) error {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return memory.RetryableError(memory.CodeTimeout, "structured derivation timed out", nil)
+	}
+
+	return memory.RetryableError(memory.CodeModelFailure, "structured derivation was canceled", nil)
 }
 
 func decodeDerivedOutput(raw []byte, stage string, output any) error {
