@@ -53,3 +53,50 @@ func TestCanonicalStoreBackupRestoreAndIntegrityVerification(t *testing.T) {
 		t.Fatalf("replayed restored mutation = %+v, error = %v", replayed, err)
 	}
 }
+
+func TestCanonicalMaintenanceRejectsTypedNilStreams(t *testing.T) {
+	store := openCanonicalTestStore(t, filepath.Join(t.TempDir(), "typed-nil.badger"))
+	t.Cleanup(func() { _ = store.Close() })
+
+	var stream *bytes.Buffer
+	tests := []struct {
+		name string
+		call func() error
+	}{
+		{"backup", func() error {
+			_, err := store.WriteCanonicalBackup(context.Background(), stream, 0)
+			return err
+		}},
+		{"restore", func() error {
+			return store.RestoreCanonicalBackup(context.Background(), stream, 1)
+		}},
+		{"logical export", func() error {
+			return store.ExportCanonicalLogical(context.Background(), stream)
+		}},
+		{"logical import", func() error {
+			return store.ImportCanonicalLogical(context.Background(), stream)
+		}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					t.Fatalf("maintenance call panicked: %v", recovered)
+				}
+			}()
+			if err := tc.call(); err == nil {
+				t.Fatal("maintenance call error = nil, want typed-nil rejection")
+			}
+		})
+	}
+}
+
+func TestCanonicalRestoreRejectsEmptyNativeStream(t *testing.T) {
+	store := openCanonicalTestStore(t, filepath.Join(t.TempDir(), "empty-restore.badger"))
+	t.Cleanup(func() { _ = store.Close() })
+
+	if err := store.RestoreCanonicalBackup(context.Background(), bytes.NewReader(nil), 1); err == nil {
+		t.Fatal("RestoreCanonicalBackup(empty) error = nil, want invalid-backup failure")
+	}
+}

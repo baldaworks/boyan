@@ -3,6 +3,7 @@ package badger
 import (
 	"context"
 	"io"
+	"reflect"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
@@ -12,7 +13,7 @@ func validateCanonicalMaintenance(ctx context.Context, value any) error {
 		return err
 	}
 
-	if value == nil {
+	if value == nil || isNilMaintenanceStream(value) {
 		return memory.PermanentError(memory.CodeInvalidDerived, "canonical maintenance stream is required", nil)
 	}
 
@@ -30,6 +31,16 @@ func validateCanonicalMaintenance(ctx context.Context, value any) error {
 	}
 
 	return nil
+}
+
+func isNilMaintenanceStream(value any) bool {
+	reflected := reflect.ValueOf(value)
+	switch reflected.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return reflected.IsNil()
+	default:
+		return false
+	}
 }
 
 func checkCanonicalMaintenanceContext(ctx context.Context) error {
