@@ -1,12 +1,14 @@
 package memoryread
 
 import (
+	"context"
 	"time"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
 func (s *RecallService) responseFromProjection(
+	ctx context.Context,
 	request memory.RecallRequest,
 	records []memory.RecallRecord,
 	hits map[string]memory.RecallProjectionHit,
@@ -35,11 +37,7 @@ func (s *RecallService) responseFromProjection(
 		}
 
 		if hit.ScopeChangeSeq != 0 && hit.ScopeChangeSeq > currentSeq {
-			return memory.RecallResponse{}, memory.PermanentError(
-				memory.CodeConflict,
-				"recall projection is ahead of canonical state",
-				nil,
-			)
+			return memory.RecallResponse{}, s.projectionAheadError(ctx, request.Scope, hits)
 		}
 
 		results = append(
@@ -56,4 +54,24 @@ func (s *RecallService) responseFromProjection(
 	}
 
 	return recallResponse(request.Scope, currentSeq, results), nil
+}
+
+// projectionAheadError distinguishes a moved snapshot from invalid ahead metadata.
+func (s *RecallService) projectionAheadError(
+	ctx context.Context,
+	scope memory.Scope,
+	hits map[string]memory.RecallProjectionHit,
+) error {
+	currentSeq, err := s.canonical.CurrentScopeChangeSeq(ctx, scope)
+	if err != nil {
+		return err
+	}
+
+	for _, hit := range hits {
+		if hit.ScopeChangeSeq > currentSeq {
+			return memory.PermanentError(memory.CodeConflict, "recall projection is ahead of canonical state", nil)
+		}
+	}
+
+	return memory.RetryableError(memory.CodeConflict, "recall canonical snapshot changed during projection query", nil)
 }

@@ -48,7 +48,7 @@ func (s *RecallService) searchProjectionOrTail(
 		return memory.RecallResponse{}, err
 	}
 
-	return s.responseFromProjection(request, records, byID, currentSeq, now)
+	return s.responseFromProjection(ctx, request, records, byID, currentSeq, now)
 }
 
 func (s *RecallService) recallProjectionHits(ctx context.Context,
