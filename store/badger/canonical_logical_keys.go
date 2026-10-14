@@ -9,6 +9,8 @@ func isExportableCanonicalRecordType(recordType string) bool {
 
 func canonicalLogicalComponentCount(recordType string) (int, bool) {
 	switch recordType {
+	case badgerRecordSourcePrivacyReady:
+		return 1, false
 	case badgerRecordScope, badgerRecordChange:
 		return canonicalScopeComponents, recordType == badgerRecordChange
 	case badgerRecordEraseLockRef, badgerRecordEraseSourceRef,
@@ -17,7 +19,7 @@ func canonicalLogicalComponentCount(recordType string) (int, bool) {
 		badgerRecordSourceRevision,
 		badgerRecordProjectionManifest:
 		return canonicalEdgeComponents, false
-	case badgerRecordBoundaryCapability, badgerRecordBoundaryCertificate,
+	case badgerRecordSourcePrivacy, badgerRecordBoundaryCapability, badgerRecordBoundaryCertificate,
 		badgerRecordTurnCertificate, badgerRecordEraseSourceIdentity,
 		badgerRecordErasedBlob,
 		badgerRecordEraseBlobLock,

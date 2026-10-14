@@ -40,5 +40,11 @@ func openWithConfig(directory string, config Config) (*CanonicalStore, error) {
 		return nil, fmt.Errorf("open canonical badger store: %w", err)
 	}
 
+	if err := initializeEmptySourcePrivacy(db); err != nil {
+		_ = db.Close()
+
+		return nil, fmt.Errorf("initialize canonical source privacy: %w", err)
+	}
+
 	return &CanonicalStore{db: db}, nil
 }

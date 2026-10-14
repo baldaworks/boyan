@@ -25,6 +25,11 @@ func (s *CanonicalStore) putCanonicalMutationRecords(ctx context.Context,
 		return err
 	}
 
+	freshPrivacySources, extensions, err := capturePrivacyMembership(txn, mutation)
+	if err != nil {
+		return err
+	}
+
 	if err := putCanonicalMutationPayloads(txn, mutation.Payloads); err != nil {
 		return err
 	}
@@ -40,6 +45,10 @@ func (s *CanonicalStore) putCanonicalMutationRecords(ctx context.Context,
 	}
 
 	if err := putCanonicalMutationRevisions(txn, mutation.Scope, mutation.Revisions); err != nil {
+		return err
+	}
+
+	if err := mergeMutationSourcePrivacy(txn, mutation, freshPrivacySources, extensions); err != nil {
 		return err
 	}
 
