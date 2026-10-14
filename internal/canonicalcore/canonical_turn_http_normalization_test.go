@@ -114,7 +114,7 @@ func testHTTPChangedTurn(t *testing.T, change func(*m.Turn)) {
 
 	want := http.StatusConflict
 	if changed.Validate() != nil {
-		want = http.StatusServiceUnavailable
+		want = http.StatusBadRequest
 	}
 
 	response := f.post(t, changed)
