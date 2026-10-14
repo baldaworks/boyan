@@ -29,6 +29,8 @@ func forgetSuccess(outcome memory.ForgetOutcome, forgottenAt time.Time) ForgetOu
 func (s *Service) completeForget(
 	toolName string,
 	scope memory.Scope,
+	expectedKind memory.ForgetKind,
+	expectedSource memory.SourceRef,
 	outcome memory.ForgetOutcome,
 	forgottenAt time.Time,
 ) (*sdkmcp.CallToolResult, ForgetOutput, error) {
@@ -40,6 +42,11 @@ func (s *Service) completeForget(
 
 	if outcome.Scope != scope {
 		return s.forgetFailure(toolName, memory.CodeScopeViolation, messageScopeViolation)
+	}
+
+	if outcome.Kind != expectedKind ||
+		(expectedKind == memory.ForgetKindSource && outcome.Sources[0] != expectedSource) {
+		return s.forgetFailure(toolName, memory.CodeInvalidDerived, publicErrorMessageForCode(memory.CodeInvalidDerived))
 	}
 
 	return nil, forgetSuccess(outcome, forgottenAt), nil

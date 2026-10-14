@@ -68,5 +68,5 @@ func (s *Service) forgetSource(
 		return s.forgetFailure(ForgetSourceToolName, code, publicErrorMessageForCode(code))
 	}
 
-	return s.completeForget(ForgetSourceToolName, scope, outcome, forgottenAt)
+	return s.completeForget(ForgetSourceToolName, scope, memory.ForgetKindSource, command.Source, outcome, forgottenAt)
 }
