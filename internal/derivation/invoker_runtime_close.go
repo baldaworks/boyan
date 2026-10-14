@@ -26,5 +26,6 @@ func (i *Invoker) Close(context.Context) error {
 	if building != nil {
 		building.finish()
 	}
+
 	return closeBuiltRuntime(runtime)
 }

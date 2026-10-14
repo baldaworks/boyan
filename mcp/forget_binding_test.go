@@ -49,6 +49,7 @@ func TestForgetAcknowledgementUsesDurableOutcomeTimestamp(t *testing.T) {
 		Forgetter: backend,
 		Now: func() time.Time {
 			invocation = invocation.Add(time.Hour)
+
 			return invocation
 		},
 	})

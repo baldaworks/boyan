@@ -30,33 +30,49 @@ func validateConfigValue(value any, target reflect.Type, path string) error {
 
 	switch target.Kind() {
 	case reflect.Struct:
-		mapping, ok := value.(map[string]any)
-		if !ok {
-			return nil
-		}
-
-		return validateConfigMap(mapping, target, path)
+		return validateConfigStructValue(value, target, path)
 	case reflect.Map:
-		mapping, ok := value.(map[string]any)
-		if !ok {
-			return nil
-		}
-
-		for key, child := range mapping {
-			if err := validateConfigValue(child, target.Elem(), joinConfigPath(path, key)); err != nil {
-				return err
-			}
-		}
+		return validateConfigMapValue(value, target, path)
 	case reflect.Slice, reflect.Array:
-		values, ok := value.([]any)
-		if !ok {
-			return nil
-		}
+		return validateConfigSliceValue(value, target, path)
+	}
 
-		for _, child := range values {
-			if err := validateConfigValue(child, target.Elem(), path); err != nil {
-				return err
-			}
+	return nil
+}
+
+func validateConfigStructValue(value any, target reflect.Type, path string) error {
+	mapping, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	return validateConfigMap(mapping, target, path)
+}
+
+func validateConfigMapValue(value any, target reflect.Type, path string) error {
+	mapping, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	for key, child := range mapping {
+		if err := validateConfigValue(child, target.Elem(), joinConfigPath(path, key)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validateConfigSliceValue(value any, target reflect.Type, path string) error {
+	values, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+
+	for _, child := range values {
+		if err := validateConfigValue(child, target.Elem(), path); err != nil {
+			return err
 		}
 	}
 
@@ -89,6 +105,7 @@ func configField(target reflect.Type, key string) (reflect.StructField, bool) {
 		if name == "" {
 			name = field.Name
 		}
+
 		if name != "-" && strings.EqualFold(name, key) {
 			return field, true
 		}

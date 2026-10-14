@@ -120,25 +120,19 @@ func (config Config) normalized() (Config, error) {
 		return Config{}, err
 	}
 
-	if config.HTTP.RequestTimeout < 0 {
-		return Config{}, fmt.Errorf("Boyan HTTP request timeout must not be negative")
-	}
-	if config.HTTP.RequestTimeout == 0 {
-		config.HTTP.RequestTimeout = defaults.HTTP.RequestTimeout
+	if err := normalizeDuration(&config.HTTP.RequestTimeout, defaults.HTTP.RequestTimeout,
+		"Boyan HTTP request timeout"); err != nil {
+		return Config{}, err
 	}
 
-	if config.HTTP.ShutdownTimeout < 0 {
-		return Config{}, fmt.Errorf("Boyan HTTP shutdown timeout must not be negative")
-	}
-	if config.HTTP.ShutdownTimeout == 0 {
-		config.HTTP.ShutdownTimeout = defaults.HTTP.ShutdownTimeout
+	if err := normalizeDuration(&config.HTTP.ShutdownTimeout, defaults.HTTP.ShutdownTimeout,
+		"Boyan HTTP shutdown timeout"); err != nil {
+		return Config{}, err
 	}
 
-	if config.HTTP.MaxBodyBytes < 0 {
-		return Config{}, fmt.Errorf("Boyan HTTP body limit must not be negative")
-	}
-	if config.HTTP.MaxBodyBytes == 0 {
-		config.HTTP.MaxBodyBytes = defaults.HTTP.MaxBodyBytes
+	if err := normalizeInt64(&config.HTTP.MaxBodyBytes, defaults.HTTP.MaxBodyBytes,
+		"Boyan HTTP body limit"); err != nil {
+		return Config{}, err
 	}
 
 	return config.normalizeDerivation(defaults)
@@ -156,35 +150,74 @@ func (config Config) normalizeDerivation(defaults Config) (Config, error) {
 	}
 
 	config.Derivation.WorkingDir = filepath.Clean(workingDir)
-	if config.Derivation.Timeout < 0 {
-		return Config{}, fmt.Errorf("Boyan derivation timeout must not be negative")
-	}
-	if config.Derivation.Timeout == 0 {
-		config.Derivation.Timeout = defaults.Derivation.Timeout
+	if err := normalizeDuration(&config.Derivation.Timeout, defaults.Derivation.Timeout,
+		"Boyan derivation timeout"); err != nil {
+		return Config{}, err
 	}
 
-	if config.Derivation.MaxOutputBytes < 0 {
-		return Config{}, fmt.Errorf("Boyan derivation output limit must not be negative")
-	}
-	if config.Derivation.MaxOutputBytes == 0 {
-		config.Derivation.MaxOutputBytes = defaults.Derivation.MaxOutputBytes
+	if err := normalizeInt(&config.Derivation.MaxOutputBytes, defaults.Derivation.MaxOutputBytes,
+		"Boyan derivation output limit"); err != nil {
+		return Config{}, err
 	}
 
-	if config.Maintenance.ValueLogGCInterval < 0 {
-		return Config{}, fmt.Errorf("Boyan maintenance GC interval must not be negative")
-	}
-	if config.Maintenance.ValueLogGCInterval == 0 {
-		config.Maintenance.ValueLogGCInterval = defaults.Maintenance.ValueLogGCInterval
+	if err := normalizeDuration(&config.Maintenance.ValueLogGCInterval, defaults.Maintenance.ValueLogGCInterval,
+		"Boyan maintenance GC interval"); err != nil {
+		return Config{}, err
 	}
 
-	if config.Maintenance.DiscardRatio < 0 || config.Maintenance.DiscardRatio >= 1 {
-		return Config{}, fmt.Errorf("Boyan maintenance discard ratio must be in [0,1)")
-	}
-	if config.Maintenance.DiscardRatio == 0 {
-		config.Maintenance.DiscardRatio = defaults.Maintenance.DiscardRatio
+	if err := normalizeDiscardRatio(&config.Maintenance.DiscardRatio, defaults.Maintenance.DiscardRatio); err != nil {
+		return Config{}, err
 	}
 
 	return config, nil
+}
+
+func normalizeDuration(value *time.Duration, fallback time.Duration, name string) error {
+	if *value < 0 {
+		return fmt.Errorf("%s must not be negative", name)
+	}
+
+	if *value == 0 {
+		*value = fallback
+	}
+
+	return nil
+}
+
+func normalizeInt64(value *int64, fallback int64, name string) error {
+	if *value < 0 {
+		return fmt.Errorf("%s must not be negative", name)
+	}
+
+	if *value == 0 {
+		*value = fallback
+	}
+
+	return nil
+}
+
+func normalizeInt(value *int, fallback int, name string) error {
+	if *value < 0 {
+		return fmt.Errorf("%s must not be negative", name)
+	}
+
+	if *value == 0 {
+		*value = fallback
+	}
+
+	return nil
+}
+
+func normalizeDiscardRatio(value *float64, fallback float64) error {
+	if *value < 0 || *value >= 1 {
+		return fmt.Errorf("Boyan maintenance discard ratio must be in [0,1)")
+	}
+
+	if *value == 0 {
+		*value = fallback
+	}
+
+	return nil
 }
 
 func validateLoopbackListenAddress(addr string) error {

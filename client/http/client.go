@@ -24,6 +24,8 @@ type Client struct {
 	client *stdhttp.Client
 }
 
+const maxRedirects = 10
+
 func New(cfg Config) (*Client, error) {
 	baseURL := strings.TrimSpace(cfg.BaseURL)
 	if baseURL == "" {
@@ -56,7 +58,7 @@ func New(cfg Config) (*Client, error) {
 			return configuredRedirect(req, via)
 		}
 
-		if len(via) >= 10 {
+		if len(via) >= maxRedirects {
 			return stdhttp.ErrUseLastResponse
 		}
 

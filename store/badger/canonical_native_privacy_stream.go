@@ -144,6 +144,7 @@ func (s *CanonicalStore) loadNativePrivacyBackup(
 
 func (s *CanonicalStore) stageNativePrivacyFrames(ctx context.Context, source io.Reader, destination io.Writer) error {
 	frames := 0
+
 	for {
 		list, err := readNativePrivacyFrame(ctx, source)
 		if errors.Is(err, io.EOF) {

@@ -243,19 +243,23 @@ func TestCommittedTurnWithoutSourceCannotAcquireOrphanCertificate(t *testing.T) 
 		}); err != nil {
 			return err
 		}
+
 		changeKey, err := badgerScopeChangeKey(turn.Scope, 1)
 		if err != nil {
 			return err
 		}
+
 		if err := putCanonicalRecord(txn, changeKey, badgerRecordChange, memory.ScopeChange{
 			Sequence: 1, ScopeVersion: 1, OperationID: "committed", OccurredAt: mutation.Operation.CommittedAt,
 		}); err != nil {
 			return err
 		}
+
 		scopeKey, err := badgerScopeKey(turn.Scope)
 		if err != nil {
 			return err
 		}
+
 		if err := putCanonicalRecord(txn, scopeKey, badgerRecordScope, memory.ScopeState{
 			SchemaVersion: memory.CanonicalSchemaVersionV1, Scope: turn.Scope, Version: 1, ChangeSeq: 1,
 		}); err != nil {

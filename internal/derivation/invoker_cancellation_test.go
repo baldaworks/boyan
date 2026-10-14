@@ -1,4 +1,4 @@
-package derivation
+package derivation //nolint:testpackage // Uses private runtime seams to force initialization and runner races.
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 
 type blockingBuildFactory struct {
 	fakeFactory
+
 	started chan struct{}
 	release chan struct{}
 }
@@ -26,6 +27,7 @@ func (f *blockingBuildFactory) Build(_ context.Context, request agentfactory.Bui
 	default:
 		close(f.started)
 	}
+
 	<-f.release
 
 	return adkagent.New(adkagent.Config{Name: request.Name, Description: request.Description})
@@ -38,18 +40,22 @@ func TestCanceledRuntimeWaiterReturnsPromptly(t *testing.T) {
 	t.Cleanup(func() { _ = invoker.Close(context.Background()) })
 
 	firstDone := make(chan error, 1)
+
 	go func() {
 		_, buildErr := invoker.ensureRuntime(context.Background())
 		firstDone <- buildErr
 	}()
+
 	<-factory.started
 
 	waiterCtx, cancel := context.WithCancel(context.Background())
 	waiterDone := make(chan error, 1)
+
 	go func() {
 		_, waitErr := invoker.ensureRuntime(waiterCtx)
 		waiterDone <- waitErr
 	}()
+
 	cancel()
 
 	select {
@@ -62,6 +68,7 @@ func TestCanceledRuntimeWaiterReturnsPromptly(t *testing.T) {
 	}
 
 	close(factory.release)
+
 	if buildErr := <-firstDone; buildErr != nil {
 		t.Fatalf("initial build: %v", buildErr)
 	}
@@ -73,7 +80,9 @@ func TestCanceledInvocationRejectsLateProviderOutput(t *testing.T) {
 	invoker, err := newInvokerWithFactory(testConfig(t), &fakeFactory{}, func(
 		adkagent.Agent, runStateStore, string,
 	) (eventRunner, error) {
-		return fakeRunner{run: func(context.Context, string, string, *genai.Content, adkagent.RunConfig) iter.Seq2[*runEvent, error] {
+		return fakeRunner{run: func(
+			context.Context, string, string, *genai.Content, adkagent.RunConfig,
+		) iter.Seq2[*runEvent, error] {
 			return func(yield func(*runEvent, error) bool) {
 				close(started)
 				<-release
@@ -88,6 +97,7 @@ func TestCanceledInvocationRejectsLateProviderOutput(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
+
 	go func() {
 		_, invokeErr := invoker.Invoke(ctx, structuredderive.StructuredInvocation{
 			OperationID: "late-output", Stage: "canonical_semantics", InputJSON: []byte(`{}`),
@@ -95,6 +105,7 @@ func TestCanceledInvocationRejectsLateProviderOutput(t *testing.T) {
 		})
 		done <- invokeErr
 	}()
+
 	<-started
 	cancel()
 	close(release)

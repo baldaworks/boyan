@@ -10,6 +10,7 @@ import (
 func forgetSuccess(outcome memory.ForgetOutcome, fallbackForgottenAt time.Time) ForgetOutput {
 	scope := outcome.Scope
 	forgottenAt := outcome.ForgottenAt
+
 	if forgottenAt.IsZero() {
 		// Outcomes written before forgotten_at was added remain readable. Their
 		// acknowledgement uses the current request timestamp as a compatibility fallback.

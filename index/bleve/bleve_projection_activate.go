@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
+	"github.com/blevesearch/bleve/v2"
 )
 
 // ActivateGeneration opens a committed generation and atomically switches the
@@ -41,11 +42,13 @@ func (p *BleveRecallProjection) activateGeneration(
 	}
 
 	p.mu.RLock()
+
 	if p.closed {
 		p.mu.RUnlock()
 
 		return projectionClosedError()
 	}
+
 	root := p.root
 	p.mu.RUnlock()
 
@@ -62,26 +65,35 @@ func (p *BleveRecallProjection) activateGeneration(
 		markerPath = filepath.Join(root, bleveScopedActivePrefix+scopeKey)
 	}
 
-	p.mu.Lock()
-	if p.closed {
-		p.mu.Unlock()
-		_ = index.Close()
-
-		return projectionClosedError()
-	}
-
-	if err := writeActiveGenerationMarker(markerPath, id); err != nil {
-		p.mu.Unlock()
+	previous, err := p.installActiveGeneration(markerPath, scopeKey, id, index, scoped)
+	if err != nil {
 		_ = index.Close()
 
 		return err
 	}
 
-	previous := p.swapActiveGenerationLocked(scopeKey, id, index, scoped)
-	p.mu.Unlock()
 	if previous != nil {
 		return previous.Close()
 	}
 
 	return nil
+}
+
+func (p *BleveRecallProjection) installActiveGeneration(
+	markerPath, scopeKey, id string,
+	index bleve.Index,
+	scoped bool,
+) (bleve.Index, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.closed {
+		return nil, projectionClosedError()
+	}
+
+	if err := writeActiveGenerationMarker(markerPath, id); err != nil {
+		return nil, err
+	}
+
+	return p.swapActiveGenerationLocked(scopeKey, id, index, scoped), nil
 }

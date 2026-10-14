@@ -56,9 +56,12 @@ func TestClientRejectsCrossOriginIngestRedirect(t *testing.T) {
 	t.Parallel()
 
 	turn := mustTurn(t, "redirect-turn")
+
 	var targetCalls atomic.Int64
+
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		targetCalls.Add(1)
+
 		_ = json.NewEncoder(w).Encode(receiptFixture(turn.ExportID, boyan.IngestDispositionAccepted))
 	}))
 	defer target.Close()
@@ -78,6 +81,7 @@ func TestClientRejectsCrossOriginIngestRedirect(t *testing.T) {
 		t.Run(configured.name, func(t *testing.T) {
 			client, err := clienthttp.New(clienthttp.Config{BaseURL: origin.URL, Client: configured.client})
 			requireNoError(t, err, "New() error = %v")
+
 			receipt, err := client.IngestTurn(context.Background(), boyan.IngestEnvelope[boyan.Turn]{
 				SchemaVersion: boyan.IngestHTTPSchemaVersionV1,
 				ProducerID:    "producer-redirect",
@@ -97,6 +101,7 @@ func TestClientRejectsCrossOriginIngestRedirect(t *testing.T) {
 
 func assertClientError(t *testing.T, err error, code boyan.ErrorCode, class boyan.ErrorClass) {
 	t.Helper()
+
 	gotCode, gotClass, ok := boyan.ClassifyError(err)
 	if !ok || gotCode != code || gotClass != class {
 		t.Fatalf("ClassifyError(%v) = %q, %q, %v; want %q, %q, true", err, gotCode, gotClass, ok, code, class)

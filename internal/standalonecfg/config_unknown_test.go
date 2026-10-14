@@ -25,6 +25,7 @@ func TestLoadConfigRejectsUnknownKeys(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "boyan.yaml")
 			requireNoError(t, os.WriteFile(path, []byte(tc.yaml), 0o600), "WriteFile() error = %v")
+
 			if _, err := standalonecfg.LoadConfig(path); err == nil {
 				t.Fatal("LoadConfig() error = nil, want unknown-key rejection")
 			}

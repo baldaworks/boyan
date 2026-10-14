@@ -1,4 +1,4 @@
-package structuredderive
+package structuredderive //nolint:testpackage // Calls the shared private adapter boundary directly.
 
 import (
 	"context"
@@ -24,9 +24,11 @@ func TestAdapterRejectsSuccessAfterContextCancellation(t *testing.T) {
 	deriver := &Deriver{
 		invoker: lateSuccessInvoker{cancel: cancel}, maxInputBytes: 1024, maxOutputBytes: 1024,
 	}
+
 	var output struct {
 		Output []any `json:"output"`
 	}
+
 	err := deriver.invoke(ctx, StructuredInvocation{
 		OperationID: "late-success", Stage: "canonical_semantics", InputJSON: []byte(`{}`),
 	}, &output)

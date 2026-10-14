@@ -10,9 +10,31 @@ import (
 )
 
 func (d *Deriver) invoke(ctx context.Context, request StructuredInvocation, output any) error {
+	if err := d.validateInvocation(ctx, request, output); err != nil {
+		return err
+	}
+
+	raw, err := d.invoker.Invoke(ctx, request)
+	if err != nil {
+		return classifyDeriverError(err)
+	}
+
+	if ctx.Err() != nil {
+		return deriverContextError(ctx)
+	}
+
+	if len(raw) == 0 || len(raw) > d.maxOutputBytes {
+		return memory.PermanentError(memory.CodeLimitExceeded, "derivation output exceeds the configured limit", nil)
+	}
+
+	return decodeDerivedOutput(raw, request.Stage, output)
+}
+
+func (d *Deriver) validateInvocation(ctx context.Context, request StructuredInvocation, output any) error {
 	if ctx == nil {
 		return memory.PermanentError(memory.CodeInvalidDerived, "derivation context is required", nil)
 	}
+
 	if ctx.Err() != nil {
 		return deriverContextError(ctx)
 	}
@@ -30,19 +52,7 @@ func (d *Deriver) invoke(ctx context.Context, request StructuredInvocation, outp
 		return memory.PermanentError(memory.CodeInvalidDerived, "derivation output target is required", nil)
 	}
 
-	raw, err := d.invoker.Invoke(ctx, request)
-	if err != nil {
-		return classifyDeriverError(err)
-	}
-	if ctx.Err() != nil {
-		return deriverContextError(ctx)
-	}
-
-	if len(raw) == 0 || len(raw) > d.maxOutputBytes {
-		return memory.PermanentError(memory.CodeLimitExceeded, "derivation output exceeds the configured limit", nil)
-	}
-
-	return decodeDerivedOutput(raw, request.Stage, output)
+	return nil
 }
 
 func deriverContextError(ctx context.Context) error {

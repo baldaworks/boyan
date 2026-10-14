@@ -1,4 +1,4 @@
-package badger
+package badger //nolint:testpackage // Injects checksummed corruption through private storage seams.
 
 import (
 	"context"
@@ -21,6 +21,7 @@ func TestCanonicalReplayRejectsOutcomeOutsideDurableScopeHistory(t *testing.T) {
 			scope := memory.Scope{Key: "test:outcome-binding-" + kind, Kind: memory.ScopeKindPersonal}
 			operationID := "bound-" + kind
 			fingerprint := "fingerprint-" + kind
+
 			var replay func() error
 
 			if kind == "operation" {
@@ -31,6 +32,7 @@ func TestCanonicalReplayRejectsOutcomeOutsideDurableScopeHistory(t *testing.T) {
 				_, err = store.CommitCanonicalOperation(ctx, request)
 				replay = func() error {
 					_, replayErr := store.CommitCanonicalOperation(ctx, request)
+
 					return replayErr
 				}
 			} else {
@@ -40,9 +42,11 @@ func TestCanonicalReplayRejectsOutcomeOutsideDurableScopeHistory(t *testing.T) {
 				_, err = store.ApplyCanonicalMutation(ctx, mutation)
 				replay = func() error {
 					_, replayErr := store.ApplyCanonicalMutation(ctx, mutation)
+
 					return replayErr
 				}
 			}
+
 			requireEraseTestNoError(t, err)
 
 			key, err := badgerOperationKey(scope, operationID)
@@ -52,7 +56,9 @@ func TestCanonicalReplayRejectsOutcomeOutsideDurableScopeHistory(t *testing.T) {
 				if getErr := getCanonicalRecord(txn, key, badgerRecordOperation, &stored); getErr != nil {
 					return getErr
 				}
+
 				stored.Outcome.ScopeVersion = 999
+
 				return putCanonicalRecord(txn, key, badgerRecordOperation, stored)
 			}))
 
@@ -110,7 +116,9 @@ func TestCanonicalReplayAcceptsLegacyChangeWithoutScopeVersion(t *testing.T) {
 		if getErr := getCanonicalRecord(txn, changeKey, badgerRecordChange, &change); getErr != nil {
 			return getErr
 		}
+
 		change.ScopeVersion = 0
+
 		return putCanonicalRecord(txn, changeKey, badgerRecordChange, change)
 	}))
 
@@ -141,6 +149,7 @@ func TestLoadCanonicalOperationRejectsMissingBoundChange(t *testing.T) {
 	if found {
 		t.Fatal("operation with a missing bound change reported as found")
 	}
+
 	assertCanonicalStoreFailure(t, err)
 }
 

@@ -46,44 +46,49 @@ func verifyCanonicalIntegrityMode(ctx context.Context, txn *badger.Txn, bindings
 	defer iterator.Close()
 
 	for iterator.Rewind(); iterator.Valid(); iterator.Next() {
-		if err := checkCanonicalMaintenanceContext(ctx); err != nil {
+		if err := verifyCanonicalIntegrityItem(ctx, txn, iterator.Item(), bindings); err != nil {
 			return err
-		}
-
-		item := iterator.Item()
-
-		if item.ValueSize() > maxCanonicalLogicalLineBytes {
-			return invalidSourcePrivacy()
-		}
-
-		encoded, err := item.ValueCopy(nil)
-		if err != nil {
-			return err
-		}
-
-		envelope, err := memory.UnmarshalRecordEnvelope(encoded)
-		if err != nil {
-			return memory.PermanentError(memory.CodeStoreFailure, "canonical record integrity check failed", nil)
-		}
-
-		if err := validateStoredCanonicalProof(item.Key(), envelope); err != nil {
-			return memory.PermanentError(memory.CodeStoreFailure, "canonical proof integrity check failed", nil)
-		}
-
-		components, _, err := decodeCanonicalLogicalKey(item.Key())
-		if err != nil {
-			return err
-		}
-
-		if bindings {
-			if err := validateStoredPrivacyBindings(txn, components, envelope); err != nil {
-				return invalidSourcePrivacy()
-			}
-			if err := validateStoredCanonicalOutcomeBindings(txn, components, envelope); err != nil {
-				return err
-			}
 		}
 	}
 
 	return nil
+}
+
+func verifyCanonicalIntegrityItem(ctx context.Context, txn *badger.Txn, item *badger.Item, bindings bool) error {
+	if err := checkCanonicalMaintenanceContext(ctx); err != nil {
+		return err
+	}
+
+	if item.ValueSize() > maxCanonicalLogicalLineBytes {
+		return invalidSourcePrivacy()
+	}
+
+	encoded, err := item.ValueCopy(nil)
+	if err != nil {
+		return err
+	}
+
+	envelope, err := memory.UnmarshalRecordEnvelope(encoded)
+	if err != nil {
+		return memory.PermanentError(memory.CodeStoreFailure, "canonical record integrity check failed", nil)
+	}
+
+	if err := validateStoredCanonicalProof(item.Key(), envelope); err != nil {
+		return memory.PermanentError(memory.CodeStoreFailure, "canonical proof integrity check failed", nil)
+	}
+
+	components, _, err := decodeCanonicalLogicalKey(item.Key())
+	if err != nil {
+		return err
+	}
+
+	if !bindings {
+		return nil
+	}
+
+	if err := validateStoredPrivacyBindings(txn, components, envelope); err != nil {
+		return invalidSourcePrivacy()
+	}
+
+	return validateStoredCanonicalOutcomeBindings(txn, components, envelope)
 }

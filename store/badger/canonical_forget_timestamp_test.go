@@ -25,6 +25,7 @@ func TestCanonicalForgetOutcomePreservesTimestampAcrossReplayAndRestart(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if !first.ForgottenAt.Equal(forgottenAt) {
 		t.Fatalf("first forgotten_at = %v, want %v", first.ForgottenAt, forgottenAt)
 	}

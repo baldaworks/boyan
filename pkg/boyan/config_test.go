@@ -31,6 +31,7 @@ func TestValidateRejectsNegativeOperationalBounds(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			config := boyan.DefaultConfig()
 			tc.mutate(&config)
+
 			if err := config.Validate(); err == nil {
 				t.Fatal("Validate() error = nil, want negative-bound rejection")
 			}

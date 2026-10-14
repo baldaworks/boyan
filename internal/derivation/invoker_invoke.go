@@ -13,6 +13,7 @@ func (i *Invoker) Invoke(ctx context.Context, request structuredderive.Structure
 	if ctx == nil {
 		return nil, memory.PermanentError(memory.CodeInvalidDerived, "Boyan derivation context is required", nil)
 	}
+
 	if err := validateStructuredInvocationRequest(request); err != nil {
 		return nil, err
 	}

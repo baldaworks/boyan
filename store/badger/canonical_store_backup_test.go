@@ -59,12 +59,14 @@ func TestCanonicalMaintenanceRejectsTypedNilStreams(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 
 	var stream *bytes.Buffer
+
 	tests := []struct {
 		name string
 		call func() error
 	}{
 		{"backup", func() error {
 			_, err := store.WriteCanonicalBackup(context.Background(), stream, 0)
+
 			return err
 		}},
 		{"restore", func() error {
@@ -85,6 +87,7 @@ func TestCanonicalMaintenanceRejectsTypedNilStreams(t *testing.T) {
 					t.Fatalf("maintenance call panicked: %v", recovered)
 				}
 			}()
+
 			if err := tc.call(); err == nil {
 				t.Fatal("maintenance call error = nil, want typed-nil rejection")
 			}
