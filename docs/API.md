@@ -95,6 +95,22 @@ Accepts the same envelope shape, but the payload is a validated
 - successful outcomes are idempotent by producer, scope, sequence, and payload
 - same-scope ordering is enforced by the sequenced ingest runtime
 
+Envelope or payload validation failures return `400 Bad Request`, including
+unsupported payload schemas, invalid boundary reasons and stable identity
+mismatches. The structured error retains the original `code` and `class`, even
+when both are `permanent`, with the safe message `ingest request is invalid`.
+Genuine execution failures retain their existing statuses: unavailable service
+or execution failures with code `permanent` use `503`, timeout uses `504`, retryable
+backpressure uses `429`, and sequencing conflicts use `409`.
+
+Both typed Go client methods, `Client.IngestTurn` and `Client.IngestBoundary`,
+strictly decode and validate successful receipts and require their `export_id`
+to match the submitted payload. This applies to both accepted and duplicate
+receipts. A mismatched acknowledgement returns an empty receipt and a safe
+`invalid_derived` / `permanent` error. Matching receipts retain all returned
+fields. This is client response validation; it does not introduce automatic
+resends or verify equality of every field associated with the same export.
+
 ## Canonical turn replay
 
 Turn delivery fingerprints retain full envelope validation and delegate payload
