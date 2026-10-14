@@ -79,6 +79,9 @@ func verifyCanonicalIntegrityMode(ctx context.Context, txn *badger.Txn, bindings
 			if err := validateStoredPrivacyBindings(txn, components, envelope); err != nil {
 				return invalidSourcePrivacy()
 			}
+			if err := validateStoredCanonicalOutcomeBindings(txn, components, envelope); err != nil {
+				return err
+			}
 		}
 	}
 

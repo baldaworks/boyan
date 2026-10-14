@@ -21,6 +21,7 @@ func writeCanonicalForgetOutcome(
 	change := memory.ScopeChange{
 		RequiresRebuild: outcome.ReferencesTruncated,
 		Sequence:        state.ChangeSeq,
+		ScopeVersion:    state.Version,
 		OperationID:     request.OperationID,
 		OccurredAt:      request.ForgottenAt.UTC(),
 	}

@@ -16,10 +16,11 @@ type ScopeState struct {
 
 // ScopeChange is an ordered, immutable projection-replay entry.
 type ScopeChange struct {
-	Sequence    uint64    `json:"sequence"`
-	OperationID string    `json:"operation_id"`
-	OccurredAt  time.Time `json:"occurred_at"`
-	RevisionIDs []string  `json:"revision_ids,omitempty"`
+	Sequence     uint64    `json:"sequence"`
+	ScopeVersion uint64    `json:"scope_version,omitempty"`
+	OperationID  string    `json:"operation_id"`
+	OccurredAt   time.Time `json:"occurred_at"`
+	RevisionIDs  []string  `json:"revision_ids,omitempty"`
 	// RequiresRebuild marks changes whose complete target references exceed the
 	// bounded delta representation. Such entries must never advance via Apply.
 	RequiresRebuild bool `json:"requires_rebuild,omitempty"`

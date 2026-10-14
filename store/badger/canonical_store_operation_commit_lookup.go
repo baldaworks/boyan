@@ -32,6 +32,10 @@ func loadCanonicalOperationOutcome(
 	}
 
 	if err := stored.Outcome.Validate(); err != nil {
+		return memory.CanonicalMutationOutcome{}, true, invalidStoredCanonicalOutcome(err)
+	}
+
+	if err := validateCanonicalOutcomeBinding(txn, request.Scope, request.OperationID, stored.Outcome); err != nil {
 		return memory.CanonicalMutationOutcome{}, true, err
 	}
 

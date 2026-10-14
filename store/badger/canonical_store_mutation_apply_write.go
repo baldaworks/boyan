@@ -26,10 +26,11 @@ func writeCanonicalMutationOutcome(
 	outcome memory.CanonicalMutationOutcome,
 ) error {
 	change := memory.ScopeChange{
-		Sequence:    state.ChangeSeq,
-		OperationID: mutation.Operation.OperationID,
-		OccurredAt:  mutation.Operation.CommittedAt,
-		RevisionIDs: outcome.RevisionIDs,
+		Sequence:     state.ChangeSeq,
+		ScopeVersion: state.Version,
+		OperationID:  mutation.Operation.OperationID,
+		OccurredAt:   mutation.Operation.CommittedAt,
+		RevisionIDs:  outcome.RevisionIDs,
 	}
 
 	changeKey, err := badgerScopeChangeKey(mutation.Scope, change.Sequence)
