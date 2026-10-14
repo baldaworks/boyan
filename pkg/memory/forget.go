@@ -36,6 +36,7 @@ type ForgetOutcome struct {
 	OperationID         string        `json:"operation_id"`
 	Kind                ForgetKind    `json:"kind"`
 	Scope               Scope         `json:"scope"`
+	ForgottenAt         time.Time     `json:"forgotten_at,omitempty"`
 	SourceCount         uint64        `json:"source_count,omitempty"`
 	RevisionCount       uint64        `json:"revision_count,omitempty"`
 	ReferencesTruncated bool          `json:"references_truncated,omitempty"`

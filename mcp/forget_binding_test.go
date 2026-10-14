@@ -33,6 +33,41 @@ func TestForgetRequestBindingThroughSDK(t *testing.T) {
 	}
 }
 
+func TestForgetAcknowledgementUsesDurableOutcomeTimestamp(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	durableTime := time.Date(2026, time.October, 10, 4, 5, 6, 0, time.UTC)
+	outcome := forgetBindingOutcome(memory.ForgetKindScope)
+	outcome.ForgottenAt = durableTime
+	backend := &forgetterSpy{scopeOutcome: outcome}
+	invocation := durableTime.Add(24 * time.Hour)
+	server, err := NewServer(Config{
+		Enabled:   true,
+		Forgetter: backend,
+		Now: func() time.Time {
+			invocation = invocation.Add(time.Hour)
+			return invocation
+		},
+	})
+	requireNoError(t, err, "server: %v")
+
+	session := connectSearchWatermarkClient(t, ctx, server)
+	for range 2 {
+		result, callErr := session.CallTool(ctx, &sdkmcp.CallToolParams{
+			Name: ForgetScopeToolName, Arguments: forgetBindingArguments(ForgetScopeToolName),
+		})
+		requireNoError(t, callErr, "call forget: %v")
+
+		output := decodeStructuredContent[ForgetOutput](t, result)
+		if result.IsError || output.ForgottenAt == nil || !output.ForgottenAt.Equal(durableTime) {
+			t.Fatalf("forgotten_at = %v, want durable %v", output.ForgottenAt, durableTime)
+		}
+	}
+}
+
 func runForgetBindingCase(t *testing.T, test forgetBindingCase) {
 	t.Helper()
 

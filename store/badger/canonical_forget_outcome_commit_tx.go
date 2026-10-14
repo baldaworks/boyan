@@ -62,6 +62,7 @@ func buildCanonicalForgetOutcome(
 		OperationID:   request.OperationID,
 		Kind:          request.Kind,
 		Scope:         request.Scope,
+		ForgottenAt:   request.ForgottenAt.UTC(),
 		ScopeVersion:  state.Version,
 		Sources:       append([]memory.SourceRef(nil), request.Sources...),
 		Revisions:     append([]memory.RevisionRef(nil), request.Revisions...),

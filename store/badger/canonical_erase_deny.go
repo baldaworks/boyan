@@ -151,7 +151,8 @@ func eraseCommitOutcome(txn *badger.Txn, journal *memory.ScopeEraseJournal) erro
 
 	outcome := memory.ForgetOutcome{
 		SchemaVersion: memory.DerivedSchemaVersionV1, OperationID: journal.OperationID, Kind: journal.ForgetKind(),
-		Scope: journal.Scope, ScopeVersion: state.Version, Sources: journal.Sources, Revisions: journal.Revisions,
+		Scope: journal.Scope, ForgottenAt: journal.ForgottenAt.UTC(), ScopeVersion: state.Version,
+		Sources: journal.Sources, Revisions: journal.Revisions,
 		SourceCount:         journal.SourceCount,
 		RevisionCount:       journal.RevisionCount,
 		ReferencesTruncated: journal.ReferencesTruncated,
