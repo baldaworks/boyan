@@ -59,6 +59,12 @@ func TestSearchMinimumWatermarkThroughSDK(t *testing.T) {
 					return
 				}
 
+				if !empty && response.ScopeChangeSeq == 0 {
+					assertSearchWatermarkRejected(t, result, output, scope, memory.CodeInvalidDerived)
+
+					return
+				}
+
 				assertSearchWatermarkSuccess(t, result, output, scope, test.wantSeq, len(response.Results))
 			})
 		}
@@ -68,12 +74,22 @@ func TestSearchMinimumWatermarkThroughSDK(t *testing.T) {
 func assertSearchWatermarkConflict(
 	t *testing.T, result *sdkmcp.CallToolResult, output SearchOutput, scope memory.Scope,
 ) {
+	assertSearchWatermarkRejected(t, result, output, scope, memory.CodeConflict)
+}
+
+func assertSearchWatermarkRejected(
+	t *testing.T,
+	result *sdkmcp.CallToolResult,
+	output SearchOutput,
+	scope memory.Scope,
+	wantCode memory.ErrorCode,
+) {
 	t.Helper()
 
-	if !result.IsError || output.OK || output.Error == nil || output.Error.Code != string(memory.CodeConflict) ||
+	if !result.IsError || output.OK || output.Error == nil || output.Error.Code != string(wantCode) ||
 		output.Scope != nil || output.ScopeChangeSeq != 0 || len(output.Results) != 0 ||
 		output.DataClassification != DataClassificationNone {
-		t.Fatalf("expected safe conflict, got %+v, error=%v", output, result.IsError)
+		t.Fatalf("expected safe %s, got %+v, error=%v", wantCode, output, result.IsError)
 	}
 
 	assertSearchWatermarkRedacted(t, result, scope)
@@ -131,6 +147,8 @@ func searchWatermarkResponse(t *testing.T, scope memory.Scope, counter string, e
 			SchemaVersion: memory.RecallSchemaVersionV1, Trust: memory.ReferenceTrustUntrusted,
 			Scope: scope, State: memory.RevisionStateActive, Text: "private reference",
 			ItemID: "item", RevisionID: "revision", Revision: 1, Kind: memory.MemoryKindState,
+			MemoryKey: "memory-key", CreatedAt: time.Unix(1, 0).UTC(),
+			ScopeChangeSeq: response.ScopeChangeSeq,
 		}}
 	}
 

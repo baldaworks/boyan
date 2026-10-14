@@ -29,6 +29,10 @@ result. `Stop(ctx)` stops admission and cancels active operation contexts. If it
 deadline expires, it returns a typed `timeout` error while cleanup remains owned
 by the host. While the process stays alive, a later `Stop` or `Wait` can join that
 cleanup. Storage is released after active HTTP and embedded operations drain.
+Before `Start` completes successfully, ingest, search, trace and forget capability
+calls return a retryable `unavailable` error without storage or projection effects.
+The in-process `/livez` and `/readyz` handlers remain available for lifecycle
+inspection; readiness stays unavailable until startup completes.
 
 ## Scope contract
 
@@ -350,6 +354,15 @@ the physical checkpoint proof above. A legitimate commit/sync interleaving after
 the initial canonical snapshot returns an empty retryable conflict when a fresh
 canonical counter covers the projection hits. Metadata still ahead of canonical
 state remains a permanent conflict.
+
+Every nonempty public response also validates canonical item/revision identity,
+active kind and memory-key shape, creation time, finite internally consistent
+ranking, bounded valid evidence, and a nonzero per-result sequence no newer than
+the response checkpoint. Validation binds `kind`, `category`, `memory_key`, and
+`source_id` filters to fields carried by each result. Canonical hydration enforces
+`conversation_id` and `as_of`; compact `RecallReference` values do not repeat the
+conversation or temporal window, so a custom `Searcher` cannot have those two
+filters independently re-proved by `RecallResponse.Validate`.
 
 ## Trace representation
 

@@ -163,6 +163,139 @@ func TestHostCapabilitySurface(t *testing.T) {
 	}
 }
 
+func TestHostCapabilitiesRejectBeforeStartWithoutMutation(t *testing.T) {
+	host, err := boyan.New(context.Background(), testHostConfig(t))
+	requireNoError(t, err, "New() error = %v")
+	t.Cleanup(func() { _ = host.Close() })
+
+	scope := memory.Scope{Key: "test:prestart-capabilities", Kind: memory.ScopeKindPersonal}
+	forgottenAt := time.Date(2026, time.October, 14, 12, 0, 0, 0, time.UTC)
+	operations := preStartHostOperations(t, host, scope, forgottenAt)
+
+	assertHostOperationsUnavailable(t, operations)
+	assertPreStartHealth(t, host)
+	assertFirstPostStartForget(t, host, scope, forgottenAt)
+}
+
+type namedHostOperation struct {
+	name string
+	call func() error
+}
+
+func preStartHostOperations(
+	t *testing.T,
+	host *boyan.Host,
+	scope memory.Scope,
+	forgottenAt time.Time,
+) []namedHostOperation {
+	t.Helper()
+
+	turn := capabilityTestTurn(t, scope)
+
+	return []namedHostOperation{
+		{name: "ingest turn", call: func() error {
+			_, err := host.IngestSequencedTurn(context.Background(), memory.SequencedTurn{
+				ProducerID: "prestart-producer", ScopeSequence: 1,
+				Fingerprint: "prestart-fingerprint", Turn: turn,
+			})
+
+			return err
+		}},
+		{name: "ingest boundary", call: func() error {
+			_, err := host.ApplySequencedBoundary(context.Background(), memory.SequencedBoundary{})
+
+			return err
+		}},
+		{name: "search", call: func() error {
+			_, err := host.Search(context.Background(), memory.RecallRequest{
+				SchemaVersion: memory.RecallSchemaVersionV1, Scope: scope, Query: "memory", Limit: 1,
+			})
+
+			return err
+		}},
+		{name: "trace", call: func() error {
+			_, err := host.Trace(context.Background(), memory.TraceRequest{
+				SchemaVersion: memory.DerivedSchemaVersionV1, Scope: scope,
+				Root: memory.RevisionRef{ItemID: "item-1", RevisionID: "revision-1"}, MaxNodes: 1,
+			})
+
+			return err
+		}},
+		{name: "forget source", call: func() error {
+			_, err := host.ForgetSource(context.Background(), memory.ForgetSourceCommand{
+				SchemaVersion: memory.DerivedSchemaVersionV1,
+				Source: memory.SourceRef{
+					Scope: scope, ExportID: "export-1", ConversationID: "conversation-1", SourceTurnID: "turn-1",
+				},
+				ForgottenAt: forgottenAt,
+			})
+
+			return err
+		}},
+		{name: "forget scope", call: func() error {
+			_, err := host.ForgetScope(context.Background(), memory.ForgetScopeCommand{
+				SchemaVersion: memory.DerivedSchemaVersionV1, Scope: scope,
+				RequestID: "prestart-forget", ForgottenAt: forgottenAt,
+			})
+
+			return err
+		}},
+	}
+}
+
+func assertHostOperationsUnavailable(t *testing.T, operations []namedHostOperation) {
+	t.Helper()
+
+	for _, operation := range operations {
+		err := operation.call()
+		code, class, ok := memory.ClassifyError(err)
+
+		if !ok || code != memory.CodeUnavailable || class != memory.ErrorClassRetryable {
+			t.Errorf("%s error = %v, want retryable unavailable", operation.name, err)
+		}
+	}
+}
+
+func assertPreStartHealth(t *testing.T, host *boyan.Host) {
+	t.Helper()
+
+	for _, health := range []struct {
+		path string
+		want int
+	}{{path: "/livez", want: http.StatusOK}, {path: "/readyz", want: http.StatusServiceUnavailable}} {
+		response := httptest.NewRecorder()
+		host.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, health.path, nil))
+
+		if response.Code != health.want {
+			t.Errorf("GET %s status = %d, want %d", health.path, response.Code, health.want)
+		}
+	}
+}
+
+func assertFirstPostStartForget(
+	t *testing.T,
+	host *boyan.Host,
+	scope memory.Scope,
+	forgottenAt time.Time,
+) {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	requireNoError(t, host.Start(ctx), "host.Start() error = %v")
+
+	outcome, err := host.ForgetScope(ctx, memory.ForgetScopeCommand{
+		SchemaVersion: memory.DerivedSchemaVersionV1, Scope: scope,
+		RequestID: "poststart-forget", ForgottenAt: forgottenAt,
+	})
+	requireNoError(t, err, "post-start forget error = %v")
+
+	if outcome.ScopeVersion != 1 {
+		t.Fatalf("post-start scope version = %d, want 1 with no pre-start mutation", outcome.ScopeVersion)
+	}
+}
+
 func testHostConfig(t *testing.T) boyan.Config {
 	t.Helper()
 

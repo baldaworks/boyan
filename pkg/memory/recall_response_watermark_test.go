@@ -3,6 +3,7 @@ package memory_test
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
@@ -47,16 +48,31 @@ func TestRecallResponseMinimumWatermark(t *testing.T) {
 						SchemaVersion: memory.RecallSchemaVersionV1, Trust: memory.ReferenceTrustUntrusted,
 						Scope: response.Scope, State: memory.RevisionStateActive, Text: "private reference",
 						ItemID: "item", RevisionID: "revision", Revision: 1, Kind: memory.MemoryKindState,
+						MemoryKey: "memory-key", CreatedAt: time.Unix(1, 0).UTC(),
+						ScopeChangeSeq: response.ScopeChangeSeq,
 					}}
 				}
 
-				assertRecallWatermarkValidation(t, response.Validate(request), test.reject, empty)
+				reject := test.reject || (!empty && response.ScopeChangeSeq == 0)
+				wantCode := memory.CodeConflict
+
+				if !test.reject {
+					wantCode = memory.CodeInvalidDerived
+				}
+
+				assertRecallWatermarkValidation(t, response.Validate(request), reject, wantCode, empty)
 			}
 		})
 	}
 }
 
-func assertRecallWatermarkValidation(t *testing.T, err error, reject, empty bool) {
+func assertRecallWatermarkValidation(
+	t *testing.T,
+	err error,
+	reject bool,
+	wantCode memory.ErrorCode,
+	empty bool,
+) {
 	t.Helper()
 
 	if !reject {
@@ -68,7 +84,7 @@ func assertRecallWatermarkValidation(t *testing.T, err error, reject, empty bool
 	}
 
 	code, class, ok := memory.ClassifyError(err)
-	if !ok || code != memory.CodeConflict || class != memory.ErrorClassRetryable || !memory.IsRetryable(err) {
-		t.Fatalf("empty=%v: expected retryable conflict, got %v", empty, err)
+	if !ok || code != wantCode {
+		t.Fatalf("empty=%v: expected %s, got %v (%s/%s)", empty, wantCode, err, code, class)
 	}
 }

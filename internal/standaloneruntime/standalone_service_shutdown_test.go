@@ -74,6 +74,7 @@ func TestRuntimeShutdownTimeoutRetainsResources(t *testing.T) {
 func TestRuntimeShutdownDrainsEmbeddedOperation(t *testing.T) {
 	runtime, err := New(testStandaloneConfig(t))
 	requireNoError(t, err, "%v")
+	requireNoError(t, runtime.Start(context.Background()), "%v")
 
 	operation, done, err := runtime.service.beginOperation(context.Background())
 	requireNoError(t, err, "%v")

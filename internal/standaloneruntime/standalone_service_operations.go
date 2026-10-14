@@ -10,6 +10,17 @@ import (
 )
 
 func (s *standaloneService) beginOperation(ctx context.Context) (context.Context, func(), error) {
+	return s.beginTrackedOperation(ctx, true)
+}
+
+func (s *standaloneService) beginHealthOperation(ctx context.Context) (context.Context, func(), error) {
+	return s.beginTrackedOperation(ctx, false)
+}
+
+func (s *standaloneService) beginTrackedOperation(
+	ctx context.Context,
+	requireStarted bool,
+) (context.Context, func(), error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -19,6 +30,12 @@ func (s *standaloneService) beginOperation(ctx context.Context) (context.Context
 		s.mu.Unlock()
 
 		return nil, nil, memory.RetryableError(memory.CodeShuttingDown, "Boyan runtime is shutting down", nil)
+	}
+
+	if requireStarted && !s.started {
+		s.mu.Unlock()
+
+		return nil, nil, memory.RetryableError(memory.CodeUnavailable, "Boyan runtime is not started", nil)
 	}
 
 	s.operations.Add(1)
@@ -32,20 +49,27 @@ func (s *standaloneService) beginOperation(ctx context.Context) (context.Context
 
 func (s *standaloneService) operationHandler(next stdhttp.Handler) stdhttp.Handler {
 	return stdhttp.HandlerFunc(func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-		ctx, done, err := s.beginOperation(r.Context())
+		begin := s.beginOperation
+		if r.URL.Path == "/livez" || r.URL.Path == "/readyz" {
+			begin = s.beginHealthOperation
+		}
+
+		ctx, done, err := begin(r.Context())
 		if err != nil {
+			code, class, _ := memory.ClassifyError(err)
+
 			if strings.HasPrefix(r.URL.Path, "/v1/ingest/") {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(stdhttp.StatusServiceUnavailable)
 				_ = json.NewEncoder(w).Encode(
 					memory.IngestErrorResponse{
-						Code:    memory.CodeShuttingDown,
-						Class:   memory.ErrorClassRetryable,
-						Message: "ingest service is shutting down",
+						Code:    code,
+						Class:   class,
+						Message: err.Error(),
 					},
 				)
 			} else {
-				stdhttp.Error(w, "Boyan runtime is shutting down", stdhttp.StatusServiceUnavailable)
+				stdhttp.Error(w, err.Error(), stdhttp.StatusServiceUnavailable)
 			}
 
 			return

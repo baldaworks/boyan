@@ -2,10 +2,14 @@ package standaloneruntime //nolint:testpackage // Exercises shared private test 
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
 func TestRuntimeServesHealthAndStops(t *testing.T) {
@@ -67,6 +71,29 @@ func TestRuntimeServesHealthAndStops(t *testing.T) {
 	}
 
 	assertRuntimeStopsAfterCanceledWait(t, runtime)
+}
+
+func TestRuntimeRejectsHTTPIngestBeforeStart(t *testing.T) {
+	t.Parallel()
+
+	runtime, err := New(testStandaloneConfig(t))
+	requireNoError(t, err, "New() error = %v")
+	t.Cleanup(func() { _ = runtime.Stop(context.Background()) })
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/v1/ingest/turns", strings.NewReader(`{}`))
+	runtime.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("pre-start ingest status = %d, want %d", response.Code, http.StatusServiceUnavailable)
+	}
+
+	var failure memory.IngestErrorResponse
+	requireNoError(t, json.Unmarshal(response.Body.Bytes(), &failure), "decode ingest failure = %v")
+
+	if failure.Code != memory.CodeUnavailable || failure.Class != memory.ErrorClassRetryable {
+		t.Fatalf("pre-start ingest failure = %#v, want retryable unavailable", failure)
+	}
 }
 
 func assertRuntimeStopsAfterCanceledWait(t *testing.T, runtime *Runtime) {
