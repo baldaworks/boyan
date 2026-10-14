@@ -6,13 +6,17 @@ import (
 )
 
 func loadCanonicalSourcePayload(txn *badger.Txn, ref memory.PayloadRef) ([]byte, error) {
+	if ref.ByteSize > maxCanonicalLogicalLineBytes {
+		return nil, memory.PermanentError(memory.CodeLimitExceeded, "canonical source payload exceeds its bound", nil)
+	}
+
 	payloadKey, err := canonicalKey(payloadScope(), badgerRecordPayload, ref.ID)
 	if err != nil {
 		return nil, err
 	}
 
 	var payload []byte
-	if err := getCanonicalRecord(txn, payloadKey, badgerRecordPayload, &payload); err != nil {
+	if err := getPrivacyPreparationRecord(txn, payloadKey, badgerRecordPayload, &payload); err != nil {
 		return nil, err
 	}
 

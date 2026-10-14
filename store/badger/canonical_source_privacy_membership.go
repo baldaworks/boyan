@@ -59,6 +59,13 @@ func writeInitialPrivacyMembership(
 
 	if !certified {
 		record.MessageIDs = ids
+
+		complete, err := initialPrivacyMembershipComplete(txn, source.Scope, ids, overflow)
+		if err != nil {
+			return err
+		}
+
+		record.MessageMembershipComplete = complete
 	}
 
 	if overflow && record.State != sourcePrivacySensitive {
@@ -84,4 +91,46 @@ func validPrivacyMembership(ids []string) bool {
 	}
 
 	return true
+}
+
+func initialPrivacyMembershipComplete(txn *badger.Txn, scope memory.Scope, ids []string, overflow bool) (bool, error) {
+	incomplete, err := privacyScopeIncomplete(txn, scope)
+	if err != nil {
+		return false, err
+	}
+
+	return !incomplete && !overflow && len(ids) > 0, nil
+}
+
+func completeMutationPrivacyMembership(txn *badger.Txn, mutation memory.CanonicalMutation,
+	fresh, extensions map[string]bool) error {
+	for sourceID, extended := range extensions {
+		if extended && !fresh[sourceID] {
+			if err := invalidatePrivacyMembership(txn, mutation.Scope, sourceID); err != nil {
+				return err
+			}
+		}
+	}
+
+	return initializeNewPrivacyMembership(txn, mutation, fresh)
+}
+
+func invalidatePrivacyMembership(txn *badger.Txn, scope memory.Scope, sourceID string) error {
+	source, found, err := loadPrivacySource(txn, scope, sourceID)
+	if err != nil || !found {
+		return err
+	}
+
+	record, exists, err := loadSourcePrivacy(txn, source)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		return invalidSourcePrivacy()
+	}
+
+	record.MessageMembershipComplete = false
+
+	return writeSourcePrivacy(txn, record)
 }

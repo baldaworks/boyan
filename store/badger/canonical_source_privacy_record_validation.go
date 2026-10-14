@@ -12,6 +12,14 @@ func sourcePrivacyStateValid(record sourcePrivacy) bool {
 		return false
 	}
 
+	if record.MessageMembershipComplete && len(record.MessageIDs) == 0 && !record.Preparing {
+		return false
+	}
+
+	return sourcePrivacyStageValid(record)
+}
+
+func sourcePrivacyStageValid(record sourcePrivacy) bool {
 	if !record.Preparing && (record.HasClassification || record.Incomplete) {
 		return false
 	}

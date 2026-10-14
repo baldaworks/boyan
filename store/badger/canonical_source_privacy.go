@@ -19,17 +19,18 @@ const (
 // source identity and recall eligibility. CoverageVersion certifies the writer
 // protocol, never the absence of records in a reverse index.
 type sourcePrivacy struct {
-	Version           uint32            `json:"version"`
-	CoverageVersion   uint32            `json:"coverage_version"`
-	Scope             memory.Scope      `json:"scope"`
-	SourceID          string            `json:"source_id"`
-	Payload           memory.PayloadRef `json:"payload"`
-	State             string            `json:"state"`
-	MessageIDs        []string          `json:"message_ids,omitempty"`
-	HasClassification bool              `json:"has_classification,omitempty"`
-	Incomplete        bool              `json:"incomplete,omitempty"`
-	Preparing         bool              `json:"preparing,omitempty"`
-	StickyUnknown     bool              `json:"sticky_unknown,omitempty"`
+	Version                   uint32            `json:"version"`
+	CoverageVersion           uint32            `json:"coverage_version"`
+	Scope                     memory.Scope      `json:"scope"`
+	SourceID                  string            `json:"source_id"`
+	Payload                   memory.PayloadRef `json:"payload"`
+	State                     string            `json:"state"`
+	MessageIDs                []string          `json:"message_ids,omitempty"`
+	MessageMembershipComplete bool              `json:"message_membership_complete,omitempty"`
+	HasClassification         bool              `json:"has_classification,omitempty"`
+	Incomplete                bool              `json:"incomplete,omitempty"`
+	Preparing                 bool              `json:"preparing,omitempty"`
+	StickyUnknown             bool              `json:"sticky_unknown,omitempty"`
 }
 
 func invalidSourcePrivacy() error {

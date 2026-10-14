@@ -16,11 +16,11 @@ func loadCanonicalSourceRecord(
 	}
 
 	var source memory.CanonicalSourceRecord
-	if err := getCanonicalRecord(txn, sourceKey, badgerRecordSource, &source); err != nil {
+	if err := getPrivacyPreparationRecord(txn, sourceKey, badgerRecordSource, &source); err != nil {
 		return memory.CanonicalSourceRecord{}, err
 	}
 
-	if err := source.Validate(); err != nil || source.Scope != scope {
+	if err := source.Validate(); err != nil || source.Scope != scope || source.SourceID != sourceID {
 		return memory.CanonicalSourceRecord{}, memory.PermanentError(
 			memory.CodeStoreFailure,
 			"stored canonical source is invalid",

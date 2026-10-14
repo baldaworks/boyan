@@ -27,7 +27,7 @@ func (r *CanonicalReader) loadSourceRecord(
 		return memory.SourceRecord{}, err
 	}
 
-	payload, err := r.store.LoadPayload(ctx, source.Payload)
+	payload, err := r.loadTracePayload(ctx, source.Payload, maxCanonicalLogicalLineBytes)
 	if err != nil {
 		return memory.SourceRecord{}, err
 	}

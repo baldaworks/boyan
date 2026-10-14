@@ -10,7 +10,8 @@ import (
 // Badger records. It deliberately implements the storage-neutral recall port
 // and keeps Badger keys, envelopes, and payload layout inside state.
 type CanonicalReader struct {
-	store *CanonicalStore
+	store                        *CanonicalStore
+	beforeTraceMessageRecordRead func() error // Test-only source-local read boundary.
 }
 
 var _ memory.RecallCanonicalReader = (*CanonicalReader)(nil)

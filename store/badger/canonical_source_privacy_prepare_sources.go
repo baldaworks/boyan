@@ -146,6 +146,7 @@ func mergeHistoricalMessageMembership(txn *badger.Txn, source memory.CanonicalSo
 	}
 
 	record.Incomplete = record.Incomplete || !content
+	record.MessageMembershipComplete = record.MessageMembershipComplete && content
 
 	certificate, certified, err := loadHistoricalTurnCertificate(txn, source.Scope, source.SourceID)
 	if err != nil {
@@ -155,11 +156,13 @@ func mergeHistoricalMessageMembership(txn *badger.Txn, source memory.CanonicalSo
 	if certified {
 		if !privacyContainsID(certificate.MessageIDs, message.MessageID) {
 			record.Incomplete = true
+			record.MessageMembershipComplete = false
 		}
 	} else if len(record.MessageIDs) < maxCanonicalTraceSourceMessages {
 		record.MessageIDs = append(record.MessageIDs, message.MessageID)
 	} else {
 		record.Incomplete = true
+		record.MessageMembershipComplete = false
 	}
 
 	return writeSourcePrivacy(txn, record)
@@ -209,6 +212,7 @@ func completePrivacyRecord(record sourcePrivacy, incomplete, membership bool) so
 	}
 
 	record.StickyUnknown = record.StickyUnknown || record.State == sourcePrivacyUnknown
+	record.MessageMembershipComplete = record.MessageMembershipComplete && len(record.MessageIDs) > 0
 	record.Preparing = false
 	record.HasClassification = false
 	record.Incomplete = false
@@ -270,7 +274,7 @@ func initialHistoricalPrivacyRecord(source memory.CanonicalSourceRecord, previou
 	found, valid bool) sourcePrivacy {
 	record := sourcePrivacy{Version: sourcePrivacyVersion, CoverageVersion: sourcePrivacyVersion,
 		Scope: source.Scope, SourceID: source.SourceID, Payload: source.Payload,
-		State: sourcePrivacyUnknown, Incomplete: !valid, Preparing: true}
+		State: sourcePrivacyUnknown, Incomplete: !valid, Preparing: true, MessageMembershipComplete: true}
 	if found {
 		record.StickyUnknown = previous.StickyUnknown || previous.State == sourcePrivacyUnknown && !previous.Preparing
 	}

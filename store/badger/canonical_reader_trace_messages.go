@@ -21,12 +21,15 @@ func (r *CanonicalReader) loadSourceMessages(
 	}
 
 	messages := make([]memory.Message, 0, len(records))
+
+	remaining := uint32(memory.MaxDerivedTurnTextBytes)
 	for _, record := range records {
-		payload, err := r.store.LoadPayload(ctx, record.Payload)
+		payload, err := r.loadTracePayload(ctx, record.Payload, remaining)
 		if err != nil {
 			return nil, err
 		}
 
+		remaining -= record.Payload.ByteSize
 		messages = append(
 			messages,
 			memory.Message{MessageID: record.MessageID, Role: record.Role, Text: string(payload)},

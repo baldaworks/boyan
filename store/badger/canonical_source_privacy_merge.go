@@ -41,7 +41,7 @@ func mergeMutationSourcePrivacy(
 		}
 	}
 
-	return initializeNewPrivacyMembership(txn, mutation, fresh)
+	return completeMutationPrivacyMembership(txn, mutation, fresh, extensions)
 }
 
 func mergeOneSourcePrivacy(txn *badger.Txn, scope memory.Scope, sourceID, state string, fresh bool) error {
