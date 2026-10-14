@@ -90,7 +90,7 @@ func verifyCanonicalTurnTxn(txn *badger.Txn, turn memory.Turn) (memory.Canonical
 		return result, turnIdentityConflict("forgotten legacy turn identity cannot be verified")
 	}
 
-	result.Messages, err = verifyLegacyTurn(txn, turn, result.Source)
+	result.Messages, result.FullInputVerified, err = verifyLegacyTurn(txn, turn, result.Source)
 
 	return result, err
 }
@@ -183,6 +183,8 @@ func verifyCertifiedTurn(
 			return result, err
 		}
 	}
+
+	result.FullInputVerified = true
 
 	return result, nil
 }

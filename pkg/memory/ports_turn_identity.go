@@ -25,10 +25,12 @@ type CanonicalTurnIdentityCommit struct {
 
 // CanonicalTurnIdentityResult returns reusable immutable structural records only.
 type CanonicalTurnIdentityResult struct {
-	Found     bool
-	Forgotten bool
-	Source    CanonicalSourceRecord
-	Messages  []MessageRecord
+	// FullInputVerified distinguishes complete immutable input proof from lossy legacy reconstruction.
+	FullInputVerified bool
+	Found             bool
+	Forgotten         bool
+	Source            CanonicalSourceRecord
+	Messages          []MessageRecord
 }
 
 // CanonicalTurnIdentityStore is optional; CanonicalStore remains portable.

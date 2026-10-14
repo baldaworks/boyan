@@ -25,6 +25,10 @@ func (r *SequencedIngestRuntime) verifyTurnReceipt(
 		return err
 	}
 
+	return validateTurnReceiptProof(turn, proof)
+}
+
+func validateTurnReceiptProof(turn memory.Turn, proof memory.CanonicalTurnIdentityResult) error {
 	if !proof.Found {
 		return memory.PermanentError(memory.CodeConflict, "ingest receipt canonical source is unavailable", nil)
 	}
@@ -37,6 +41,10 @@ func (r *SequencedIngestRuntime) verifyTurnReceipt(
 		return memory.PermanentError(memory.CodeStoreFailure, "ingest identity proof source is invalid", err)
 	}
 
+	if !proof.FullInputVerified {
+		return memory.PermanentError(memory.CodeConflict, "ingest receipt full input proof is unavailable", nil)
+	}
+
 	return nil
 }
 
@@ -44,16 +52,16 @@ func (r *SequencedIngestRuntime) loadTurnReplay(
 	ctx context.Context,
 	request memory.SequencedTurn,
 ) (memory.IngestOutcome, bool, error) {
-	outcome, found, err := r.loadReplay(
-		ctx, request.ProducerID, request.Turn.Scope, request.ScopeSequence, request.Fingerprint,
+	record, found, err := r.loadReplayRecord(
+		ctx, request.ProducerID, request.Turn.Scope, request.ScopeSequence,
 	)
 	if err != nil || !found {
-		return outcome, found, err
+		return memory.IngestOutcome{}, found, err
 	}
 
-	if err := r.verifyTurnReceipt(ctx, request.Turn, outcome); err != nil {
+	if err := r.verifyTurnReceipt(ctx, request.Turn, record.Outcome); err != nil {
 		return memory.IngestOutcome{}, true, err
 	}
 
-	return outcome, true, nil
+	return duplicateReplayOutcome(record), true, nil
 }

@@ -12,47 +12,53 @@ func verifyLegacyTurn(
 	txn *badger.Txn,
 	turn memory.Turn,
 	source memory.CanonicalSourceRecord,
-) ([]memory.MessageRecord, error) {
+) ([]memory.MessageRecord, bool, error) {
 	data, err := loadTurnIdentityPayload(txn, source.Payload)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	if err := verifyLegacySourceData(turn, data); err != nil {
-		return nil, err
+	fullInput, err := verifyLegacySourceData(turn, data)
+	if err != nil {
+		return nil, false, err
 	}
 
-	return scanLegacyTurnMessages(txn, turn)
+	messages, err := scanLegacyTurnMessages(txn, turn)
+	if err != nil {
+		return nil, false, err
+	}
+
+	return messages, fullInput, nil
 }
 
-func verifyLegacySourceData(turn memory.Turn, data []byte) error {
+func verifyLegacySourceData(turn memory.Turn, data []byte) (bool, error) {
 	var archived memory.SourceRecord
 	if err := json.Unmarshal(data, &archived); err != nil {
-		return eraseStoreFailure("decode legacy canonical source", err)
+		return false, eraseStoreFailure("decode legacy canonical source", err)
 	}
 
 	if archived.Turn != nil {
 		if err := archived.Validate(); err != nil {
-			return eraseStoreFailure("invalid legacy raw source", err)
+			return false, eraseStoreFailure("invalid legacy raw source", err)
 		}
 
 		if archived.Ref.Scope != turn.Scope || archived.Ref.ExportID != turn.ExportID {
-			return turnIdentityConflict("legacy raw source identity differs")
+			return false, turnIdentityConflict("legacy raw source identity differs")
 		}
 
-		return compareLegacyRawTurn(turn, *archived.Turn)
+		return true, compareLegacyRawTurn(turn, *archived.Turn)
 	}
 
 	var raw memory.Turn
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return eraseStoreFailure("decode legacy raw turn", err)
+		return false, eraseStoreFailure("decode legacy raw turn", err)
 	}
 
 	if raw.SchemaVersion != "" {
-		return compareLegacyRawTurn(turn, raw)
+		return true, compareLegacyRawTurn(turn, raw)
 	}
 
-	return verifyLegacyNativeSource(turn, data)
+	return false, verifyLegacyNativeSource(turn, data)
 }
 
 func compareLegacyRawTurn(turn, stored memory.Turn) error {

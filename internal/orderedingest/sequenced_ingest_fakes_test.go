@@ -141,7 +141,7 @@ func (f identityTurnProcessor) VerifyCanonicalTurn(
 		Payload: boyan.PayloadRef{ID: "source-payload", Digest: "source-digest", ByteSize: 1},
 	}
 
-	proof := boyan.CanonicalTurnIdentityResult{Found: true, Source: source}
+	proof := boyan.CanonicalTurnIdentityResult{Found: true, FullInputVerified: true, Source: source}
 	for _, message := range normalized.Messages {
 		proof.Messages = append(proof.Messages, boyan.MessageRecord{MessageID: message.MessageID,
 			SourceID: normalized.SourceID,
