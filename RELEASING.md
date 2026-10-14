@@ -118,16 +118,3 @@ explicit pre-upgrade raw-hash receipt fixtures: full certificate/full stored Tur
 proof authorizes immutable duplicate outcomes with no repeated effects; lossy
 uncertified native headers fail HTTP 409 even with a matching fingerprint.
 Boundary fingerprints and canonical stable IDs remain unchanged.
-
-## Integrated delivery
-
-For an approved Prism story, delivery includes integrating all approved
-changes into target `main` and pushing `origin/main` under the existing user
-authorization. Record the integrated revision and confirm the remote contains it.
-Run all seven required gates above freshly on the final integrated state; successful branch
-checks alone do not establish delivered correctness.
-
-The separate Prism Verify phase checks the integrated evidence and all child
-statuses before closing the story. Keep the story open if integration, push or
-verification fails. Each Prism phase runs in its own subagent, as required by
-[AGENTS.md](AGENTS.md).
