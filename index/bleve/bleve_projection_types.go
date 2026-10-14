@@ -20,6 +20,7 @@ type BleveRecallProjection struct {
 	active         bleve.Index
 	activeByScope  map[string]bleve.Index
 	activeScopeIDs map[string]string
+	closed         bool
 }
 
 // BleveGeneration is a write-once build generation. A generation must be

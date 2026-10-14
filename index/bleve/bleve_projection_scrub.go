@@ -32,6 +32,10 @@ func (p *BleveRecallProjection) ScrubCanonicalForget(
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	if p.closed {
+		return projectionClosedError()
+	}
+
 	index := p.activeByScope[projectionScopeKey(scope)]
 	if index == nil {
 		index = p.active

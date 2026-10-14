@@ -28,6 +28,10 @@ func (p *BleveRecallProjection) SearchRecallConsistent(ctx context.Context,
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
+	if p.closed {
+		return nil, projectionClosedError()
+	}
+
 	before, err := p.recallCheckpoint(ctx, normalized)
 	if err != nil {
 		return nil, err

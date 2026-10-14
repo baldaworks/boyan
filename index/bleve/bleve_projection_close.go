@@ -49,6 +49,7 @@ func (p *BleveRecallProjection) detachActiveIndices() (bleve.Index, string, map[
 	p.activeID = ""
 	p.activeByScope = make(map[string]bleve.Index)
 	p.activeScopeIDs = make(map[string]string)
+	p.closed = true
 
 	return active, activeID, scoped, scopedIDs
 }

@@ -22,8 +22,13 @@ func (p *BleveRecallProjection) NewGeneration(id string) (*BleveGeneration, erro
 	}
 
 	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	if p.closed {
+		return nil, projectionClosedError()
+	}
+
 	root := p.root
-	p.mu.RUnlock()
 
 	path := filepath.Join(root, bleveGenerationDirectory, id)
 	if _, err := os.Stat(path); err == nil {

@@ -32,7 +32,15 @@ func (p *BleveRecallProjection) SearchRecall(
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
+	if p.closed {
+		return nil, projectionClosedError()
+	}
+
 	return p.searchRecallLocked(ctx, normalized)
+}
+
+func projectionClosedError() error {
+	return memory.RetryableError(memory.CodeUnavailable, "bleve projection is closed", nil)
 }
 
 func (p *BleveRecallProjection) searchRecallLocked(ctx context.Context,
