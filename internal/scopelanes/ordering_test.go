@@ -125,3 +125,66 @@ func TestScopeLaneExecutorDifferentScopesRunConcurrently(t *testing.T) {
 
 	requireNoError(t, <-secondDone, "second Execute() error = %v")
 }
+
+func TestScopeLaneExecutorQueuedCancellationFreesSlot(t *testing.T) {
+	executor, err := NewExecutor(Config{MaxConcurrentScopes: 2, MaxQueuedPerScope: 2})
+	requireNoError(t, err, "NewExecutor() error = %v")
+	requireNoError(t, executor.Start(context.Background()), "Start() error = %v")
+
+	started, release := make(chan struct{}), make(chan struct{})
+
+	var releaseOnce sync.Once
+
+	releaseFirst := func() { releaseOnce.Do(func() { close(release) }) }
+
+	t.Cleanup(func() { releaseFirst(); _ = executor.Close(context.Background()) })
+
+	scope := boyan.Scope{Key: "test:cancel", Kind: boyan.ScopeKindPersonal}
+	first := executeAsync(executor, context.Background(), scope, func(context.Context) error {
+		close(started)
+		<-release
+
+		return nil
+	})
+
+	awaitSignal(t, started)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	effects := make(chan int, 3)
+	canceled := executeAsync(executor, ctx, scope, func(context.Context) error {
+		effects <- 0
+
+		return nil
+	})
+	waitForLanePending(t, executor, scope, 1)
+	survivor := executeAsync(executor, context.Background(), scope, func(context.Context) error {
+		effects <- 1
+
+		return nil
+	})
+	waitForLanePending(t, executor, scope, 2)
+	cancel()
+	requireTimeout(t, awaitResult(t, canceled))
+
+	replacement := executeAsync(executor, context.Background(), scope, func(context.Context) error {
+		effects <- 2
+
+		return nil
+	})
+	waitForLanePending(t, executor, scope, 2)
+
+	requireOtherScopeProgress(t, executor)
+
+	select {
+	case <-first:
+		t.Fatal("live predecessor returned before release")
+	default:
+	}
+
+	closeDone := closeWhileBlocked(t, executor)
+
+	releaseFirst()
+	finishQueuedCancellation(t, first, survivor, replacement, closeDone, effects)
+}

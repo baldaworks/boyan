@@ -28,7 +28,7 @@ func (e *Executor) runLane(key string, lane *scopeLane) {
 
 		select {
 		case e.semaphore <- struct{}{}:
-			err := work.run(work.ctx)
+			err := runOwnedScopeLaneWork(work)
 
 			<-e.semaphore
 
@@ -50,4 +50,12 @@ func (e *Executor) signalLaneChangeLocked() {
 
 func scopeLaneKey(scope memory.Scope) string {
 	return string(scope.Kind) + "\x00" + scope.Key
+}
+
+func runOwnedScopeLaneWork(work scopeLaneWork) error {
+	if err := work.ctx.Err(); err != nil {
+		return memory.RetryableError(memory.CodeTimeout, "scope lane context ended", err)
+	}
+
+	return work.run(work.ctx)
 }
