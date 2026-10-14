@@ -78,11 +78,15 @@ func responseFailureCases(t *testing.T) []responseFailureCase {
 	unknownClass := encodeResponse(t, boyan.IngestErrorResponse{
 		Code: boyan.CodeDisabled, Class: "unknown", Message: responseSecret,
 	})
+	unknownCode := encodeResponse(t, boyan.IngestErrorResponse{
+		Code: "future_server_code", Class: boyan.ErrorClassRetryable, Message: responseSecret,
+	})
 
 	return []responseFailureCase{
 		{"retryable_body_overrides_400", 400, retryable, boyan.CodeConflict, boyan.ErrorClassRetryable},
 		{"permanent_body_overrides_503", 503, permanent, boyan.CodeDisabled, boyan.ErrorClassPermanent},
 		{"unknown_class_falls_back", 504, unknownClass, boyan.CodeTimeout, boyan.ErrorClassRetryable},
+		{"unknown_code_falls_back", 503, unknownCode, boyan.CodeUnavailable, boyan.ErrorClassRetryable},
 		{"invalid_body_falls_back", 429, "{}", boyan.CodeUnavailable, boyan.ErrorClassRetryable},
 		{"malformed_falls_back", 503, "{", boyan.CodeUnavailable, boyan.ErrorClassRetryable},
 		{

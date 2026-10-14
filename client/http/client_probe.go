@@ -43,7 +43,7 @@ func (c *Client) probe(ctx context.Context, path string) error {
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return memory.RetryableError(memory.CodeUnavailable, "health probe failed", err)
+		return transportError("health probe failed", err)
 	}
 	defer resp.Body.Close()
 
@@ -54,7 +54,7 @@ func (c *Client) probe(ctx context.Context, path string) error {
 	body, _ := io.ReadAll(resp.Body)
 
 	var failure memory.IngestErrorResponse
-	if err := json.Unmarshal(body, &failure); err == nil && failure.Code != "" && failure.Class != "" {
+	if err := json.Unmarshal(body, &failure); err == nil && failure.Validate() == nil {
 		return classifyStatus(resp.StatusCode, failure.Code, failure.Class)
 	}
 

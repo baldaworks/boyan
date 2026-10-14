@@ -40,7 +40,7 @@ func (c *Client) do(
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return memory.IngestReceipt{}, memory.RetryableError(memory.CodeUnavailable, "client request failed", err)
+		return memory.IngestReceipt{}, transportError("client request failed", err)
 	}
 	defer resp.Body.Close()
 

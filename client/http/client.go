@@ -45,5 +45,29 @@ func New(cfg Config) (*Client, error) {
 		httpClient = &stdhttp.Client{Timeout: timeout}
 	}
 
-	return &Client{base: parsed, client: httpClient}, nil
+	clientCopy := *httpClient
+	configuredRedirect := clientCopy.CheckRedirect
+	clientCopy.CheckRedirect = func(req *stdhttp.Request, via []*stdhttp.Request) error {
+		if !sameOrigin(parsed, req.URL) {
+			return stdhttp.ErrUseLastResponse
+		}
+
+		if configuredRedirect != nil {
+			return configuredRedirect(req, via)
+		}
+
+		if len(via) >= 10 {
+			return stdhttp.ErrUseLastResponse
+		}
+
+		return nil
+	}
+
+	return &Client{base: parsed, client: &clientCopy}, nil
+}
+
+func sameOrigin(left, right *url.URL) bool {
+	return left != nil && right != nil &&
+		strings.EqualFold(left.Scheme, right.Scheme) &&
+		strings.EqualFold(left.Host, right.Host)
 }

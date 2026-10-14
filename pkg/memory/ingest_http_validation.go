@@ -41,7 +41,7 @@ func (r IngestReceipt) Validate() error {
 }
 
 func (r IngestErrorResponse) Validate() error {
-	if r.Code == "" || r.Class == "" || r.Message == "" {
+	if !isSupportedErrorCode(r.Code) || !isSupportedErrorClass(r.Class) || r.Message == "" {
 		return invalidDerived("ingest error response is invalid")
 	}
 
@@ -50,4 +50,33 @@ func (r IngestErrorResponse) Validate() error {
 	}
 
 	return nil
+}
+
+func isSupportedErrorCode(code ErrorCode) bool {
+	switch code {
+	case CodeDisabled,
+		CodeInvalidScope,
+		CodeUnsupportedScope,
+		CodeInvalidConversation,
+		CodeInvalidQuery,
+		CodeScopeViolation,
+		CodeUnavailable,
+		CodeTimeout,
+		CodePermanent,
+		CodeShuttingDown,
+		CodeInvalidDerived,
+		CodeConflict,
+		CodeNotFound,
+		CodeForgotten,
+		CodeLimitExceeded,
+		CodeStoreFailure,
+		CodeModelFailure:
+		return true
+	default:
+		return false
+	}
+}
+
+func isSupportedErrorClass(class ErrorClass) bool {
+	return class == ErrorClassRetryable || class == ErrorClassPermanent
 }
