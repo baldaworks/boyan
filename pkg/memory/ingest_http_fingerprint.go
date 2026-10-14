@@ -11,7 +11,12 @@ func TurnIngestFingerprint(envelope IngestEnvelope[Turn]) (string, error) {
 		return "", err
 	}
 
-	return ingestPayloadFingerprint("turn", envelope.Payload)
+	fingerprint, err := CanonicalTurnFingerprint(envelope.Payload)
+	if err != nil {
+		return "", err
+	}
+
+	return "boyan-ingest-fingerprint:turn:v1:" + fingerprint, nil
 }
 
 func BoundaryIngestFingerprint(envelope IngestEnvelope[Boundary]) (string, error) {

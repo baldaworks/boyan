@@ -3,6 +3,8 @@ package canonicalcore_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -130,6 +132,7 @@ func testTurnReceiptCompatibility(t *testing.T, kind string) {
 		t.Fatalf("first: %d %s", response.Code, response.Body)
 	}
 
+	seedLegacyRawTurnReceipt(t, f, raw)
 	original := f.record(t)
 
 	operation := receiptCanonicalOperation(t, f, original.Outcome.OperationIDs[0])
@@ -219,4 +222,26 @@ func receiptCanonicalOperation(t *testing.T, f *turnReceiptFixture, id string) m
 	}
 
 	return operation
+}
+
+// Preserve the exact pre-upgrade raw JSON hash independently of the current HTTP handler.
+func seedLegacyRawTurnReceipt(t *testing.T, f *turnReceiptFixture, raw m.Turn) {
+	t.Helper()
+
+	encoded, err := json.Marshal(raw)
+	requireNoError(t, err, "legacy raw turn: %v")
+
+	sum := sha256.Sum256(append([]byte("turn\x00"), encoded...))
+	legacy := "boyan-ingest-fingerprint:" + hex.EncodeToString(sum[:])
+	record := f.record(t)
+	record.Fingerprint = legacy
+	record.Outcome.Fingerprint = legacy
+	writeTurnReceiptFixture(t, f, record)
+	current, err := m.TurnIngestFingerprint(m.IngestEnvelope[m.Turn]{SchemaVersion: m.IngestHTTPSchemaVersionV1,
+		ProducerID: record.ProducerID, ScopeSequence: record.Sequence, Payload: raw})
+	requireNoError(t, err, "current transport fingerprint: %v")
+
+	if legacy == current || f.record(t).Fingerprint != legacy {
+		t.Fatal("old receipt fixture did not retain a distinct raw hash")
+	}
 }

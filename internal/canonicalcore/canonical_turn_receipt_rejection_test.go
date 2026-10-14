@@ -113,6 +113,12 @@ func alterTurnReceipt(t *testing.T, f *turnReceiptFixture, kind string) {
 		record.Outcome.Scope = record.Scope
 	}
 
+	writeTurnReceiptFixture(t, f, record)
+}
+
+func writeTurnReceiptFixture(t *testing.T, f *turnReceiptFixture, record m.IngestSequenceRecord) {
+	t.Helper()
+
 	payload, err := json.Marshal(record)
 	requireNoError(t, err, "receipt JSON: %v")
 	value, err := m.MarshalRecordEnvelope("ingest-sequence", payload)
