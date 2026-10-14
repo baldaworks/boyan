@@ -2,6 +2,7 @@ package derivation
 
 import (
 	"context"
+	"io"
 	"iter"
 	"sync"
 	"time"
@@ -44,9 +45,10 @@ type runnerBuilder func(agent adkagent.Agent, stateStore runStateStore, appName 
 // runtime. It keeps ephemeral ADK run state private to derivation work and
 // never shares that state with user-facing conversations.
 type Invoker struct {
-	mu      sync.Mutex
-	factory runtimeFactory
-	runner  runnerBuilder
+	mu              sync.Mutex
+	factory         runtimeFactory
+	runner          runnerBuilder
+	runStateEntropy io.Reader
 
 	providerID string
 	workingDir string

@@ -35,7 +35,7 @@ func (i *Invoker) Invoke(ctx context.Context, request structuredderive.Structure
 		return nil, err
 	}
 
-	runStateID, err := i.prepareRunState(invokeCtx, runtime, request)
+	runStateID, err := i.prepareRunState(invokeCtx, runtime)
 	if err != nil {
 		return nil, err
 	}

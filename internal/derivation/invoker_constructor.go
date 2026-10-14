@@ -1,6 +1,7 @@
 package derivation
 
 import (
+	"crypto/rand"
 	"fmt"
 	"strings"
 
@@ -22,12 +23,13 @@ func newInvokerWithFactory(cfg Config, factory runtimeFactory, makeRunner runner
 	}
 
 	return &Invoker{
-		factory:    factory,
-		runner:     makeRunner,
-		providerID: strings.TrimSpace(cfg.ProviderID),
-		workingDir: strings.TrimSpace(cfg.WorkingDir),
-		maxBytes:   cfg.maxOutputBytes(),
-		timeout:    cfg.timeout(),
+		factory:         factory,
+		runStateEntropy: rand.Reader,
+		runner:          makeRunner,
+		providerID:      strings.TrimSpace(cfg.ProviderID),
+		workingDir:      strings.TrimSpace(cfg.WorkingDir),
+		maxBytes:        cfg.maxOutputBytes(),
+		timeout:         cfg.timeout(),
 	}, nil
 }
 

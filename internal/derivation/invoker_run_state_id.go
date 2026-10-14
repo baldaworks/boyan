@@ -1,12 +1,15 @@
 package derivation
 
 import (
-	"crypto/sha256"
 	"encoding/hex"
+	"io"
 )
 
-func processorRunStateID(operationID, stage string) string {
-	hash := sha256.Sum256([]byte(operationID + "\x00" + stage))
+func processorRunStateID(entropy io.Reader) (string, error) {
+	var random [32]byte
+	if _, err := io.ReadFull(entropy, random[:]); err != nil {
+		return "", err
+	}
 
-	return "boyan-derivation-" + hex.EncodeToString(hash[:])
+	return "boyan-derivation-" + hex.EncodeToString(random[:]), nil
 }
