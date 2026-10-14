@@ -43,6 +43,13 @@ func TestCanonicalTraceStoredCompatibility(t *testing.T) {
 			Data: sourceBytes}}
 	_, err = store.ApplyCanonicalMutation(context.Background(), mutation)
 	requireTraceNoError(t, err, "commit: %v")
+	makePrivacyHistoryOld(t, store, mutation)
+	requireTraceNoError(t, store.PrepareSourcePrivacy(context.Background()), "prepare old embedded source: %v")
+
+	if got := privacyState(t, store, scope, mutation.Sources[0].SourceID); got != sourcePrivacyStandard {
+		t.Fatalf("legacy fixture is not authoritative standard: %s", got)
+	}
+
 	reader, err := NewCanonicalReader(store)
 	requireTraceNoError(t, err, "reader: %v")
 	response,

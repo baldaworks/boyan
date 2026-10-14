@@ -229,12 +229,7 @@ func corruptTraceMessagePayload(txn *badger.Txn, mutation m.CanonicalMutation, k
 
 	switch kind {
 	case "oversized-source":
-		source := mutation.Sources[0]
-		source.Payload = m.PayloadRef{ID: "oversized-source", Digest: source.Payload.Digest,
-			ByteSize: maxCanonicalLogicalLineBytes + 1}
-		sourceKey, _ := canonicalKey(mutation.Scope, badgerRecordSource, source.SourceID)
-
-		return putCanonicalRecord(txn, sourceKey, badgerRecordSource, source)
+		return oversizeBoundTraceSource(txn, mutation)
 	case "missing-member":
 		return txn.Delete(key)
 	case "member-identity":
@@ -426,4 +421,25 @@ func assertEmptyTracePayloadBound(t *testing.T, response m.TraceResponse, err er
 			t.Fatalf("payload bound did not reject before loading: %v", err)
 		}
 	}
+}
+
+func oversizeBoundTraceSource(txn *badger.Txn, mutation m.CanonicalMutation) error {
+	source := mutation.Sources[0]
+
+	record, _, err := loadSourcePrivacy(txn, source)
+	if err != nil {
+		return err
+	}
+
+	source.Payload = m.PayloadRef{ID: "oversized-source",
+		Digest: source.Payload.Digest, ByteSize: maxCanonicalLogicalLineBytes + 1}
+
+	record.Payload = source.Payload
+	if err := writeSourcePrivacy(txn, record); err != nil {
+		return err
+	}
+
+	key, _ := canonicalKey(mutation.Scope, badgerRecordSource, source.SourceID)
+
+	return putCanonicalRecord(txn, key, badgerRecordSource, source)
 }

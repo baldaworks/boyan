@@ -21,13 +21,13 @@ func (r *CanonicalReader) loadCanonicalTraceSource(
 			return err
 		}
 
-		return getCanonicalRecord(txn, key, badgerRecordSource, &source)
+		return getPrivacyPreparationRecord(txn, key, badgerRecordSource, &source)
 	}); err != nil {
 		return memory.CanonicalSourceRecord{}, canonicalStoreError("load canonical trace source", err)
 	}
 
-	if err := source.Validate(); err != nil {
-		return memory.CanonicalSourceRecord{}, err
+	if source.Validate() != nil || source.Scope != scope || source.SourceID != sourceID {
+		return memory.CanonicalSourceRecord{}, invalidSourcePrivacy()
 	}
 
 	if source.Sensitivity != memory.SensitivityStandard {

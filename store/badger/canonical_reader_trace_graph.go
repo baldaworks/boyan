@@ -2,54 +2,54 @@ package badger
 
 import (
 	"context"
-
 	memory "github.com/baldaworks/boyan/pkg/memory"
+	"github.com/dgraph-io/badger/v4"
 )
 
 type traceNode struct {
 	view canonicalRecallView
 	text []byte
 }
-
 type traceGraph struct {
 	nodes        []traceNode
 	sourcesByRef map[memory.SourceRef]memory.SourceRecord
+	sourceIDs    map[string]memory.CanonicalSourceRecord
+	scopeVersion uint64
 }
 
 func (r *CanonicalReader) loadTraceGraph(ctx context.Context, request memory.TraceRequest) (traceGraph, error) {
-	queue := []string{request.Root.RevisionID}
-	seen := make(map[string]struct{}, request.MaxNodes)
-
-	graph := traceGraph{
-		nodes:        make([]traceNode, 0, request.MaxNodes),
-		sourcesByRef: make(map[memory.SourceRef]memory.SourceRecord),
+	graph, err := r.preflightTraceGraph(ctx, request)
+	if err != nil {
+		return traceGraph{}, err
 	}
-	for len(queue) > 0 {
-		if len(seen) >= request.MaxNodes {
-			return traceGraph{}, memory.PermanentError(memory.CodeLimitExceeded, "canonical trace exceeds node bound", nil)
-		}
 
-		revisionID := queue[0]
-		queue = queue[1:]
+	for i := range graph.nodes {
+		node := &graph.nodes[i]
 
-		if _, exists := seen[revisionID]; exists {
-			continue
-		}
-
-		node, parents, err := r.loadTraceNode(ctx, request, revisionID, graph.sourcesByRef)
+		err := r.traceReadTxn(ctx, func(txn *badger.Txn) error {
+			return loadCanonicalViewSources(txn, request.Scope, &node.view)
+		})
 		if err != nil {
 			return traceGraph{}, err
 		}
 
-		seen[revisionID] = struct{}{}
-
-		queue = append(queue, parents...)
-
-		if len(graph.nodes)+len(graph.sourcesByRef) > request.MaxNodes {
-			return traceGraph{}, memory.PermanentError(memory.CodeLimitExceeded, "canonical trace exceeds node bound", nil)
+		text, err := r.loadTracePayload(ctx, node.view.revision.Payload, maxCanonicalLogicalLineBytes)
+		if err != nil {
+			return traceGraph{}, err
 		}
 
-		graph.nodes = append(graph.nodes, node)
+		node.text = text
+		if compatibility, ok := canonicalCompatibilityPayload(text, request.Scope); ok {
+			node.view.compat = &compatibility
+		}
+
+		if err := r.loadTraceSources(ctx, request.Scope, node.view, graph.sourcesByRef); err != nil {
+			return traceGraph{}, err
+		}
+
+		if len(node.view.sourceRefs) == 0 {
+			return traceGraph{}, traceDenied()
+		}
 	}
 
 	return graph, nil

@@ -11,6 +11,8 @@ import (
 // and keeps Badger keys, envelopes, and payload layout inside state.
 type CanonicalReader struct {
 	store                        *CanonicalStore
+	beforeTracePayloadRead       func()
+	afterTracePrivacyBarrier     func()
 	beforeTraceMessageRecordRead func() error // Test-only source-local read boundary.
 }
 

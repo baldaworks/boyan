@@ -21,6 +21,10 @@ func (r *CanonicalReader) loadTracePayload(ctx context.Context, ref memory.Paylo
 		return nil, memory.PermanentError(memory.CodeLimitExceeded, "trace payload exceeds its bound", nil)
 	}
 
+	if r.beforeTracePayloadRead != nil {
+		r.beforeTracePayloadRead()
+	}
+
 	r.store.maintenanceMu.RLock()
 	defer r.store.maintenanceMu.RUnlock()
 
