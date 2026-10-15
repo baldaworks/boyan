@@ -47,7 +47,7 @@ func (store *Store) PublishDegraded(ctx context.Context, marker Degraded, expect
 			return err
 		}
 
-		state, err = publishDegradedTransaction(transaction, marker, expectedActiveBuildID)
+		state, err = publishDegradedTransaction(ctx, transaction, marker, expectedActiveBuildID)
 
 		return err
 	})
@@ -120,6 +120,7 @@ func encodeDegraded(marker Degraded, epoch uint64) (State, []byte, []byte, error
 }
 
 func publishDegradedTransaction(
+	ctx context.Context,
 	transaction *badger.Txn,
 	marker Degraded,
 	expectedActiveBuildID string,
@@ -152,6 +153,10 @@ func publishDegradedTransaction(
 	}
 
 	if err := transaction.Set(stateKey(state.Scope, state.BuildID), stateValue); err != nil {
+		return State{}, err
+	}
+
+	if err := retireActiveGeneration(ctx, transaction, state.Scope, current, exists); err != nil {
 		return State{}, err
 	}
 

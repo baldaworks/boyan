@@ -40,7 +40,7 @@ func (store *Store) Publish(ctx context.Context, publication Publication) error 
 	}
 
 	err = store.db.Update(func(transaction *badger.Txn) error {
-		return swapPublication(transaction, publication)
+		return swapPublication(ctx, transaction, publication)
 	})
 	if err != nil {
 		return fmt.Errorf("publish semantic generation: %w", err)
@@ -85,7 +85,7 @@ func validatePublicationCandidate(ctx context.Context, transaction *badger.Txn, 
 }
 
 //nolint:cyclop,funlen // The atomic CAS transaction keeps every validation adjacent to its write.
-func swapPublication(transaction *badger.Txn, publication Publication) error {
+func swapPublication(ctx context.Context, transaction *badger.Txn, publication Publication) error {
 	current, exists, err := loadPointer(transaction, publication.Scope)
 	if err != nil {
 		return err
@@ -144,6 +144,10 @@ func swapPublication(transaction *badger.Txn, publication Publication) error {
 	}
 
 	if err := transaction.Set(stateKey(state.Scope, state.BuildID), stateValue); err != nil {
+		return err
+	}
+
+	if err := retireActiveGeneration(ctx, transaction, publication.Scope, current, exists); err != nil {
 		return err
 	}
 
