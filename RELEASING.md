@@ -1,5 +1,12 @@
 # Releasing
 
+For optional embeddings, run the [deployment/configuration checks and real TEI
+evaluation](docs/OPERATIONS.md#embeddings-verification). Rendering Compose does
+not prove model readiness or quality. Record real-provider results against the
+pinned amd64 model/profile, and rerun integration checks on the merged target
+branch before closing the story. Disabling/deleting only semantic state leaves
+canonical Badger and Bleve intact; follow the [rollback procedure](docs/OPERATIONS.md#semantic-lifecycle-and-rollback).
+
 Boyan already supports local builds and local distribution. This document
 describes the current standalone release shape only.
 

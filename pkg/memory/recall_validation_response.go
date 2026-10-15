@@ -6,6 +6,8 @@ import (
 )
 
 // Validate verifies a bounded untrusted recall response for one request.
+//
+//nolint:cyclop // Envelope, optional report, bounds and uniqueness are independent response checks.
 func (r RecallResponse) Validate(request RecallRequest) error {
 	if r.SchemaVersion != RecallSchemaVersionV1 || r.Trust != ReferenceTrustUntrusted ||
 		r.Scope != request.Scope {
@@ -14,6 +16,12 @@ func (r RecallResponse) Validate(request RecallRequest) error {
 
 	if r.ScopeChangeSeq < request.MinScopeChangeSeq {
 		return RetryableError(CodeConflict, "recall response is below the requested consistency sequence", nil)
+	}
+
+	if r.Retrieval != nil {
+		if err := r.Retrieval.Validate(); err != nil {
+			return err
+		}
 	}
 
 	if len(r.Results) > request.Limit {
@@ -131,6 +139,7 @@ func validateRecallReferenceScore(result RecallReference) error {
 	values := [...]float64{
 		result.Score,
 		result.Explain.Lexical,
+		result.Explain.Semantic,
 		result.Explain.Freshness,
 		result.Explain.ExactScope,
 		result.Explain.Total,
@@ -141,8 +150,8 @@ func validateRecallReferenceScore(result RecallReference) error {
 		}
 	}
 
-	if result.Score != result.Explain.Total ||
-		result.Explain.Total != result.Explain.Lexical+result.Explain.Freshness+result.Explain.ExactScope {
+	total := result.Explain.Lexical + result.Explain.Semantic + result.Explain.Freshness + result.Explain.ExactScope
+	if result.Score != result.Explain.Total || result.Explain.Total != total {
 		return invalidDerived("recall response reference score explanation is inconsistent")
 	}
 

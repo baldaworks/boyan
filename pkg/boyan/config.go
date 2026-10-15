@@ -30,7 +30,25 @@ type Config struct {
 	HTTP        HTTPConfig        `mapstructure:"http"`
 	Derivation  DerivationConfig  `mapstructure:"derivation"`
 	Maintenance MaintenanceConfig `mapstructure:"maintenance"`
+	Embeddings  EmbeddingsConfig  `mapstructure:"embeddings"`
 }
+
+// EmbeddingsConfig controls optional OpenAI-compatible text embeddings.
+// Its zero value is inert and preserves lexical-only operation.
+type EmbeddingsConfig struct {
+	Enabled       bool                   `mapstructure:"enabled"`
+	Endpoint      string                 `mapstructure:"endpoint"`
+	Model         string                 `mapstructure:"model"`
+	Revision      string                 `mapstructure:"revision"`
+	Dimensions    int                    `mapstructure:"dimensions"`
+	QueryPrefix   string                 `mapstructure:"query_prefix"`
+	PassagePrefix string                 `mapstructure:"passage_prefix"`
+	APIKeyEnv     string                 `mapstructure:"api_key_env"`
+	FailurePolicy EmbeddingFailurePolicy `mapstructure:"failure_policy"`
+}
+
+// EmbeddingFailurePolicy selects behavior when semantic retrieval is unavailable.
+type EmbeddingFailurePolicy string
 
 // LogConfig controls process logging.
 type LogConfig struct {
@@ -134,6 +152,13 @@ func (config Config) normalized() (Config, error) {
 		"Boyan HTTP body limit"); err != nil {
 		return Config{}, err
 	}
+
+	embeddings, err := config.Embeddings.Normalize()
+	if err != nil {
+		return Config{}, err
+	}
+
+	config.Embeddings = embeddings
 
 	return config.normalizeDerivation(defaults)
 }

@@ -23,5 +23,13 @@ func (s *standaloneService) startComponents(ctx context.Context) error {
 		return err
 	}
 
-	return s.sequenced.Start(ctx)
+	if err := s.sequenced.Start(ctx); err != nil {
+		return err
+	}
+
+	if s.semantic != nil {
+		s.semantic.start(ctx)
+	}
+
+	return nil
 }

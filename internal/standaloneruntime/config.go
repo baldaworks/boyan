@@ -3,6 +3,9 @@ package standaloneruntime
 import (
 	"time"
 
+	"github.com/baldaworks/boyan/internal/embedding"
+	semanticcore "github.com/baldaworks/boyan/internal/semantic"
+
 	runtimeconfig "github.com/normahq/runtime/v2/appconfig"
 )
 
@@ -13,6 +16,14 @@ type Config struct {
 	HTTP        HTTPConfig
 	Derivation  DerivationConfig
 	Maintenance MaintenanceConfig
+	Embeddings  EmbeddingsConfig
+}
+
+// EmbeddingsConfig carries an already constructed provider, so credentials are
+// resolved once at the public configuration boundary and never retained here.
+type EmbeddingsConfig struct {
+	Provider   embedding.Provider
+	ModelSpace semanticcore.ModelSpace
 }
 
 // LogConfig controls process logging.

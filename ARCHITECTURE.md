@@ -1,5 +1,33 @@
 # Architecture
 
+## Optional semantic augmentation
+
+Optional embeddings augment the required Bleve channel; canonical Badger
+remains authoritative. `internal/embedding` owns bounded OpenAI-compatible
+calls; `internal/semantic` owns versioned preparation, fingerprinting,
+normalization and ranking; `index/semantic` stores disposable generations in
+`<state_dir>/embeddings`; `internal/semanticprojection` schedules complete
+background builds and certifies the exact active lexical generation/watermark,
+canonical sequence and model space before hybrid recall. Final hydration still
+enforces scope, active head, temporal, privacy, retention and caller filters.
+Semantic-only authority and native vector/FAISS dependencies are excluded.
+
+Compatible channels use deterministic RRF; unavailable, stale, partial or
+incompatible state permits lexical fallback for ordinary requests. Enabled
+minimum-watermark requests fail closed if hybrid state cannot be certified.
+Semantic cold start and repair do not gate required readiness or canonical
+writes. Provider text export and vector sensitivity are explicit operator
+boundaries. Disabling/deleting semantic state preserves canonical and Bleve
+formats; model-space changes trigger rebuild rather than vector mixing.
+
+The authoritative [bounds and identity table](docs/OPERATIONS.md#embeddings-configuration-and-bounds)
+also specifies scheduling, storage, candidate, text and provider limits. See
+[deployment and rollback](docs/OPERATIONS.md#optional-tei-sidecar) for the pinned
+amd64 CPU profile and [verification](docs/OPERATIONS.md#embeddings-verification)
+and the [fixed evaluation corpus](docs/SEMANTIC_EVALUATION.md) for quality evidence.
+Limits are enforced contracts;
+quality and performance observations are corpus/hardware-specific measurements.
+
 Boyan is a standalone local service for grounded temporal memory. It separates
 canonical truth, disposable search state, ingest transport, and memory
 operations.

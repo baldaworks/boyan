@@ -32,13 +32,20 @@ components:
       - internal/projectionsync
       - internal/structuredderive
 
+  semantic_core:
+    in:
+      - internal/semantic
+
   infrastructure:
     in:
       - internal/canonicalops
       - internal/forgetops
       - internal/derivation
+      - internal/embedding
+      - internal/semanticprojection
       - store/badger
       - index/bleve
+      - index/semantic
 
   standalone_shell:
     in:
@@ -59,12 +66,20 @@ deps:
     mayDependOn:
       - public_contracts
       - memory_engine
+      - semantic_core
     anyVendorDeps: false
+
+  semantic_core:
+    mayDependOn:
+      - public_contracts
+      - semantic_core
+    anyVendorDeps: true
 
   infrastructure:
     mayDependOn:
       - public_contracts
       - memory_engine
+      - semantic_core
       - infrastructure
     anyVendorDeps: true
 
@@ -72,6 +87,7 @@ deps:
     mayDependOn:
       - public_contracts
       - memory_engine
+      - semantic_core
       - infrastructure
       - standalone_shell
     anyVendorDeps: true

@@ -185,6 +185,27 @@ func TestBleveConsistentRecallCheckpointFailures(t *testing.T) {
 	}
 }
 
+func TestBlevePhysicalViewRejectsDurableActivationAheadOfPhysicalGeneration(t *testing.T) {
+	t.Parallel()
+	projection, checkpoints, base, request := consistentProjectionFixture(t)
+
+	manifest, found, err := projection.LoadActivePhysicalProjectionManifest(
+		context.Background(), request.Scope, "bleve",
+	)
+	if err != nil || !found || manifest != base {
+		t.Fatalf("physical view = (%#v, %t, %v), want active generation", manifest, found, err)
+	}
+
+	checkpoints.manifest.GenerationID = "durable-active-physical-failed"
+
+	manifest, found, err = projection.LoadActivePhysicalProjectionManifest(
+		context.Background(), request.Scope, "bleve",
+	)
+	if err != nil || found {
+		t.Fatalf("ahead durable view = (%#v, %t, %v), want uncertified", manifest, found, err)
+	}
+}
+
 func TestBleveConsistentRecallPinsGenerationDuringActivation(t *testing.T) {
 	t.Parallel()
 	projection, checkpoints, base, request := consistentProjectionFixture(t)

@@ -377,5 +377,169 @@ The current standalone service does not claim:
 - multi-tenant auth
 - public internet exposure
 - hosted control plane behavior
-- container deployment metadata
 - remote release publication
+
+## Embeddings configuration and bounds
+
+This is the authoritative table for optional embeddings. All byte limits are
+UTF-8/encoded bytes; runtime bounds are fixed, not additional YAML settings.
+The complete example is [boyan.example.yaml](../boyan.example.yaml). Every
+embedding key accepts the corresponding `BOYAN_EMBEDDINGS_<UPPERCASE_KEY>`
+environment override. Empty `BOYAN_*` values are ignored by the configuration
+loader and leave YAML values unchanged; clear a setting explicitly in YAML.
+Defaults omit embeddings; `enabled: false` ignores all
+other embedding fields, resolves no credential, makes no provider calls and
+does not create an embeddings directory.
+
+| Setting or bound | Contract |
+| --- | --- |
+| `enabled` | Boolean, default false; explicit opt-in required |
+| `endpoint` | Full HTTP(S) embeddings URL, required when enabled, at most 2,048 bytes, host required, no userinfo or fragment; reference `http://127.0.0.1:8080/v1/embeddings` |
+| `model` | Nonempty UTF-8 without control characters, at most 256 bytes; reference `intfloat/multilingual-e5-base` |
+| `revision` | Nonempty UTF-8 without control characters, at most 256 bytes; operator must identify actual immutable weights; reference `d128750597153bb5987e10b1c3493a34e5a4502a` |
+| `dimensions` | Integer 1–4,096; reference 768 |
+| `query_prefix`, `passage_prefix` | UTF-8, no NUL, at most 256 bytes each; reference `'query: '` and `'passage: '` (trailing spaces matter) |
+| `api_key_env` | Empty or portable environment name `[A-Za-z_][A-Za-z0-9_]*`, at most 256 bytes; reference empty |
+| Credential value | When named, environment value must exist, be nonempty, at most 4,096 bytes, without CR/LF; held only in memory |
+| `failure_policy` | Omitted or `lexical`; `strict` is unsupported |
+| Provider request | 16 inputs, 2,048 bytes/input including prefix, 65,536-byte serialized body, float encoding |
+| Provider response | 1,048,576 bytes; exact model, count, unique indexes, dimensions, finite nonzero vectors required |
+| Provider scheduling | 4 concurrent calls, 10-second call budget including slot admission (caller deadline/cancellation also applies), 0 automatic retries, 0 redirects; proxies and connection reuse disabled |
+| Text preparation | CRLF→LF, NFC, trim outer whitespace; 384-rune windows, 64-rune overlap; 128 passage windows, 4 query windows |
+| Text limits | Record 32,768 bytes; query 4,096 bytes; query omissions reported in Go while full query remains lexical |
+| Projection per scope | 8,192 chunks, 8,192 scanned records, 67,108,864 encoded bytes including metadata; complete publication only |
+| Build scheduling | 2 workers, 64 queued scopes, 1 concurrent build/scope, 15-minute build deadline; startup enumerates 128-scope pages |
+| Ranking | At most 100 candidates/channel, 200 fused, within existing 256 admitted-candidate ceiling; channel request `min(100,max(20,4*limit))`; final caller limit at most 100 |
+| Fusion | RRF constant 60; unit float32 normalization, tolerance 0.001; deterministic identity tie breaks |
+| Model-space identity | SHA-256 over model, revision, dimensions, both prefixes, `boyan-semantic-nfc-window-v1`, `unit-float32-v1`; endpoint and credentials excluded |
+| TEI reference resources | Linux amd64 CPU, 2 CPUs, 4 GiB RAM; tokenizer/Rayon/OMP/MKL workers 2; float32, mean pooling |
+| TEI reference bounds | 4 concurrent requests, client batch 16, server batch 8 requests/8,192 tokens, payload 65,536 bytes; `AUTO_TRUNCATE=false` |
+| TEI health/cache | `/health` every 10s, 3s timeout, 12 retries, 10m start period; named cache at `/data` |
+
+Only standard-sensitivity records with supported retention are eligible.
+Enabling a remote endpoint exports eligible memory text and query text to that
+operator-chosen service. Classification is not secret detection. Choose and
+secure the recipient accordingly. Credentials, endpoint, source text and
+upstream error prose are excluded from diagnostics and semantic persistence.
+Vectors and IDs/filter metadata can still reveal information: protect the
+embeddings directory and backups as sensitive disposable derived state.
+The projection byte limit is per active scope generation; it is not a global
+disk or process-memory quota. Scope count, database overhead and retained
+generations/cache also consume storage.
+
+## Optional TEI sidecar
+
+The default [Compose file](../deploy/sidecar/compose.yaml) has no TEI service or
+dependency. Supply `BOYAN_IMAGE`, an operator-built image containing
+`/usr/local/bin/boyan` and the chosen derivation runtime. There is no published
+Boyan image or automatic container build here. Set `BOYAN_CONFIG` to an absolute
+path to your configured YAML; the repository example requires a working
+derivation provider before ingestion can succeed. State lives in `boyan-state`.
+
+Before enabling the local TEI overlay, the YAML mounted through `BOYAN_CONFIG`
+must explicitly contain:
+
+```yaml
+embeddings:
+  api_key_env: ''
+```
+
+When reusing a remote-provider configuration, replace its credential reference
+(for example, `api_key_env: OLD_TOKEN`) with this empty YAML value. The overlay's
+empty `BOYAN_EMBEDDINGS_API_KEY_ENV` leaves the YAML value unchanged; it cannot
+clear a remote credential reference. The local TEI profile requires no API key.
+The [repository example](../boyan.example.yaml) already has the required empty
+value; preserve it when configuring the derivation provider.
+
+```bash
+export BOYAN_IMAGE=your-local-boyan-image
+export BOYAN_CONFIG=/absolute/path/to/boyan.yaml
+docker compose -f deploy/sidecar/compose.yaml up -d
+# Explicit semantic opt-in:
+docker compose -f deploy/sidecar/compose.yaml \
+  -f deploy/sidecar/embeddings.compose.yaml up -d
+```
+
+The [overlay](../deploy/sidecar/embeddings.compose.yaml) pins Knowl's TEI
+`cpu-1.9.0` image by SHA-256 digest and the E5 weight revision above. TEI shares
+Boyan's network namespace and listens on `127.0.0.1:8080`; Boyan listens on
+`127.0.0.1:8686`. Neither service publishes a host port. API/MCP consumers must
+join Boyan's network namespace, for example a Compose consumer with
+`network_mode: service:boyan`. Ordinary host `localhost:8686` cannot reach this
+container deployment. The private bridge has outbound access for model download
+and configured derivation providers; it is not an air-gap. TEI's healthcheck
+reports provider health independently and never gates Boyan readiness. The
+model cache persists across restarts. Avoid adding a TEI default prompt: Boyan
+already adds the asymmetric prefixes.
+
+Options were checked against the [TEI v1.9.0 router contract](https://github.com/huggingface/text-embeddings-inference/blob/v1.9.0/router/src/main.rs).
+The reference profile is amd64 only; other architectures require a compatible
+operator-supplied endpoint and separate evaluation. Rune windows do not promise
+the same token count for every language; overlong tokenizer inputs fail safely
+with lexical fallback instead of server-side truncation.
+
+## Semantic lifecycle and rollback
+
+Canonical Badger and lexical Bleve remain authoritative. Startup repairs Bleve
+before serving; optional semantic startup/repair runs in the background.
+Cold models, empty/incompatible state, rebuilds, capacity overflow, and provider
+failure permit ordinary recall through the lexical path. A semantic generation
+is eligible only for the exact active lexical generation/watermark, canonical
+sequence and model-space fingerprint. Changes to model/revision/dimensions,
+prefixes or preprocessing/normalization invalidate old vectors and require a
+complete rebuild. Partial generations are never queried. Queue overflow
+degrades safely; a later scope change, restart or in-process repair can retry.
+There is no new public repair CLI.
+
+`/readyz` remains about required service/canonical readiness. Optional embedding
+failure does not make it fail. When enabled, `X-Boyan-Semantic-State` reports
+`repairing`, `hybrid-ready`, `degraded` or `stopped`;
+`X-Boyan-Retrieval-Mode` reports `hybrid` or `degraded`, with
+`X-Boyan-Retrieval-Reason: unavailable` when degraded. Disabled deployments
+omit these headers and host scope status reports `lexical`. It is an operational summary, not a
+certificate for a particular scope or a live provider probe. Host
+`SemanticStatus(ctx, scope)` provides scope-local state, safe reason, a 12-hex
+model-space prefix and lexical watermark. Inspect each recall's retrieval
+report for the actual effective mode. With enabled embeddings, a nonzero
+`min_scope_change_seq` fails with retryable `conflict` while hybrid compatibility
+cannot be certified; it does not silently return lexical success. Disabled
+embeddings retain existing Bleve certification. Caller cancellation and invalid
+configuration remain errors.
+
+To roll back this feature, stop the deployment, omit the overlay, explicitly
+set `embeddings.enabled: false` (and remove any enabling environment override),
+then start the default deployment with `--remove-orphans` to remove TEI. Do not
+use `down -v`: it would remove the canonical state volume. While Boyan is
+stopped, you may delete only `<state_dir>/embeddings` inside the state volume;
+preserve `<state_dir>/badger` and `<state_dir>/bleve`. The TEI model cache is
+separate and optional to retain. Re-enabling rebuilds semantic state from
+canonical data without a canonical-format migration. This feature rollback
+does not authorize downgrading a writer across the privacy/proof upgrades
+documented above. Deletion is not a forensic-erasure guarantee for backups or
+old disk blocks.
+
+## Embeddings verification
+
+Render and assert deployment values without starting/pulling any model:
+
+```bash
+bash deploy/sidecar/check-compose.sh
+go test ./internal/standalonecfg -run 'TestLoadConfig.*(Embedding|Shipped)' -count=1
+```
+
+Invoke the separate real-provider evaluation with:
+
+```bash
+BOYAN_TEI_EVAL_ENDPOINT=http://127.0.0.1:8080/v1/embeddings \
+  go test ./internal/semanticeval -run TestReferenceTEI -count=1 -v
+```
+
+Run from a namespace that can reach the provider and its `/info` identity probe.
+The [fixed public corpus and thresholds](SEMANTIC_EVALUATION.md) cover
+English/Russian/mixed text, exact controls, paraphrases, semantic-only recall,
+hard distractors, filters, update/delete and outage behavior through the actual
+Host pipeline. Configured identity or retrieval failures fail the test; an
+unset endpoint explicitly skips evaluation and supplies no quality proof.
+Knowl results are reference evidence only. Latency/resource observations are
+measurements for a specific corpus/hardware, never universal quality,
+throughput, availability or semantic-correctness guarantees.

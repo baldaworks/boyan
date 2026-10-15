@@ -24,3 +24,16 @@ derivation:
 maintenance:
   value_log_gc_interval: 6h
   discard_ratio: 0.5
+
+# Optional; see docs/OPERATIONS.md#embeddings-configuration-and-bounds.
+# Disabled values are inert. The overlay overrides these through BOYAN_*.
+embeddings:
+  enabled: false
+  endpoint: http://127.0.0.1:8080/v1/embeddings
+  model: intfloat/multilingual-e5-base
+  revision: d128750597153bb5987e10b1c3493a34e5a4502a
+  dimensions: 768
+  query_prefix: 'query: '
+  passage_prefix: 'passage: '
+  api_key_env: ''
+  failure_policy: lexical

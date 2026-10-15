@@ -25,6 +25,7 @@ type standaloneService struct {
 	reader      *badger.CanonicalReader
 	applier     *bleve.BleveCanonicalApplier
 	projection  *projection.ProjectionRuntime
+	semantic    *semanticRuntime
 	sequenced   *orderedingest.SequencedIngestRuntime
 	invoker     *derivation.Invoker
 	recall      *memoryread.RecallService

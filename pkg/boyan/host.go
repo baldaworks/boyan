@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/baldaworks/boyan/internal/embedding"
+	semanticcore "github.com/baldaworks/boyan/internal/semantic"
 	"github.com/baldaworks/boyan/internal/standaloneruntime"
 	"github.com/baldaworks/boyan/mcp"
 	memory "github.com/baldaworks/boyan/pkg/memory"
@@ -58,7 +60,29 @@ func New(ctx context.Context, config Config) (*Host, error) {
 		return nil, err
 	}
 
-	runtime, err := standaloneruntime.New(standaloneRuntimeConfig(normalized))
+	credential, err := normalized.Embeddings.Credential()
+	if err != nil {
+		return nil, err
+	}
+
+	runtimeConfig := standaloneRuntimeConfig(normalized)
+	if normalized.Embeddings.Enabled {
+		settings := normalized.Embeddings
+
+		provider, providerErr := embedding.NewOpenAIProvider(embedding.OpenAIOptions{
+			Endpoint: settings.Endpoint, Model: settings.Model, Dimensions: settings.Dimensions, APIKey: credential,
+		})
+		if providerErr != nil {
+			return nil, ErrInvalidEmbeddingsConfig
+		}
+
+		runtimeConfig.Embeddings = standaloneruntime.EmbeddingsConfig{Provider: provider, ModelSpace: semanticcore.ModelSpace{
+			Model: settings.Model, Revision: settings.Revision, Dimensions: settings.Dimensions,
+			QueryPrefix: settings.QueryPrefix, PassagePrefix: settings.PassagePrefix,
+		}}
+	}
+
+	runtime, err := standaloneruntime.New(runtimeConfig)
 	if err != nil {
 		return nil, err
 	}

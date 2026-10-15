@@ -5,6 +5,7 @@ import "time"
 // RecallScore explains the bounded ranking components exposed to callers.
 type RecallScore struct {
 	Lexical    float64 `json:"lexical"`
+	Semantic   float64 `json:"semantic,omitempty"`
 	Freshness  float64 `json:"freshness"`
 	ExactScope float64 `json:"exact_scope"`
 	Total      float64 `json:"total"`
@@ -37,4 +38,5 @@ type RecallResponse struct {
 	Scope          Scope             `json:"scope"`
 	ScopeChangeSeq uint64            `json:"scope_change_seq"`
 	Results        []RecallReference `json:"results"`
+	Retrieval      *RetrievalReport  `json:"retrieval,omitempty"`
 }

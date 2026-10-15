@@ -22,6 +22,30 @@ func RankRecall(score float64, createdAt, now time.Time) RecallScore {
 	return RecallScore{Lexical: score, Freshness: freshness, ExactScope: 1, Total: score + freshness + 1}
 }
 
+// RankRecallProjection preserves legacy raw lexical scores unless a projection
+// supplies channel contributions. Invalid derived contributions fail closed.
+func RankRecallProjection(hit RecallProjectionHit, createdAt, now time.Time) (RecallScore, error) {
+	for _, value := range []float64{hit.Lexical, hit.Semantic} {
+		if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
+			return RecallScore{}, invalidDerived("recall projection contribution is invalid")
+		}
+	}
+
+	if hit.Lexical == 0 && hit.Semantic == 0 {
+		return RankRecall(hit.Score, createdAt, now), nil
+	}
+
+	score := RankRecall(hit.Lexical, createdAt, now)
+	score.Semantic = hit.Semantic
+
+	score.Total = score.Lexical + score.Semantic + score.Freshness + score.ExactScope
+	if math.IsInf(score.Total, 0) {
+		return RecallScore{}, invalidDerived("recall projection total is invalid")
+	}
+
+	return score, nil
+}
+
 // SortRecallReferences applies the stable score/freshness/revision tie-breaks.
 func SortRecallReferences(values []RecallReference) {
 	sort.SliceStable(values, func(i, j int) bool {

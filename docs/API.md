@@ -1,5 +1,40 @@
 # API
 
+## Optional hybrid recall
+
+Existing recall inputs and canonical filters apply unchanged. Embeddings are
+an operator configuration, not a caller-selected endpoint. When enabled and
+compatible, recall combines independent lexical/semantic rankings with RRF;
+score objects add an optional `semantic` contribution. Results remain
+`untrusted_reference` and must never be executed or granted additional trust.
+
+Responses may add `retrieval: {effective, reason?}`: `effective` is `lexical`,
+`hybrid` or `degraded`. Degraded results use lexical retrieval and a safe reason
+from `unavailable`, `deadline`, `response_limit`, `invalid_response`,
+`model_mismatch`, `dimension_mismatch`, `projection_capacity`. Provider prose,
+endpoint and credentials are never returned. Go `RetrievalReport` additionally
+exposes requested mode, model-space prefix, channel candidate counts, scanned
+chunks and omitted query runes/windows; those fields are excluded from JSON.
+Disabled embeddings preserve lexical response behavior.
+
+Ordinary requests fall back lexically when semantic state cannot safely
+participate. With enabled embeddings, nonzero `min_scope_change_seq` instead
+requires the exact certified hybrid view and returns retryable `conflict` during
+lag, repair or provider failure. Caller cancellation and required lexical or
+canonical failures remain errors. `/readyz` is independent of optional provider
+availability; enabled `X-Boyan-Semantic-State`, `X-Boyan-Retrieval-Mode` and
+`X-Boyan-Retrieval-Reason` headers are only operational summaries (disabled
+deployments omit them).
+Host `SemanticStatus(ctx, scope)` reports local scope state and compatibility
+metadata without probing the provider.
+
+See [all configuration fields and bounds](OPERATIONS.md#embeddings-configuration-and-bounds),
+[readiness/recovery/rollback](OPERATIONS.md#semantic-lifecycle-and-rollback) and
+[real-provider evaluation](OPERATIONS.md#embeddings-verification). Remote
+embedding enablement exports eligible memory/query text to the configured
+recipient; semantic state is sensitive disposable data. No universal semantic
+correctness or latency guarantee is implied.
+
 Boyan exposes four official usage surfaces:
 
 - an in-process host API in `pkg/boyan`

@@ -103,6 +103,22 @@ By default Boyan stores data in `./.state/boyan` with this layout:
 
 ## Configuration
 
+Embeddings are optional and disabled by default. Enable the pinned local CPU
+TEI profile with the [sidecar overlay](deploy/sidecar/embeddings.compose.yaml),
+or configure an OpenAI-compatible endpoint. Hybrid recall combines lexical and
+semantic candidates while canonically revalidating every result. Cold/rebuilding
+or unavailable semantic state falls back to lexical recall for ordinary
+requests; enabled minimum-watermark requests require hybrid certification.
+See the authoritative [configuration and bounds](docs/OPERATIONS.md#embeddings-configuration-and-bounds),
+[deployment, readiness and rollback](docs/OPERATIONS.md#optional-tei-sidecar),
+and [real-provider verification](docs/OPERATIONS.md#embeddings-verification).
+Remote endpoints receive eligible memory and query text. Vectors remain
+sensitive disposable data under `<state_dir>/embeddings`; Badger/Bleve formats
+remain unchanged. The pinned reference is Linux amd64 and adds no CGO dependency
+to Boyan. The [evaluation corpus and quality gate](docs/SEMANTIC_EVALUATION.md)
+define Boyan-specific top-k expectations and distinguish offline coverage from
+real-provider evidence.
+
 Boyan loads configuration from:
 
 1. built-in defaults

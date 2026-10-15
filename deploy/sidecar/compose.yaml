@@ -1,0 +1,22 @@
+# Supply an image containing /usr/local/bin/boyan and your derivation runtime.
+# API clients must join this container's network namespace (loopback only).
+services:
+  boyan:
+    image: ${BOYAN_IMAGE:?set BOYAN_IMAGE to your locally built Boyan image}
+    entrypoint: [/usr/local/bin/boyan]
+    command: [serve, --config, /etc/boyan/config.yaml, --state-dir, /var/lib/boyan]
+    environment:
+      BOYAN_HTTP_LISTEN: 127.0.0.1:8686
+      BOYAN_EMBEDDINGS_ENABLED: 'false'
+    volumes:
+      - ${BOYAN_CONFIG:-../../boyan.example.yaml}:/etc/boyan/config.yaml:ro
+      - boyan-state:/var/lib/boyan
+    networks: [boyan-private]
+    stop_grace_period: 30s
+
+networks:
+  boyan-private:
+    driver: bridge
+
+volumes:
+  boyan-state: {}

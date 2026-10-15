@@ -50,6 +50,12 @@ paths:
       description: |
         Returns `ok` when Boyan is ready to accept work. Readiness currently
         checks the local maintenance and startup diagnostics.
+        Optional embedding availability does not gate readiness. When enabled,
+        X-Boyan-Semantic-State reports repairing, hybrid-ready, degraded or
+        stopped; X-Boyan-Retrieval-Mode reports hybrid or degraded, and
+        X-Boyan-Retrieval-Reason is unavailable when degraded. Disabled
+        deployments omit these headers. They are operational summaries,
+        not scope-local compatibility certificates or live provider probes.
       responses:
         "200":
           description: The sidecar is ready to accept work.

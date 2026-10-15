@@ -54,6 +54,20 @@ func (s *standaloneService) operationHandler(next stdhttp.Handler) stdhttp.Handl
 			begin = s.beginHealthOperation
 		}
 
+		if r.URL.Path == "/readyz" && s.semantic != nil {
+			state := s.semantic.summary()
+			w.Header().Set("X-Boyan-Semantic-State", state)
+
+			mode := "degraded"
+			if state == "hybrid-ready" {
+				mode = "hybrid"
+			} else {
+				w.Header().Set("X-Boyan-Retrieval-Reason", "unavailable")
+			}
+
+			w.Header().Set("X-Boyan-Retrieval-Mode", mode)
+		}
+
 		ctx, done, err := begin(r.Context())
 		if err != nil {
 			code, class, _ := memory.ClassifyError(err)

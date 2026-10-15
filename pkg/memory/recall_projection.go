@@ -31,6 +31,8 @@ type RecallProjectionHit struct {
 	RevisionID     string
 	Revision       uint64
 	Score          float64
+	Lexical        float64
+	Semantic       float64
 	ScopeChangeSeq uint64
 }
 
@@ -56,4 +58,30 @@ type ConsistentRecallProjection interface {
 // RecallProjectionCheckpointReader exposes authoritative active checkpoints.
 type RecallProjectionCheckpointReader interface {
 	LoadActiveProjectionManifest(ctx context.Context, scope Scope, projectionID string) (ProjectionManifest, bool, error)
+}
+
+// PhysicalProjectionViewReader certifies the generation that is actually open
+// in a concrete projection adapter. A durable active checkpoint alone is not
+// sufficient because physical generation activation can fail after checkpoint
+// publication.
+type PhysicalProjectionViewReader interface {
+	LoadActivePhysicalProjectionManifest(
+		ctx context.Context,
+		scope Scope,
+		projectionID string,
+	) (ProjectionManifest, bool, error)
+}
+
+// CertifiedRecallResult binds bounded hits to the physical manifest sampled
+// under the search adapter's lock. Uncertified results are lexical-only.
+type CertifiedRecallResult struct {
+	Hits      []RecallProjectionHit
+	Manifest  ProjectionManifest
+	Certified bool
+}
+
+// CertifiedRecallProjection searches an explicit bounded channel depth without
+// applying the caller's final result limit.
+type CertifiedRecallProjection interface {
+	SearchRecallCertified(ctx context.Context, request RecallRequest, depth int) (CertifiedRecallResult, error)
 }

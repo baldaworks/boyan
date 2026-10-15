@@ -9,6 +9,11 @@ func (s *standaloneService) stopComponents(ctx context.Context) error {
 	recordStopError(&firstErr, s.shutdownServer(ctx))
 	s.operations.Wait()
 	recordStopError(&firstErr, s.sequenced.Close(ctx))
+
+	if s.semantic != nil {
+		recordStopError(&firstErr, s.semantic.close(ctx))
+	}
+
 	recordStopError(&firstErr, s.projection.Close(ctx))
 	recordStopError(&firstErr, s.invoker.Close(ctx))
 	recordStopError(&firstErr, s.applier.Close())

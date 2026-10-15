@@ -1,0 +1,67 @@
+# Explicit opt-in overlay. TEI shares Boyan's namespace and binds loopback only.
+services:
+  boyan:
+    environment:
+      BOYAN_EMBEDDINGS_ENABLED: 'true'
+      BOYAN_EMBEDDINGS_ENDPOINT: http://127.0.0.1:8080/v1/embeddings
+      BOYAN_EMBEDDINGS_MODEL: intfloat/multilingual-e5-base
+      BOYAN_EMBEDDINGS_REVISION: d128750597153bb5987e10b1c3493a34e5a4502a
+      BOYAN_EMBEDDINGS_DIMENSIONS: '768'
+      BOYAN_EMBEDDINGS_QUERY_PREFIX: 'query: '
+      BOYAN_EMBEDDINGS_PASSAGE_PREFIX: 'passage: '
+      # Empty env values do not override YAML. The mounted local TEI config must
+      # explicitly set embeddings.api_key_env: '' (see docs/OPERATIONS.md).
+      BOYAN_EMBEDDINGS_API_KEY_ENV: ''
+      BOYAN_EMBEDDINGS_FAILURE_POLICY: lexical
+  tei:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.0@sha256:bc7ad262695df5b7875b0c9c702deb8e9df3953bdf22c3d6068d9c0429b7b3f3
+    platform: linux/amd64
+    network_mode: service:boyan
+    cpus: 2
+    mem_limit: 4g
+    environment:
+      AUTO_TRUNCATE: 'false'
+      RAYON_NUM_THREADS: '2'
+      OMP_NUM_THREADS: '2'
+      MKL_NUM_THREADS: '2'
+    command:
+      - --json-output
+      - --model-id
+      - intfloat/multilingual-e5-base
+      - --revision
+      - d128750597153bb5987e10b1c3493a34e5a4502a
+      - --served-model-name
+      - intfloat/multilingual-e5-base
+      - --hostname
+      - 127.0.0.1
+      - --port
+      - '8080'
+      - --dtype
+      - float32
+      - --pooling
+      - mean
+      - --tokenization-workers
+      - '2'
+      - --max-concurrent-requests
+      - '4'
+      - --max-client-batch-size
+      - '16'
+      - --max-batch-requests
+      - '8'
+      - --max-batch-tokens
+      - '8192'
+      - --payload-limit
+      - '65536'
+      - --huggingface-hub-cache
+      - /data
+    volumes:
+      - tei-model-cache:/data
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, http://127.0.0.1:8080/health]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10m
+
+volumes:
+  tei-model-cache: {}

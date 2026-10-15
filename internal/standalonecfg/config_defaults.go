@@ -22,4 +22,13 @@ func setApplicationDefaults(loader *viper.Viper, cfg Config) {
 	loader.SetDefault("derivation.max_output_bytes", cfg.Derivation.MaxOutputBytes)
 	loader.SetDefault("maintenance.value_log_gc_interval", cfg.Maintenance.ValueLogGCInterval)
 	loader.SetDefault("maintenance.discard_ratio", cfg.Maintenance.DiscardRatio)
+	loader.SetDefault("embeddings.enabled", cfg.Embeddings.Enabled)
+	loader.SetDefault("embeddings.endpoint", cfg.Embeddings.Endpoint)
+	loader.SetDefault("embeddings.model", cfg.Embeddings.Model)
+	loader.SetDefault("embeddings.revision", cfg.Embeddings.Revision)
+	loader.SetDefault("embeddings.dimensions", cfg.Embeddings.Dimensions)
+	loader.SetDefault("embeddings.query_prefix", cfg.Embeddings.QueryPrefix)
+	loader.SetDefault("embeddings.passage_prefix", cfg.Embeddings.PassagePrefix)
+	loader.SetDefault("embeddings.api_key_env", cfg.Embeddings.APIKeyEnv)
+	loader.SetDefault("embeddings.failure_policy", cfg.Embeddings.FailurePolicy)
 }

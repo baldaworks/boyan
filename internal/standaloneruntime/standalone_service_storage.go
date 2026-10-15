@@ -5,18 +5,23 @@ import (
 
 	"github.com/baldaworks/boyan/index/bleve"
 	projection "github.com/baldaworks/boyan/internal/projection"
+	"github.com/baldaworks/boyan/pkg/memory"
 	"github.com/baldaworks/boyan/store/badger"
 )
 
 type standaloneStorage struct {
-	store       *badger.CanonicalStore
-	maintenance *badger.CanonicalMaintenance
-	reader      *badger.CanonicalReader
-	index       *bleve.BleveRecallProjection
-	applier     *bleve.BleveCanonicalApplier
-	projection  *projection.ProjectionRuntime
+	store            *badger.CanonicalStore
+	maintenance      *badger.CanonicalMaintenance
+	reader           *badger.CanonicalReader
+	index            *bleve.BleveRecallProjection
+	applier          *bleve.BleveCanonicalApplier
+	projection       *projection.ProjectionRuntime
+	syncer           projection.Syncer
+	recallProjection memory.RecallProjection
+	semantic         *semanticRuntime
 }
 
+//nolint:funlen // Required lexical ownership precedes the isolated optional graph.
 func openStandaloneStorage(
 	layout stateLayout,
 	cfg Config,
@@ -64,12 +69,21 @@ func openStandaloneStorage(
 		return nil, err
 	}
 
-	return &standaloneStorage{
-		store:       store,
-		maintenance: maintenance,
-		reader:      reader,
-		index:       index,
-		applier:     applier,
-		projection:  projection,
-	}, nil
+	storage := &standaloneStorage{
+		store:            store,
+		maintenance:      maintenance,
+		reader:           reader,
+		index:            index,
+		applier:          applier,
+		projection:       projection,
+		syncer:           projection,
+		recallProjection: index,
+	}
+	if cfg.Embeddings.Provider != nil {
+		if err := storage.openSemantic(layout, cfg.Embeddings, cleanups); err != nil {
+			return nil, err
+		}
+	}
+
+	return storage, nil
 }

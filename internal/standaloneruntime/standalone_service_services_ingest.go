@@ -61,9 +61,9 @@ func buildStandaloneIngestServices(
 		storage.store,
 		turnProcessor,
 		memory.LegacyDerivationRef(),
-		storage.projection,
+		storage.syncer,
 		boundaryProcessor,
-		storage.projection,
+		storage.syncer,
 		orderedingest.SequencedIngestConfig{},
 	)
 	if err != nil {

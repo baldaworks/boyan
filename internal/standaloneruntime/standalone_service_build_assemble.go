@@ -26,6 +26,7 @@ func assembleStandaloneService(
 		reader:           storage.reader,
 		applier:          storage.applier,
 		projection:       storage.projection,
+		semantic:         storage.semantic,
 		sequenced:        services.sequenced,
 		invoker:          services.invoker,
 		recall:           services.recall,

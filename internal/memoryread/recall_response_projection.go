@@ -40,9 +40,14 @@ func (s *RecallService) responseFromProjection(
 			return memory.RecallResponse{}, s.projectionAheadError(ctx, request.Scope, hits)
 		}
 
+		score, err := memory.RankRecallProjection(hit, record.CreatedAt, now)
+		if err != nil {
+			return memory.RecallResponse{}, err
+		}
+
 		results = append(
 			results,
-			recallReference(record, memory.RankRecall(hit.Score, record.CreatedAt, now)),
+			recallReference(record, score),
 		)
 		seen[record.RevisionID] = struct{}{}
 	}

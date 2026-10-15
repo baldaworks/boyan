@@ -14,7 +14,7 @@ func buildStandaloneReadServices(
 	*memoryops.ForgetService,
 	error,
 ) {
-	recall, err := memoryread.NewRecallService(storage.reader, storage.index)
+	recall, err := memoryread.NewRecallService(storage.reader, storage.recallProjection)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -29,7 +29,7 @@ func buildStandaloneReadServices(
 		return nil, nil, nil, err
 	}
 
-	forget, err := memoryops.NewForgetServiceWithProjection(forgetOperations, storage.projection)
+	forget, err := memoryops.NewForgetServiceWithProjection(forgetOperations, storage.syncer)
 	if err != nil {
 		return nil, nil, nil, err
 	}
