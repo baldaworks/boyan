@@ -42,7 +42,7 @@ func (c *ProjectionCoordinator) applyScopeChanges(
 
 		watermark := changes[len(changes)-1].Sequence
 
-		if err := c.applier.Commit(ctx, scope, generationID); err != nil {
+		if err := c.commitProjection(ctx, *manifest, watermark); err != nil {
 			return false, err
 		}
 

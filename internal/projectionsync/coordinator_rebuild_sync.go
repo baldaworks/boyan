@@ -25,12 +25,14 @@ func (c *ProjectionCoordinator) Rebuild(
 		return manifest, err
 	}
 
+	manifest.Status = ProjectionGenerationDirty
+
 	watermark, err := c.rebuildFromCanonical(ctx, scope, generationID)
 	if err != nil {
 		return manifest, err
 	}
 
-	if err := c.applier.Commit(ctx, scope, generationID); err != nil {
+	if err := c.commitProjection(ctx, manifest, watermark); err != nil {
 		return manifest, err
 	}
 

@@ -91,6 +91,12 @@ func (a *SQLiteCanonicalApplier) stage(ctx context.Context,
 		return nil, stagingConflict()
 	}
 
+	if !rebuild {
+		if err := a.validateIncrementalBase(ctx, scope, generation); err != nil {
+			return nil, err
+		}
+	}
+
 	var identity [16]byte
 	if _, err := rand.Read(identity[:]); err != nil {
 		return nil, err

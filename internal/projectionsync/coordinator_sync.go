@@ -63,7 +63,7 @@ func (c *ProjectionCoordinator) syncManifest(
 	}
 
 	if !applied {
-		if err := c.applier.Commit(ctx, scope, generationID); err != nil {
+		if err := c.commitProjection(ctx, manifest, manifest.Watermark); err != nil {
 			return manifest, err
 		}
 	}

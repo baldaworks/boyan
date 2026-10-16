@@ -34,7 +34,7 @@ func (c *ProjectionCoordinator) catchUpRetentionFloor(
 		return PermanentError(CodeStoreFailure, "projection retention floor is ahead of canonical state", nil)
 	}
 
-	if err := c.applier.Commit(ctx, manifest.Scope, generationID); err != nil {
+	if err := c.commitProjection(ctx, *manifest, watermark); err != nil {
 		return err
 	}
 

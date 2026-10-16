@@ -56,6 +56,10 @@ func (a *SQLiteCanonicalApplier) CommitProjectionManifest(ctx context.Context,
 	a.mu.Unlock()
 
 	if stage == nil {
+		if err := a.validateEmptyCommit(ctx, manifest); err != nil {
+			return err
+		}
+
 		stage, err = a.stage(ctx, manifest.Scope, manifest.GenerationID, false)
 		if err != nil {
 			return err

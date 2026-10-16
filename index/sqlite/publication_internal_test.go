@@ -37,6 +37,15 @@ type publicationCheckpoints struct {
 	onLoad   func()
 }
 
+func (c *publicationCheckpoints) LoadProjectionManifest(_ context.Context,
+	_ memory.Scope, _ string, generation string) (memory.ProjectionManifest, bool, error) {
+	if c.active.GenerationID == generation {
+		return c.active, true, c.err
+	}
+
+	return memory.ProjectionManifest{}, false, c.err
+}
+
 type publicationPlainCheckpoints struct {
 	memory.ProjectionCheckpointStore
 
@@ -593,7 +602,11 @@ func TestPublicationRetentionDoesNotAccumulateSameTupleCopies(t *testing.T) {
 	store, _ := openTestStore(t, false)
 	c := &publicationCheckpoints{active: publicationManifest("g", 1)}
 
-	_, lifecycle := publicationLifecycle(t, store, &applyReader{}, c)
+	a, lifecycle := publicationLifecycle(t, store, &applyReader{}, c)
+	if err := a.BeginProjectionRebuild(t.Context(), lexicalTestScope, "g"); err != nil {
+		t.Fatal(err)
+	}
+
 	for range 4 {
 		if err := lifecycle.CommitProjectionManifest(t.Context(), c.active); err != nil {
 			t.Fatal(err)
@@ -787,6 +800,10 @@ func TestPublicationForeignResumeCannotPublishWritableOwnedStage(t *testing.T) {
 	c := &publicationCheckpoints{active: publicationManifest("g", 1)}
 
 	a, lifecycle := publicationLifecycle(t, store, &applyReader{records: map[string]memory.RecallRecord{"r": applyRecord("r")}}, c)
+	if err := a.BeginProjectionRebuild(t.Context(), lexicalTestScope, "g"); err != nil {
+		t.Fatal(err)
+	}
+
 	if err := a.Apply(t.Context(), lexicalTestScope, "g", nil, []memory.MemoryRevision{{RevisionID: "r"}}); err != nil {
 		t.Fatal(err)
 	}
