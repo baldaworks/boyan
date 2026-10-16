@@ -77,10 +77,10 @@ func verifyCanonicalConversationIdentity(t *testing.T, conversation string) {
 	}
 
 	t.Logf("canonical accepted and hydrated indivisible conversation identity: %d bytes", len(conversation))
-	verifyCanonicalLargeSQLite(t, reader, scope, mutation.Revisions[0], conversation, now)
+	verifyCanonicalLargeSQLite(t, reader, store, scope, mutation.Revisions[0], conversation, now)
 }
 
-func verifyCanonicalLargeSQLite(t *testing.T, reader memory.RecallCanonicalReader, scope memory.Scope,
+func verifyCanonicalLargeSQLite(t *testing.T, reader memory.RecallCanonicalReader, checkpoints memory.ProjectionCheckpointStore, scope memory.Scope,
 	revision memory.MemoryRevision, conversation string, now time.Time) {
 	t.Helper()
 
@@ -101,6 +101,8 @@ func verifyCanonicalLargeSQLite(t *testing.T, reader memory.RecallCanonicalReade
 		t.Fatal(err)
 	}
 
+	applier.ConfigureProjectionRetention(checkpoints, "sqlite")
+
 	if err = applier.BeginProjectionRebuild(t.Context(), scope, "canonical-large"); err != nil {
 		t.Fatal(err)
 	}
@@ -108,23 +110,17 @@ func verifyCanonicalLargeSQLite(t *testing.T, reader memory.RecallCanonicalReade
 	if err = applier.Apply(t.Context(), scope, "canonical-large", nil, []memory.MemoryRevision{revision}); err != nil {
 		t.Fatal(err)
 	}
-	// TASK-007 owns real publication. This controlled fixture makes the TASK-006
-	// candidate observable through the existing real FTS/filter query.
+
+	publishCanonicalLargeSQLite(t, applier, checkpoints, scope, "canonical-large", 1, now)
+	// A read-only connection inspects logical cleanup; publication uses only the
+	// real applier and canonical checkpoint APIs.
 	db, err := sql.Open("sqlite", filepath.Join(dir, "search", "search.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
 
-	if _, err = db.Exec(`UPDATE lexical_build SET state='committed'`); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err = db.Exec(`INSERT INTO lexical_active SELECT scope_kind,scope_key,physical_build_id FROM lexical_build`); err != nil {
-		t.Fatal(err)
-	}
-
-	hits, err := projection.SearchRecall(t.Context(), memory.RecallRequest{Scope: scope, Query: "remembered", ConversationID: conversation, Limit: 1, AsOf: &now})
+	hits, err := projection.SearchRecallConsistent(t.Context(), memory.RecallRequest{Scope: scope, Query: "remembered", ConversationID: conversation, Limit: 1, MinScopeChangeSeq: 1, AsOf: &now})
 	if err != nil || len(hits) != 1 || hits[0].RevisionID != revision.RevisionID {
 		t.Fatalf("real canonical->SQL filter: %+v %v", hits, err)
 	}
@@ -138,9 +134,17 @@ func verifyCanonicalLargeSQLite(t *testing.T, reader memory.RecallCanonicalReade
 		t.Fatal(err)
 	}
 
+	t.Cleanup(func() { _ = projection.Close() })
+
 	applier, err = search.NewSQLiteCanonicalApplier(projection, reader)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	applier.ConfigureProjectionRetention(checkpoints, "sqlite")
+
+	if resumed, err := applier.ResumeProjection(t.Context(), scope, "canonical-large"); err != nil || !resumed {
+		t.Fatalf("real canonical reopen resume: %v %v", resumed, err)
 	}
 
 	if err = applier.Apply(t.Context(), scope, "canonical-large", nil, nil); err != nil {
@@ -152,11 +156,55 @@ func verifyCanonicalLargeSQLite(t *testing.T, reader memory.RecallCanonicalReade
 		t.Fatalf("incremental exact copy: %d %v", count, err)
 	}
 
+	publishCanonicalLargeSQLite(t, applier, checkpoints, scope, "canonical-large", 1, now)
+
+	if err := applier.BeginProjectionRebuild(t.Context(), scope, "canonical-rebuilt"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := applier.Apply(t.Context(), scope, "canonical-rebuilt", nil, []memory.MemoryRevision{revision}); err != nil {
+		t.Fatal(err)
+	}
+
+	publishCanonicalLargeSQLite(t, applier, checkpoints, scope, "canonical-rebuilt", 1, now.Add(time.Second))
+
+	hits, err = projection.SearchRecallConsistent(t.Context(), memory.RecallRequest{Scope: scope, Query: "remembered", ConversationID: conversation, Limit: 1, MinScopeChangeSeq: 1, AsOf: &now})
+	if err != nil || len(hits) != 1 || hits[0].RevisionID != revision.RevisionID {
+		t.Fatalf("oversized rebuild publication: %+v %v", hits, err)
+	}
+
 	if err = applier.ScrubCanonicalForget(t.Context(), scope, nil, []string{revision.RevisionID}); err != nil {
 		t.Fatal(err)
 	}
 
 	if err = db.QueryRow(`SELECT count(*) FROM lexical_record`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("logical forget: %d %v", count, err)
+	}
+}
+
+func publishCanonicalLargeSQLite(t *testing.T, applier *search.SQLiteCanonicalApplier,
+	checkpoints memory.ProjectionCheckpointStore, scope memory.Scope, generation string, watermark uint64, now time.Time) {
+	t.Helper()
+
+	manifest := memory.ProjectionManifest{Scope: scope, ProjectionID: "sqlite", GenerationID: generation,
+		Status: memory.ProjectionGenerationDirty, Watermark: watermark, UpdatedAt: now}
+	if err := checkpoints.MarkProjectionDirty(t.Context(), manifest); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := applier.CommitProjectionManifest(t.Context(), manifest); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := checkpoints.AdvanceProjectionWatermark(t.Context(), manifest, watermark, now); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := checkpoints.ActivateProjectionGeneration(t.Context(), manifest, now); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := applier.Activate(t.Context(), scope, generation); err != nil {
+		t.Fatal(err)
 	}
 }

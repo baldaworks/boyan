@@ -33,17 +33,18 @@ func (store *Store) SearchRecall(ctx context.Context,
 		return nil, memory.PermanentError(memory.CodeDisabled, "sqlite projection is unavailable", nil)
 	}
 
+	if normalized.MinScopeChangeSeq != 0 {
+		request.AsOf = &effective
+
+		return store.SearchRecallConsistent(ctx, request)
+	}
+
 	snapshot, err := store.read(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	defer func() { _ = snapshot.Close() }()
-	// Physical sealing and canonical certification are supplied by TASK-007.
-	// Until then this adapter cannot attest even an empty result to a minimum.
-	if normalized.MinScopeChangeSeq != 0 {
-		return nil, memory.RetryableError(memory.CodeConflict, "sqlite projection is not certified", nil)
-	}
 
 	build, err := snapshot.activeLexicalBuild(normalized.Scope)
 	if err != nil {

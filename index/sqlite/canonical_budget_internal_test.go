@@ -231,6 +231,7 @@ func TestCanonicalAggregateMembershipOversize(t *testing.T) {
 	}
 }
 
+//nolint:funlen // Keep connection-limit restoration, transaction rollback and no-sealing evidence together.
 func TestCanonicalUnrepresentableRecordRollsBackAndSanitizes(t *testing.T) {
 	store, _ := openTestStore(t, false)
 	seedLexical(t, store, "active", lexicalTestScope, []lexicalFixture{{id: "safe", raw: "needle"}})
@@ -272,6 +273,16 @@ func TestCanonicalUnrepresentableRecordRollsBackAndSanitizes(t *testing.T) {
 	var classified *memory.Error
 	if !errors.As(err, &classified) || classified.Code != memory.CodeStoreFailure {
 		t.Fatalf("classification: %v", err)
+	}
+
+	if err := applier.CommitProjectionManifest(t.Context(), publicationManifest("active", 1)); err == nil {
+		t.Fatal("unrepresentable partial work acquired a complete certificate")
+	}
+
+	var complete int
+	if err := store.reader.QueryRow(`SELECT count(*) FROM lexical_build WHERE physical_build_id=? AND state='committed'`,
+		applier.stages[lexicalTestScope].id).Scan(&complete); err != nil || complete != 0 {
+		t.Fatalf("failed representability sealed physical state: %d %v", complete, err)
 	}
 
 	var count int

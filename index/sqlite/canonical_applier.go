@@ -17,16 +17,26 @@ const lexicalPageBytes = 2 * 1024 * 1024
 // SQLiteCanonicalApplier writes disposable, unreachable physical builds.
 // Physical manifest sealing and publication are deliberately separate operations.
 type SQLiteCanonicalApplier struct {
-	store  *Store
-	reader memory.RecallCanonicalReader
-	mu     sync.Mutex
-	stages map[memory.Scope]*lexicalStage
+	store        *Store
+	reader       memory.RecallCanonicalReader
+	mu           sync.Mutex
+	stages       map[memory.Scope]*lexicalStage
+	checkpoints  memory.ProjectionCheckpointStore
+	retention    projectionManifestWalker
+	projectionID string
 }
 
 type lexicalStage struct {
 	id, generation, source string
 	copiedThrough          int64
 	copying                bool
+	failed                 bool
+	pending                []revisionIdentity
+}
+
+type revisionIdentity struct {
+	item, revision string
+	version        uint64
 }
 
 func NewSQLiteCanonicalApplier(store *Store, reader memory.RecallCanonicalReader) (*SQLiteCanonicalApplier, error) {
@@ -197,7 +207,7 @@ func (a *SQLiteCanonicalApplier) EndProjectionRebuild(ctx context.Context,
 	return err
 }
 
-//nolint:cyclop // Lifecycle, scope ownership and each streamed record fail independently.
+//nolint:cyclop,funlen // Lifecycle, scope ownership and each streamed record fail independently.
 func (a *SQLiteCanonicalApplier) Apply(ctx context.Context, scope memory.Scope,
 	generation string, _ []memory.ScopeChange, revisions []memory.MemoryRevision) (result error) {
 	defer func() { result = lexicalStorageError(result) }()
@@ -227,6 +237,10 @@ func (a *SQLiteCanonicalApplier) Apply(ctx context.Context, scope memory.Scope,
 		return err
 	}
 
+	if err = a.beginBatch(ctx, stage, revisions); err != nil {
+		return err
+	}
+
 	if err = a.copyActive(ctx, stage); err != nil {
 		return err
 	}
@@ -248,7 +262,14 @@ func (a *SQLiteCanonicalApplier) Apply(ctx context.Context, scope memory.Scope,
 		}
 	}
 
-	return buffer.flush(ctx)
+	if err = buffer.flush(ctx); err != nil {
+		return err
+	}
+
+	stage.failed = false
+	stage.pending = nil
+
+	return nil
 }
 
 func (a *SQLiteCanonicalApplier) acquire(ctx context.Context) (context.Context, func(), error) {
@@ -358,6 +379,3 @@ func (a *SQLiteCanonicalApplier) writeInputs(ctx context.Context, build string, 
 }
 
 var _ memory.ProjectionBatchRebuildApplier = (*SQLiteCanonicalApplier)(nil)
-
-// Commit and the ProjectionApplier assertion are added with manifest sealing;
-// durable page commits alone must never imply a certified physical manifest.

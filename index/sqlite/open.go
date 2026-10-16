@@ -43,6 +43,7 @@ type Store struct {
 	lifetime         context.Context
 	cancel           context.CancelFunc
 	mu               sync.Mutex
+	checkpoints      memory.RecallProjectionCheckpointReader
 	closing          bool
 	work             sync.WaitGroup
 	closeOnce        sync.Once
@@ -235,7 +236,8 @@ func inspectLexical(ctx context.Context, db *sql.DB) error {
 	// Preparing the fixed shape also rejects missing required tables/columns.
 	for _, statement := range []string{
 		`SELECT b.physical_build_id,b.scope_kind,b.scope_key,b.generation_id,b.projection_id,
-		 b.schema_version,b.preprocessing_version,b.watermark,b.state,b.record_count FROM lexical_build b LIMIT 0`,
+		 b.schema_version,b.preprocessing_version,b.watermark,b.state,b.record_count,
+		 b.source_count,b.conversation_count,b.revoked FROM lexical_build b LIMIT 0`,
 		`SELECT a.scope_kind,a.scope_key,a.physical_build_id,p.physical_build_id
 		 FROM lexical_active a LEFT JOIN lexical_previous p
 		 ON p.scope_kind=a.scope_kind AND p.scope_key=a.scope_key LIMIT 0`,

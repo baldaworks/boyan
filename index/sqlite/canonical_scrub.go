@@ -278,7 +278,7 @@ func (a *SQLiteCanonicalApplier) deleteScrubRows(ctx context.Context, rows []scr
 					return err
 				}
 			} else {
-				const revoke = `UPDATE lexical_build SET state='building'
+				const revoke = `UPDATE lexical_build SET state='building',revoked=1
  WHERE physical_build_id=(SELECT physical_build_id FROM lexical_record WHERE rowid=?)`
 				if _, err := tx.ExecContext(ctx, revoke, row.id); err != nil {
 					return err

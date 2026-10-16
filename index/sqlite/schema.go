@@ -27,6 +27,9 @@ CREATE TABLE lexical_build (
  watermark BLOB NOT NULL CHECK(typeof(watermark)='blob' AND length(watermark)=8),
  state TEXT NOT NULL DEFAULT 'building' CHECK(state IN ('building','committed')),
  record_count INTEGER NOT NULL DEFAULT 0 CHECK(record_count>=0),
+ source_count INTEGER NOT NULL DEFAULT 0 CHECK(source_count>=0),
+ conversation_count INTEGER NOT NULL DEFAULT 0 CHECK(conversation_count>=0),
+ revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN (0,1)),
  UNIQUE(scope_kind,scope_key,physical_build_id)
 ) STRICT;
 CREATE TABLE lexical_active (
