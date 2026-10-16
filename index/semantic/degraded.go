@@ -4,16 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	semanticcore "github.com/baldaworks/boyan/internal/semantic"
 	"github.com/dgraph-io/badger/v4"
 )
-
-// Degraded is a text-free failure marker for one exactly verified view.
-type Degraded struct {
-	Generation          Generation
-	SafeReason          semanticcore.Reason
-	ExpectedActiveEpoch uint64
-}
 
 // PublishDegraded atomically publishes a bounded marker instead of a partial
 // generation. A degraded marker is diagnostic state and never a read snapshot.

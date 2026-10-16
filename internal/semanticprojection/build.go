@@ -9,19 +9,20 @@ import (
 	"fmt"
 	"time"
 
-	semanticstore "github.com/baldaworks/boyan/index/semantic"
 	semanticcore "github.com/baldaworks/boyan/internal/semantic"
 	"github.com/baldaworks/boyan/pkg/memory"
 )
 
 type buildTarget struct {
 	manifest        memory.ProjectionManifest
-	generation      semanticstore.Generation
+	generation      semanticcore.Generation
 	expectedBuildID string
 	expectedEpoch   uint64
 }
 
 type reusableKey struct {
+	itemID      string
+	revision    uint64
 	revisionID  string
 	contentHash string
 	inputHash   string
@@ -76,7 +77,7 @@ func (manager *Manager) build(ctx context.Context, scope memory.Scope, current *
 		return err
 	}
 	target.generation.Omitted = omitted
-	if _, err := semanticstore.PreflightStage(ctx, target.generation, coverage, chunks); err != nil {
+	if _, err := semanticcore.PreflightStage(ctx, target.generation, coverage, chunks); err != nil {
 		manager.publishFailure(ctx, target, err)
 		manager.recordBuildFailure(scope, target, err)
 		return err
@@ -105,7 +106,7 @@ func (manager *Manager) build(ctx context.Context, scope memory.Scope, current *
 		manager.beforePublish()
 	}
 
-	err = manager.store.Publish(ctx, semanticstore.Publication{
+	err = manager.store.Publish(ctx, semanticcore.Publication{
 		View: target.generation.View(), BuildID: target.generation.BuildID,
 		ExpectedActiveBuildID: target.expectedBuildID, ExpectedActiveEpoch: target.expectedEpoch,
 	})
@@ -152,7 +153,7 @@ func (manager *Manager) loadTarget(
 		return buildTarget{}, false, err
 	}
 
-	target := buildTarget{manifest: manifest, generation: semanticstore.Generation{
+	target := buildTarget{manifest: manifest, generation: semanticcore.Generation{
 		Scope: scope, BuildID: buildID, LexicalGenerationID: manifest.GenerationID,
 		LexicalWatermark: manifest.Watermark, ModelSpace: manager.spaceID,
 		Dimensions: manager.space.Dimensions, ReadyAt: buildAt,
@@ -167,17 +168,10 @@ func (manager *Manager) loadTarget(
 	}
 	target.expectedBuildID = active.BuildID
 	target.expectedEpoch = active.PublicationEpoch
-	if active.Status != semanticstore.StatusReady || active.View() != target.generation.View() {
+	if active.Status != semanticcore.StatusReady || active.View() != target.generation.View() {
 		return target, false, nil
 	}
-	snapshot, compatible, err := manager.store.Snapshot(ctx, active.View())
-	if err != nil {
-		return buildTarget{}, false, err
-	}
-	if !compatible {
-		return target, false, nil
-	}
-	ready, err := snapshotHasObservedMetadata(ctx, snapshot)
+	ready, err := manager.store.ObservedMetadataReady(ctx, active.View())
 	if err != nil {
 		return buildTarget{}, false, err
 	}
@@ -195,22 +189,23 @@ func (manager *Manager) loadReusable(
 	scope memory.Scope,
 ) (map[reusableKey][]float32, error) {
 	active, found, err := manager.store.ActiveState(ctx, scope)
-	if err != nil || !found || active.Status != semanticstore.StatusReady ||
+	if err != nil || !found || active.Status != semanticcore.StatusReady ||
 		active.ModelSpace != manager.spaceID || active.Dimensions != manager.space.Dimensions {
 		return nil, err
 	}
 
-	snapshot, compatible, err := manager.store.Snapshot(ctx, active.View())
+	reusable, compatible, err := manager.store.LoadReusable(ctx, active.View())
 	if err != nil || !compatible {
 		return nil, err
 	}
 
 	result := make(map[reusableKey][]float32, int(active.ChunkCount))
-	for _, chunk := range snapshot.Chunks() {
+	for _, chunk := range reusable.Chunks {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 		result[reusableKey{
+			itemID: chunk.ItemID, revision: chunk.Revision,
 			revisionID: chunk.RevisionID, contentHash: chunk.ContentHash,
 			inputHash: chunk.InputHash, ordinal: chunk.Ordinal,
 		}] = append([]float32(nil), chunk.Vector...)
@@ -222,15 +217,15 @@ func (manager *Manager) loadReusable(
 //nolint:cyclop,funlen,wsl_v5 // Paging, cancellation, and capacity gates are independently auditable.
 func (manager *Manager) prepareScope(
 	ctx context.Context,
-	generation semanticstore.Generation,
+	generation semanticcore.Generation,
 	reusable map[reusableKey][]float32,
 	buildAt time.Time,
-) ([]semanticstore.CoverageRecord, []semanticstore.Chunk, []string, semanticstore.OmittedCounts, error) {
+) ([]semanticcore.CoverageRecord, []semanticcore.ProjectionChunk, []string, semanticcore.OmittedCounts, error) {
 	var (
-		coverage []semanticstore.CoverageRecord
-		chunks   []semanticstore.Chunk
+		coverage []semanticcore.CoverageRecord
+		chunks   []semanticcore.ProjectionChunk
 		inputs   []string
-		omitted  semanticstore.OmittedCounts
+		omitted  semanticcore.OmittedCounts
 		after    string
 		scanned  int
 		pages    int
@@ -258,7 +253,7 @@ func (manager *Manager) prepareScope(
 		pages++
 		if len(page) > canonicalPageSize || pages > projectionScanPageLimit ||
 			scanned+len(page) > semanticcore.ProjectionScanRecordLimit {
-			return nil, nil, nil, omitted, semanticstore.ErrCapacity
+			return nil, nil, nil, omitted, semanticcore.ErrCapacity
 		}
 		if len(page) == 0 {
 			break
@@ -282,7 +277,7 @@ func (manager *Manager) prepareScope(
 		omitted.Expired += pageOmitted.Expired
 
 		if len(chunks) > semanticcore.ProjectionChunkLimit {
-			return nil, nil, nil, omitted, semanticstore.ErrCapacity
+			return nil, nil, nil, omitted, semanticcore.ErrCapacity
 		}
 
 		after = page[len(page)-1].Item.ItemID
@@ -297,16 +292,16 @@ func (manager *Manager) prepareScope(
 //nolint:cyclop,funlen,gocognit,nlreturn,wsl_v5 // Privacy, identity, coverage, and reuse checks stay adjacent.
 func (manager *Manager) preparePage(
 	ctx context.Context,
-	generation semanticstore.Generation,
+	generation semanticcore.Generation,
 	page []memory.ActiveCanonicalMemory,
 	reusable map[reusableKey][]float32,
 	buildAt time.Time,
-) ([]semanticstore.CoverageRecord, []semanticstore.Chunk, []string, semanticstore.OmittedCounts, error) {
+) ([]semanticcore.CoverageRecord, []semanticcore.ProjectionChunk, []string, semanticcore.OmittedCounts, error) {
 	ids := make([]string, 0, len(page))
 	activeByRevision := make(map[string]memory.ActiveCanonicalMemory, len(page))
 	for _, active := range page {
 		if active.Item.Scope != generation.Scope || active.RevisionID == "" {
-			return nil, nil, nil, semanticstore.OmittedCounts{}, ErrStaleView
+			return nil, nil, nil, semanticcore.OmittedCounts{}, ErrStaleView
 		}
 		ids = append(ids, active.RevisionID)
 		activeByRevision[active.RevisionID] = active
@@ -314,16 +309,16 @@ func (manager *Manager) preparePage(
 
 	records, err := manager.records.LoadRecallRecords(ctx, generation.Scope, ids)
 	if err != nil {
-		return nil, nil, nil, semanticstore.OmittedCounts{}, err
+		return nil, nil, nil, semanticcore.OmittedCounts{}, err
 	}
 	if len(records) > len(page) {
-		return nil, nil, nil, semanticstore.OmittedCounts{}, ErrStaleView
+		return nil, nil, nil, semanticcore.OmittedCounts{}, ErrStaleView
 	}
 
-	coverage := make([]semanticstore.CoverageRecord, 0, len(records))
-	chunks := make([]semanticstore.Chunk, 0, len(records))
+	coverage := make([]semanticcore.CoverageRecord, 0, len(records))
+	chunks := make([]semanticcore.ProjectionChunk, 0, len(records))
 	inputs := make([]string, 0, len(records))
-	omitted := semanticstore.OmittedCounts{Ineligible: uint32(len(page) - len(records))}
+	omitted := semanticcore.OmittedCounts{Ineligible: uint32(len(page) - len(records))}
 	seen := make(map[string]struct{}, len(records))
 
 	for _, record := range records {
@@ -369,7 +364,7 @@ func (manager *Manager) preparePage(
 			return nil, nil, nil, omitted, err
 		}
 		if len(chunks)+len(prepared.Windows) > semanticcore.ProjectionChunkLimit {
-			return nil, nil, nil, omitted, semanticstore.ErrCapacity
+			return nil, nil, nil, omitted, semanticcore.ErrCapacity
 		}
 
 		contentDigest := sha256.Sum256([]byte(record.Text))
@@ -379,7 +374,7 @@ func (manager *Manager) preparePage(
 			category = *record.Category
 		}
 		for ordinal, window := range prepared.Windows {
-			chunk := semanticstore.Chunk{
+			chunk := semanticcore.ProjectionChunk{
 				Scope: generation.Scope, BuildID: generation.BuildID,
 				LexicalGenerationID: generation.LexicalGenerationID,
 				LexicalWatermark:    generation.LexicalWatermark,
@@ -395,6 +390,7 @@ func (manager *Manager) preparePage(
 				ConversationIDs: append([]string(nil), record.ConversationIDs...),
 			}
 			if vector, ok := reusable[reusableKey{
+				itemID: record.ItemID, revision: record.Revision,
 				revisionID: record.RevisionID, contentHash: contentHash,
 				inputHash: window.ContentHash, ordinal: uint32(ordinal),
 			}]; ok {
@@ -403,7 +399,7 @@ func (manager *Manager) preparePage(
 			chunks = append(chunks, chunk)
 			inputs = append(inputs, window.Input)
 		}
-		coverage = append(coverage, semanticstore.CoverageRecord{
+		coverage = append(coverage, semanticcore.CoverageRecord{
 			ItemID: record.ItemID, RevisionID: record.RevisionID, Revision: record.Revision,
 			ContentHash: contentHash, ChunkCount: uint32(len(prepared.Windows)),
 		})
@@ -431,7 +427,7 @@ func projectionDocument(record memory.RecallRecord) memory.RecallProjectionDocum
 //nolint:wsl_v5 // Batch construction and validated assignment remain adjacent.
 func (manager *Manager) embedMissing(
 	ctx context.Context,
-	chunks []semanticstore.Chunk,
+	chunks []semanticcore.ProjectionChunk,
 	preparedInputs []string,
 ) error {
 	if len(chunks) != len(preparedInputs) {
@@ -513,7 +509,7 @@ func (manager *Manager) loadCertifiedSource(
 	return durable, nil
 }
 
-func (manager *Manager) verifyView(ctx context.Context, view semanticstore.View) error {
+func (manager *Manager) verifyView(ctx context.Context, view semanticcore.View) error {
 	manifest, err := manager.loadCertifiedSource(ctx, view.Scope)
 	if err != nil {
 		return err
@@ -540,7 +536,7 @@ func (manager *Manager) invalidatePublished(target buildTarget) error {
 			return fmt.Errorf("read raced semantic publication: %w", err)
 		}
 
-		if !found || active.BuildID != target.generation.BuildID || active.Status != semanticstore.StatusReady {
+		if !found || active.BuildID != target.generation.BuildID || active.Status != semanticcore.StatusReady {
 			return nil
 		}
 
@@ -552,7 +548,7 @@ func (manager *Manager) invalidatePublished(target buildTarget) error {
 		marker := target.generation
 		marker.BuildID = markerID
 
-		_, err = manager.store.PublishDegraded(context.Background(), semanticstore.Degraded{
+		_, err = manager.store.PublishDegraded(context.Background(), semanticcore.Degraded{
 			Generation: marker, SafeReason: semanticcore.ReasonUnavailable,
 			ExpectedActiveEpoch: active.PublicationEpoch,
 		}, active.BuildID)
@@ -560,12 +556,12 @@ func (manager *Manager) invalidatePublished(target buildTarget) error {
 			return nil
 		}
 
-		if !errors.Is(err, semanticstore.ErrConflict) {
+		if !errors.Is(err, semanticcore.ErrConflict) {
 			return fmt.Errorf("invalidate raced semantic publication: %w", err)
 		}
 	}
 
-	return fmt.Errorf("invalidate raced semantic publication: %w", semanticstore.ErrConflict)
+	return fmt.Errorf("invalidate raced semantic publication: %w", semanticcore.ErrConflict)
 }
 
 func validateActivePage(scope memory.Scope, after string, page []memory.ActiveCanonicalMemory) error {
@@ -595,7 +591,7 @@ func (manager *Manager) publishFailure(ctx context.Context, target buildTarget, 
 		return
 	}
 
-	_, _ = manager.store.PublishDegraded(ctx, semanticstore.Degraded{
+	_, _ = manager.store.PublishDegraded(ctx, semanticcore.Degraded{
 		Generation: target.generation, SafeReason: reason, ExpectedActiveEpoch: target.expectedEpoch,
 	}, target.expectedBuildID)
 }
@@ -605,13 +601,13 @@ func classifyFailure(err error) (semanticcore.Reason, bool) {
 	if reason, ok := semanticcore.Classify(err); ok {
 		return reason, true
 	}
-	if errors.Is(err, semanticstore.ErrCapacity) || errors.Is(err, ErrQueueFull) {
+	if errors.Is(err, semanticcore.ErrCapacity) || errors.Is(err, ErrQueueFull) {
 		return semanticcore.ReasonProjectionCapacity, true
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return semanticcore.ReasonDeadline, true
 	}
-	if errors.Is(err, ErrStaleView) || errors.Is(err, semanticstore.ErrConflict) {
+	if errors.Is(err, ErrStaleView) || errors.Is(err, semanticcore.ErrConflict) {
 		return semanticcore.ReasonUnavailable, true
 	}
 
@@ -628,7 +624,7 @@ func (manager *Manager) recordBuildFailure(scope memory.Scope, target buildTarge
 	})
 }
 
-func (manager *Manager) recordReady(scope memory.Scope, generation semanticstore.Generation) {
+func (manager *Manager) recordReady(scope memory.Scope, generation semanticcore.Generation) {
 	manager.setStatus(scope, ScopeStatus{
 		State: StateReady, LexicalGenerationID: generation.LexicalGenerationID,
 		LexicalWatermark: generation.LexicalWatermark, ModelSpace: generation.ModelSpace,

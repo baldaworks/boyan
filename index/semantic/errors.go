@@ -1,11 +1,11 @@
 package semantic
 
-import "errors"
+import semanticcore "github.com/baldaworks/boyan/internal/semantic"
 
 var (
-	ErrInvalid  = errors.New("invalid semantic projection")
-	ErrCapacity = errors.New("semantic projection capacity exceeded")
-	ErrConflict = errors.New("semantic projection publication conflict")
-	ErrCorrupt  = errors.New("corrupt semantic projection")
-	ErrClosed   = errors.New("semantic projection closed")
+	ErrInvalid  = semanticcore.ErrInvalid
+	ErrCapacity = semanticcore.ErrCapacity
+	ErrConflict = semanticcore.ErrConflict
+	ErrCorrupt  = semanticcore.ErrCorrupt
+	ErrClosed   = semanticcore.ErrClosed
 )

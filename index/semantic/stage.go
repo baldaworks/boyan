@@ -15,42 +15,10 @@ type encodedRow struct {
 	value []byte
 }
 
-// PreflightStage validates complete generation metadata and computes its exact
-// encoded byte budget without writing state. Missing vectors are represented by
-// one valid dimension-sized placeholder because encoded vector size depends on
-// dimensions, not component values.
-func PreflightStage(
-	ctx context.Context,
-	generation Generation,
-	coverage []CoverageRecord,
-	chunks []Chunk,
-) (State, error) {
-	if ctx == nil || validateGeneration(generation) != nil {
-		return State{}, ErrInvalid
-	}
-
-	if err := CheckProjectionBounds(len(chunks), 0); err != nil {
-		return State{}, err
-	}
-
-	placeholder := make([]float32, generation.Dimensions)
-	placeholder[0] = 1
-	preflightChunks := make([]Chunk, len(chunks))
-	copy(preflightChunks, chunks)
-
-	for index := range preflightChunks {
-		if len(preflightChunks[index].Vector) == 0 {
-			preflightChunks[index].Vector = placeholder
-		}
-	}
-
-	if err := preflightStageInputs(ctx, generation, coverage, preflightChunks); err != nil {
-		return State{}, err
-	}
-
-	state, _, err := prepareStage(ctx, generation, coverage, preflightChunks)
-
-	return state, err
+// PreflightStage preserves the legacy portable admission contract.
+func PreflightStage(ctx context.Context, generation Generation,
+	coverage []CoverageRecord, chunks []Chunk) (State, error) {
+	return semanticcore.PreflightStage(ctx, generation, coverage, chunks)
 }
 
 // Stage writes one complete generation under unreachable keys. It never
@@ -110,145 +78,36 @@ func (store *Store) Stage(
 	return state, nil
 }
 
-func prepareStage(
-	ctx context.Context,
-	generation Generation,
-	coverage []CoverageRecord,
-	chunks []Chunk,
-) (State, []encodedRow, error) {
-	orderedCoverage, orderedChunks, coverageHash, err := validateAndOrder(ctx, generation, coverage, chunks)
+func prepareStage(ctx context.Context, generation Generation,
+	coverage []CoverageRecord, chunks []Chunk) (State, []encodedRow, error) {
+	state, ordered, err := semanticcore.PrepareProjection(ctx, generation, coverage, chunks)
 	if err != nil {
 		return State{}, nil, err
 	}
 
-	state := State{
-		SchemaVersion:       schemaVersion,
-		Scope:               generation.Scope,
-		BuildID:             generation.BuildID,
-		LexicalGenerationID: generation.LexicalGenerationID,
-		LexicalWatermark:    generation.LexicalWatermark,
-		ModelSpace:          generation.ModelSpace,
-		Dimensions:          generation.Dimensions,
-		Status:              StatusReady,
-		ChunkCount:          uint32(len(orderedChunks)),
-		RecordCount:         uint32(len(orderedCoverage)),
-		CoverageHash:        coverageHash,
-		Omitted:             generation.Omitted,
-		ReadyAt:             generation.ReadyAt.UTC(),
-	}
-
-	rows := make([]encodedRow, len(orderedChunks))
-	encodedBytes := uint64(0)
-
-	for index, chunk := range orderedChunks {
+	rows := make([]encodedRow, len(ordered))
+	for index, chunk := range ordered {
 		if err := ctx.Err(); err != nil {
 			return State{}, nil, err
 		}
 
-		value, encodeErr := encodeChunk(chunk)
-		if encodeErr != nil {
-			return State{}, nil, encodeErr
-		}
-
-		if len(value) > maxChunkValueBytes {
-			return State{}, nil, ErrCapacity
+		value, err := encodeChunk(chunk)
+		if err != nil {
+			return State{}, nil, err
 		}
 
 		rows[index] = encodedRow{key: chunkKey(generation.Scope, generation.BuildID, uint32(index)), value: value}
-
-		encodedBytes += uint64(len(rows[index].key) + len(value))
-		if encodedBytes > uint64(semanticcore.ProjectionByteLimit) {
-			return State{}, nil, ErrCapacity
-		}
-	}
-
-	state, err = finalizeEncodedBytes(state, encodedBytes)
-	if err != nil {
-		return State{}, nil, err
 	}
 
 	return state, rows, nil
 }
 
-//nolint:cyclop // Each independent bound must be checked before cloning caller-owned data.
-func preflightStageInputs(
-	ctx context.Context,
-	generation Generation,
-	coverage []CoverageRecord,
-	chunks []Chunk,
-) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	if len(coverage) > semanticcore.ProjectionChunkLimit || len(chunks) > semanticcore.ProjectionChunkLimit {
-		return ErrCapacity
-	}
-
-	if len(coverage) > len(chunks) {
-		return ErrInvalid
-	}
-
-	coveredChunks := uint64(0)
-
-	for _, record := range coverage {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-
-		if len(record.ItemID) > maxIdentityBytes || len(record.RevisionID) > maxIdentityBytes ||
-			len(record.ContentHash) > 64 {
-			return ErrInvalid
-		}
-
-		coveredChunks += uint64(record.ChunkCount)
-		if coveredChunks > semanticcore.ProjectionChunkLimit {
-			return ErrCapacity
-		}
-
-		if coveredChunks > uint64(len(chunks)) {
-			return ErrInvalid
-		}
-	}
-
-	if coveredChunks != uint64(len(chunks)) {
-		return ErrInvalid
-	}
-
-	for _, chunk := range chunks {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-
-		if !chunkWithinPreflightBounds(generation, chunk) {
-			return ErrInvalid
-		}
-	}
-
-	return nil
+func preflightStageInputs(ctx context.Context, generation Generation, coverage []CoverageRecord, chunks []Chunk) error {
+	return semanticcore.PreflightStageInputs(ctx, generation, coverage, chunks)
 }
 
-//nolint:cyclop // This is an exhaustive declarative bound check over the encoded record.
 func chunkWithinPreflightBounds(generation Generation, chunk Chunk) bool {
-	if len(chunk.Scope.Key) > maxScopeKeyBytes || len(chunk.BuildID) > maxIdentityBytes ||
-		len(chunk.LexicalGenerationID) > maxIdentityBytes || len(chunk.ModelSpace) > 64 ||
-		len(chunk.ItemID) > maxIdentityBytes || len(chunk.RevisionID) > maxIdentityBytes ||
-		len(chunk.ContentHash) > 64 || len(chunk.InputHash) > 64 ||
-		len(chunk.Category) > maxIdentityBytes || len(chunk.MemoryKey) > maxIdentityBytes ||
-		len(chunk.SourceIDs) > maxMetadataIDs || len(chunk.ConversationIDs) > maxMetadataIDs ||
-		len(chunk.Vector) != generation.Dimensions {
-		return false
-	}
-
-	for _, values := range [][]string{chunk.SourceIDs, chunk.ConversationIDs} {
-		for _, value := range values {
-			if len(value) > maxIdentityBytes {
-				return false
-			}
-		}
-	}
-
-	return true
+	return semanticcore.ChunkWithinPreflightBounds(generation, chunk)
 }
 
 func (store *Store) writeStageRows(ctx context.Context, state State, rows []encodedRow) (State, error) {

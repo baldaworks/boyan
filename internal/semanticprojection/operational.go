@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	semanticstore "github.com/baldaworks/boyan/index/semantic"
 	semanticcore "github.com/baldaworks/boyan/internal/semantic"
 	"github.com/baldaworks/boyan/pkg/memory"
 )
@@ -28,7 +27,7 @@ func (manager *Manager) InvalidateStale(ctx context.Context, scope memory.Scope)
 		return
 	}
 
-	view := semanticstore.View{
+	view := semanticcore.View{
 		Scope: scope, LexicalGenerationID: previous.LexicalGenerationID,
 		LexicalWatermark: previous.LexicalWatermark, ModelSpace: previous.ModelSpace,
 		Dimensions: manager.space.Dimensions,

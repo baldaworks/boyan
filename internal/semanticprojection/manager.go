@@ -6,10 +6,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
-	semanticstore "github.com/baldaworks/boyan/index/semantic"
 	"github.com/baldaworks/boyan/internal/embedding"
 	semanticcore "github.com/baldaworks/boyan/internal/semantic"
 	"github.com/baldaworks/boyan/pkg/memory"
@@ -39,7 +39,7 @@ type Dependencies struct {
 	Manifests  memory.RecallProjectionCheckpointReader
 	Physical   memory.PhysicalProjectionViewReader
 	Provider   embedding.Provider
-	Store      *semanticstore.Store
+	Store      BuildStore
 	ModelSpace semanticcore.ModelSpace
 }
 
@@ -85,7 +85,7 @@ type Manager struct {
 	manifests memory.RecallProjectionCheckpointReader
 	physical  memory.PhysicalProjectionViewReader
 	provider  embedding.Provider
-	store     *semanticstore.Store
+	store     BuildStore
 	space     semanticcore.ModelSpace
 	spaceID   string
 
@@ -308,6 +308,10 @@ func New(dependencies Dependencies) (*Manager, error) {
 		dependencies.Provider == nil || dependencies.Store == nil {
 		return nil, fmt.Errorf("semantic projection dependencies are required")
 	}
+	// A legacy nil *Store remains nil after conversion to the consumer port.
+	if value := reflect.ValueOf(dependencies.Store); value.Kind() == reflect.Pointer && value.IsNil() {
+		return nil, fmt.Errorf("semantic projection dependencies are required")
+	}
 
 	spaceID, err := semanticcore.SpaceFingerprint(dependencies.ModelSpace)
 	if err != nil {
@@ -490,7 +494,7 @@ func (manager *Manager) Status(ctx context.Context, scope memory.Scope) (ScopeSt
 		}, nil
 	}
 
-	if active.Status != semanticstore.StatusReady || active.ModelSpace != manager.spaceID ||
+	if active.Status != semanticcore.StatusReady || active.ModelSpace != manager.spaceID ||
 		active.Dimensions != manager.space.Dimensions || manager.verifyView(ctx, active.View()) != nil ||
 		!manager.observedMetadataReady(ctx, active.View()) {
 		if statusFound && status.State == StateDegraded {

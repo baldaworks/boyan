@@ -403,7 +403,8 @@ func TestProviderFailurePublishesOnlyTextFreeDegradation(t *testing.T) {
 		state.SafeReason != string(semanticcore.ReasonUnavailable) || state.ChunkCount != 0 || state.RecordCount != 0 {
 		t.Fatalf("ActiveState() = (%#v, %t, %v), want text-free provider degradation", state, found, err)
 	}
-	if _, ready, snapshotErr := manager.store.Snapshot(context.Background(), state.View()); snapshotErr != nil || ready {
+	_, ready, snapshotErr := manager.store.LoadReusable(context.Background(), state.View())
+	if snapshotErr != nil || ready {
 		t.Fatalf("Snapshot(degraded) = (_, %t, %v), want no readable partial state", ready, snapshotErr)
 	}
 }

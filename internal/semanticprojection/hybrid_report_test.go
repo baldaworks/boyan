@@ -34,7 +34,7 @@ func TestHybridReportDeterministicAfterReopening(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	state, found, err := hybrid.store.ActiveState(ctx, request.Scope)
+	state, found, err := hybrid.store.(*semanticstore.Store).ActiveState(ctx, request.Scope)
 	if err != nil || !found {
 		t.Fatalf("state: %v %v", found, err)
 	}

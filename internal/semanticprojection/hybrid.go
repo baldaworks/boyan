@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 	"unicode/utf8"
 
-	semanticstore "github.com/baldaworks/boyan/index/semantic"
 	"github.com/baldaworks/boyan/internal/embedding"
 	semanticcore "github.com/baldaworks/boyan/internal/semantic"
 	"github.com/baldaworks/boyan/pkg/memory"
@@ -24,14 +24,14 @@ type HybridLexical interface {
 // It returns identities only; canonical hydration remains the recall service's job.
 type Hybrid struct {
 	lexical  HybridLexical
-	store    *semanticstore.Store
+	store    LegacySearchReader
 	provider embedding.Provider
 	space    semanticcore.ModelSpace
 	spaceID  string
 }
 
 // NewHybrid constructs an enabled projection. Disabled callers use Bleve directly.
-func NewHybrid(lexical HybridLexical, store *semanticstore.Store, provider embedding.Provider,
+func NewHybrid(lexical HybridLexical, store LegacySearchReader, provider embedding.Provider,
 	space semanticcore.ModelSpace) (*Hybrid, error) {
 	spaceID, err := semanticcore.SpaceFingerprint(space)
 	if err != nil {
@@ -39,6 +39,10 @@ func NewHybrid(lexical HybridLexical, store *semanticstore.Store, provider embed
 	}
 
 	if lexical == nil || store == nil || provider == nil {
+		return nil, fmt.Errorf("hybrid dependencies are required")
+	}
+	// Preserve rejection of a legacy nil *Store wrapped by the read port.
+	if value := reflect.ValueOf(store); value.Kind() == reflect.Pointer && value.IsNil() {
 		return nil, fmt.Errorf("hybrid dependencies are required")
 	}
 
@@ -106,7 +110,7 @@ func (hybrid *Hybrid) search(ctx context.Context,
 		return hybrid.fallbackReport(ctx, request, report, "unavailable")
 	}
 
-	view := semanticstore.View{Scope: request.Scope, LexicalGenerationID: lexical.Manifest.GenerationID,
+	view := semanticcore.View{Scope: request.Scope, LexicalGenerationID: lexical.Manifest.GenerationID,
 		LexicalWatermark: lexical.Manifest.Watermark, ModelSpace: hybrid.spaceID, Dimensions: hybrid.space.Dimensions}
 
 	snapshot, found, err := hybrid.store.Snapshot(ctx, view)
@@ -229,9 +233,9 @@ func (hybrid *Hybrid) fallback(ctx context.Context,
 
 //nolint:cyclop,funlen // Bounded prefiltering, ranking, and identity assembly preserve independent channel order.
 func (hybrid *Hybrid) fuse(ctx context.Context, request memory.RecallRequest, lexical []memory.RecallProjectionHit,
-	vectors [][]float32, chunks []semanticstore.Chunk, depth int) ([]memory.RecallProjectionHit, error) {
+	vectors [][]float32, chunks []semanticcore.ProjectionChunk, depth int) ([]memory.RecallProjectionHit, error) {
 	if len(chunks) > semanticcore.ProjectionChunkLimit {
-		return nil, semanticstore.ErrCapacity
+		return nil, semanticcore.ErrCapacity
 	}
 
 	eligible := make([]semanticcore.Chunk, 0, len(chunks))
@@ -249,7 +253,7 @@ func (hybrid *Hybrid) fuse(ctx context.Context, request memory.RecallRequest, le
 		}
 
 		if chunk.ObservedAt == nil || chunk.ObservedAt.IsZero() {
-			return nil, semanticstore.ErrCorrupt
+			return nil, semanticcore.ErrCorrupt
 		}
 
 		if !hybridChunkEligible(chunk, request, effective) {
@@ -295,7 +299,7 @@ func (hybrid *Hybrid) fuse(ctx context.Context, request memory.RecallRequest, le
 }
 
 //nolint:cyclop // Every caller filter is checked independently before cosine work.
-func hybridChunkEligible(chunk semanticstore.Chunk, request memory.RecallRequest, at time.Time) bool {
+func hybridChunkEligible(chunk semanticcore.ProjectionChunk, request memory.RecallRequest, at time.Time) bool {
 	if chunk.Scope != request.Scope || request.Kind != nil && chunk.Kind != *request.Kind ||
 		request.Category != nil && chunk.Category != *request.Category ||
 		request.MemoryKey != "" && chunk.MemoryKey != request.MemoryKey {
