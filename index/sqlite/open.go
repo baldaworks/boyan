@@ -34,21 +34,23 @@ const readerConnections = 2
 // Store owns all SQL connections and operation cancellation. Close rejects new
 // operations and drains canceled work before releasing the pools and root.
 type Store struct {
-	connectionLimits []sqlConnectionLimits
-	stagingMu        sync.Mutex
-	stagingOwners    map[memory.Scope]*SQLiteCanonicalApplier
-	scopeWrites      sync.Map // memory.Scope -> chan struct{}; apply and scrub share ownership.
-	writer, reader   *sql.DB
-	root             *os.Root
-	lifetime         context.Context
-	cancel           context.CancelFunc
-	mu               sync.Mutex
-	checkpoints      memory.RecallProjectionCheckpointReader
-	closing          bool
-	work             sync.WaitGroup
-	closeOnce        sync.Once
-	closed           chan struct{}
-	closeErr         error
+	embeddingsEnabled bool
+	semanticStaging   sync.Map // build ID -> live Stage ownership; garbage collection must preserve it.
+	connectionLimits  []sqlConnectionLimits
+	stagingMu         sync.Mutex
+	stagingOwners     map[memory.Scope]*SQLiteCanonicalApplier
+	scopeWrites       sync.Map // memory.Scope -> chan struct{}; apply and scrub share ownership.
+	writer, reader    *sql.DB
+	root              *os.Root
+	lifetime          context.Context
+	cancel            context.CancelFunc
+	mu                sync.Mutex
+	checkpoints       memory.RecallProjectionCheckpointReader
+	closing           bool
+	work              sync.WaitGroup
+	closeOnce         sync.Once
+	closed            chan struct{}
+	closeErr          error
 }
 
 // Open validates private paths and existing schema before allowing SQL writes.
@@ -89,6 +91,15 @@ func Open(ctx context.Context, stateDir string, options Options) (*Store, error)
 		_ = root.Close()
 
 		return nil, openError(err)
+	}
+
+	if options.EmbeddingsEnabled {
+		if err := inspectSemantic(ctx, writer); err != nil {
+			_ = writer.Close()
+			_ = root.Close()
+
+			return nil, openError(semanticStorageError(err))
+		}
 	}
 
 	if fresh {
@@ -136,8 +147,16 @@ func Open(ctx context.Context, stateDir string, options Options) (*Store, error)
 
 	lifetime, cancel := context.WithCancel(context.Background())
 
-	return &Store{writer: writer, reader: reader, root: root, connectionLimits: limits,
-		lifetime: lifetime, cancel: cancel, closed: make(chan struct{})}, nil
+	return &Store{
+		writer:            writer,
+		reader:            reader,
+		root:              root,
+		connectionLimits:  limits,
+		embeddingsEnabled: options.EmbeddingsEnabled,
+		lifetime:          lifetime,
+		cancel:            cancel,
+		closed:            make(chan struct{}),
+	}, nil
 }
 
 func openError(err error) error {

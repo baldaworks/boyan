@@ -33,12 +33,19 @@ func (store *Store) acquire(ctx context.Context) (context.Context, func(), error
 	return operation, func() { once.Do(func() { stop(); cancel(); store.work.Done() }) }, nil
 }
 
-func (store *Store) write(ctx context.Context, apply func(context.Context, *sql.Tx) error) error {
+func (store *Store) write(ctx context.Context, apply func(context.Context, *sql.Tx) error) (result error) {
 	operation, done, err := store.acquire(ctx)
 	if err != nil {
 		return err
 	}
 	defer done()
+	// Drivers may report interruption or ErrTxDone after cancellation. Preserve
+	// the operation's identity only on failure, before done cancels its lease.
+	defer func() {
+		if result != nil && operation.Err() != nil {
+			result = operation.Err()
+		}
+	}()
 
 	tx, err := store.writer.BeginTx(operation, nil)
 	if err != nil {
