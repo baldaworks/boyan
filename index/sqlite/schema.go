@@ -9,11 +9,18 @@ import (
 const applicationID = 0x42595351 // BYSQ
 const schemaVersion = 1
 
+// Version 1 is an unreleased, rebuildable format. Canonical identities are
+// byte-nonempty: SQLite length(TEXT) stops at NUL, which canonical lexical IDs
+// and scope keys permit. These corrected create-time constraints do not migrate
+// earlier development databases; recreate those disposable fixtures. Reopening
+// a fresh database preserves the corrected constraints. Semantic projection
+// identities retain their stricter portable admission (including NUL rejection).
+
 const lexicalSchema = `
 CREATE TABLE lexical_build (
  physical_build_id TEXT PRIMARY KEY CHECK(length(physical_build_id)>0),
- scope_kind TEXT NOT NULL CHECK(length(scope_kind)>0), scope_key TEXT NOT NULL CHECK(length(scope_key)>0),
- generation_id TEXT NOT NULL CHECK(length(generation_id)>0),
+ scope_kind TEXT NOT NULL CHECK(length(scope_kind)>0), scope_key TEXT NOT NULL CHECK(length(CAST(scope_key AS BLOB))>0),
+ generation_id TEXT NOT NULL CHECK(length(CAST(generation_id AS BLOB))>0),
  projection_id TEXT NOT NULL DEFAULT 'sqlite' CHECK(projection_id='sqlite'),
  schema_version INTEGER NOT NULL DEFAULT 1 CHECK(schema_version=1),
  preprocessing_version INTEGER NOT NULL DEFAULT 1 CHECK(preprocessing_version=1),
@@ -37,7 +44,8 @@ CREATE TABLE lexical_previous (
 CREATE TABLE lexical_record (
  rowid INTEGER PRIMARY KEY,
  physical_build_id TEXT NOT NULL REFERENCES lexical_build(physical_build_id) ON DELETE CASCADE,
- item_id TEXT NOT NULL CHECK(length(item_id)>0), revision_id TEXT NOT NULL CHECK(length(revision_id)>0),
+ item_id TEXT NOT NULL CHECK(length(CAST(item_id AS BLOB))>0),
+ revision_id TEXT NOT NULL CHECK(length(CAST(revision_id AS BLOB))>0),
  revision BLOB NOT NULL CHECK(typeof(revision)='blob' AND length(revision)=8),
  change_seq BLOB NOT NULL CHECK(typeof(change_seq)='blob' AND length(change_seq)=8),
  kind TEXT NOT NULL CHECK(length(kind)>0), category TEXT NOT NULL DEFAULT '', memory_key TEXT NOT NULL DEFAULT '',
@@ -51,12 +59,12 @@ CREATE TABLE lexical_record (
 ) STRICT;
 CREATE TABLE lexical_source (
  record_rowid INTEGER NOT NULL REFERENCES lexical_record(rowid) ON DELETE CASCADE,
- id TEXT NOT NULL CHECK(length(id)>0), PRIMARY KEY(record_rowid,id)
+ id TEXT NOT NULL CHECK(length(CAST(id AS BLOB))>0), PRIMARY KEY(record_rowid,id)
 ) STRICT;
 CREATE INDEX lexical_source_id ON lexical_source(id,record_rowid);
 CREATE TABLE lexical_conversation (
  record_rowid INTEGER NOT NULL REFERENCES lexical_record(rowid) ON DELETE CASCADE,
- id TEXT NOT NULL CHECK(length(id)>0), PRIMARY KEY(record_rowid,id)
+ id TEXT NOT NULL CHECK(length(CAST(id AS BLOB))>0), PRIMARY KEY(record_rowid,id)
 ) STRICT;
 CREATE INDEX lexical_conversation_id ON lexical_conversation(id,record_rowid);
 CREATE VIRTUAL TABLE lexical_fts USING fts5(raw_tokens,ru_tokens,en_tokens, tokenize='unicode61 remove_diacritics 0');
@@ -65,7 +73,7 @@ CREATE VIRTUAL TABLE lexical_fts USING fts5(raw_tokens,ru_tokens,en_tokens, toke
 const semanticSchema = `
 CREATE TABLE semantic_build (
  build_id TEXT PRIMARY KEY CHECK(length(build_id)>0),
- scope_kind TEXT NOT NULL CHECK(length(scope_kind)>0), scope_key TEXT NOT NULL CHECK(length(scope_key)>0),
+ scope_kind TEXT NOT NULL CHECK(length(scope_kind)>0), scope_key TEXT NOT NULL CHECK(length(CAST(scope_key AS BLOB))>0),
  generation_id TEXT NOT NULL CHECK(length(generation_id)>0),
  physical_build_id TEXT NOT NULL CHECK(length(physical_build_id)>0),
  projection_id TEXT NOT NULL DEFAULT 'sqlite' CHECK(projection_id='sqlite'),

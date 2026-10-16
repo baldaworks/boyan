@@ -12,6 +12,8 @@ import (
 	"os"
 	"sync"
 
+	"github.com/baldaworks/boyan/pkg/memory"
+
 	_ "modernc.org/sqlite"
 	_ "modernc.org/sqlite/vec"
 )
@@ -32,16 +34,20 @@ const readerConnections = 2
 // Store owns all SQL connections and operation cancellation. Close rejects new
 // operations and drains canceled work before releasing the pools and root.
 type Store struct {
-	writer, reader *sql.DB
-	root           *os.Root
-	lifetime       context.Context
-	cancel         context.CancelFunc
-	mu             sync.Mutex
-	closing        bool
-	work           sync.WaitGroup
-	closeOnce      sync.Once
-	closed         chan struct{}
-	closeErr       error
+	connectionLimits []sqlConnectionLimits
+	stagingMu        sync.Mutex
+	stagingOwners    map[memory.Scope]*SQLiteCanonicalApplier
+	scopeWrites      sync.Map // memory.Scope -> chan struct{}; apply and scrub share ownership.
+	writer, reader   *sql.DB
+	root             *os.Root
+	lifetime         context.Context
+	cancel           context.CancelFunc
+	mu               sync.Mutex
+	closing          bool
+	work             sync.WaitGroup
+	closeOnce        sync.Once
+	closed           chan struct{}
+	closeErr         error
 }
 
 // Open validates private paths and existing schema before allowing SQL writes.
@@ -103,6 +109,22 @@ func Open(ctx context.Context, stateDir string, options Options) (*Store, error)
 		return nil, openError(err)
 	}
 
+	limits, err := inspectConnectionLimits(ctx, writer, 1)
+	if err == nil {
+		var readLimits []sqlConnectionLimits
+
+		readLimits, err = inspectConnectionLimits(ctx, reader, readerConnections)
+		limits = append(limits, readLimits...)
+	}
+
+	if err != nil {
+		_ = reader.Close()
+		_ = writer.Close()
+		_ = root.Close()
+
+		return nil, openError(err)
+	}
+
 	if err := validateAuxiliary(root); err != nil {
 		_ = reader.Close()
 		_ = writer.Close()
@@ -113,7 +135,7 @@ func Open(ctx context.Context, stateDir string, options Options) (*Store, error)
 
 	lifetime, cancel := context.WithCancel(context.Background())
 
-	return &Store{writer: writer, reader: reader, root: root,
+	return &Store{writer: writer, reader: reader, root: root, connectionLimits: limits,
 		lifetime: lifetime, cancel: cancel, closed: make(chan struct{})}, nil
 }
 
