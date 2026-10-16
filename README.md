@@ -106,9 +106,15 @@ By default Boyan stores data in `./.state/boyan` with this layout:
 Embeddings are optional and disabled by default. Enable the pinned local CPU
 TEI profile with the [sidecar overlay](deploy/sidecar/embeddings.compose.yaml),
 or configure an OpenAI-compatible endpoint. Hybrid recall combines lexical and
-semantic candidates while canonically revalidating every result. Cold/rebuilding
-or unavailable semantic state falls back to lexical recall for ordinary
-requests; enabled minimum-watermark requests require hybrid certification.
+semantic candidates while canonically revalidating every result. When enabled,
+opening the semantic database, validating all active generations and collecting
+startup garbage run synchronously before `Host.Start` and can fail host
+construction; corruption or an open failure prevents even lexical serving.
+After a successful open, cold/rebuilding or incompatible model-space state and
+provider outages permit lexical fallback for ordinary requests while semantic
+builds run in the background; enabled minimum-watermark requests require hybrid
+certification. Semantic open uses `context.Background` and is not bounded by
+the context passed to `Host.Start`.
 See the authoritative [configuration and bounds](docs/OPERATIONS.md#embeddings-configuration-and-bounds),
 [deployment, readiness and rollback](docs/OPERATIONS.md#optional-tei-sidecar),
 and [real-provider verification](docs/OPERATIONS.md#embeddings-verification).

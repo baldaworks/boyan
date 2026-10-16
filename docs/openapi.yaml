@@ -13,6 +13,27 @@ info:
 
     It intentionally excludes the MCP tool surface at `/mcp` and any
     non-HTTP/internal-only interfaces.
+
+    Stable identities are derived by the Go `memory.NewTurn`,
+    `memory.NewTerminalTurnWithTools` and `memory.NewBoundary` constructors.
+    Cross-language producers must use the same algorithm: start with the raw
+    UTF-8 bytes of `boyan/v1`; append the kind and then each ordered part,
+    each encoded as its UTF-8 byte length in an unsigned 64-bit big-endian
+    integer followed by its UTF-8 bytes. SHA-256 this byte stream and format
+    `boyan:v1:<kind>:<lowercase hex digest>`. No separators or trailing bytes
+    are added. Parts for `turn` are scope.key, conversation.conversation_id,
+    source_turn_id; parts for `boundary` are scope.key,
+    conversation.conversation_id, transition_id. Scope kind, agent conversation
+    ID, timestamps and text are not hashed. Source turn/transition IDs are
+    trimmed with Go strings.TrimSpace before hashing; scope and conversation
+    keys must already pass canonical validation and are hashed unchanged.
+    Optional source_id uses kind `source` with the trimmed export_id as its
+    only part. Optional user/assistant message_id uses kind `message` with
+    trimmed export_id then the exact role. Required tool message_id uses kind
+    `tool-message` with trimmed export_id, tool_name and tool_call_id; all three
+    are trimmed individually. Tool names and call IDs on the wire must already
+    be canonical. Runtime validation checks these hashes and tool identity
+    uniqueness; JSON Schema cannot compute hashes or enforce that uniqueness.
 servers:
   - url: http://127.0.0.1:8686
     description: Default loopback listener for the standalone sidecar.
@@ -50,7 +71,11 @@ paths:
       description: |
         Returns `ok` when Boyan is ready to accept work. Readiness currently
         checks the local maintenance and startup diagnostics.
-        Optional embedding availability does not gate readiness. When enabled,
+        After successful host construction, provider outages and background
+        semantic build failures do not gate readiness. With embeddings enabled,
+        semantic database open, active-generation validation and startup
+        garbage collection are synchronous before Host.Start; failure prevents
+        the host and this endpoint from starting. When enabled,
         X-Boyan-Semantic-State reports repairing, hybrid-ready, degraded or
         stopped; X-Boyan-Retrieval-Mode reports hybrid or degraded, and
         X-Boyan-Retrieval-Reason is unavailable when degraded. Disabled
@@ -99,7 +124,7 @@ paths:
                   scope_sequence: 1
                   payload:
                     schema_version: boyan/v1
-                    export_id: turn-1
+                    export_id: boyan:v1:turn:939bfbe37b5e71eacaa917a9e7da453564733dc4f78c1cb93f0457c48bee3bd5
                     scope:
                       key: slack:C123
                       kind: group
@@ -107,11 +132,14 @@ paths:
                       conversation_id: conv-1
                       agent_conversation_id: agent-conv-1
                     source_turn_id: source-turn-1
+                    source_id: boyan:v1:source:aa7331ce664d70b5ebbdca333f5a9dbe2a978a86271c73386bb4aebc2feaf3bf
                     completed_at: "2026-08-11T09:00:00Z"
                     messages:
-                      - role: user
+                      - message_id: boyan:v1:message:b5572ae9181d2b1c85b1b583d197a5827df36c53ce8349d8671e995a61f6092b
+                        role: user
                         text: hello
-                      - role: assistant
+                      - message_id: boyan:v1:message:3f10e47aa63732ea21b26a5ca646e56a405f05a2a27801ba831001176b808051
+                        role: assistant
                         text: hi
       responses:
         "200":
@@ -191,7 +219,7 @@ paths:
                   scope_sequence: 2
                   payload:
                     schema_version: boyan/v1
-                    export_id: boundary-1
+                    export_id: boyan:v1:boundary:9d92b65e7c54d06465a2c7ad6dcb45ff31695e11a9802044a47211acc0886d39
                     scope:
                       key: slack:C123
                       kind: group
@@ -300,6 +328,12 @@ components:
           $ref: "#/components/schemas/Boundary"
     Turn:
       type: object
+      description: |
+        Ordered terminal export: one user, then one assistant, then at most
+        16 tool responses. Omitted terminal_status means success and requires
+        the assistant. Failed/interrupted exports may omit the assistant,
+        yielding one user followed by at most 16 tools. Repeated user or
+        assistant messages and duplicate tool identities are rejected.
       additionalProperties: false
       required:
         - schema_version
@@ -333,11 +367,50 @@ components:
           type: string
           enum: [success, failed, interrupted]
         messages:
-          type: array
-          minItems: 1
-          maxItems: 18
-          items:
-            $ref: "#/components/schemas/Message"
+          oneOf:
+            - $ref: "#/components/schemas/MessagesWithAssistant"
+            - $ref: "#/components/schemas/MessagesWithoutAssistant"
+      if:
+        required: [terminal_status]
+        properties:
+          terminal_status:
+            enum: [failed, interrupted]
+      else:
+        properties:
+          messages:
+            $ref: "#/components/schemas/MessagesWithAssistant"
+    MessagesWithAssistant:
+      type: array
+      minItems: 2
+      maxItems: 18
+      prefixItems:
+        - allOf:
+            - $ref: "#/components/schemas/Message"
+            - properties:
+                role: {const: user}
+        - allOf:
+            - $ref: "#/components/schemas/Message"
+            - properties:
+                role: {const: assistant}
+      items:
+        allOf:
+          - $ref: "#/components/schemas/Message"
+          - properties:
+              role: {const: tool}
+    MessagesWithoutAssistant:
+      type: array
+      minItems: 1
+      maxItems: 17
+      prefixItems:
+        - allOf:
+            - $ref: "#/components/schemas/Message"
+            - properties:
+                role: {const: user}
+      items:
+        allOf:
+          - $ref: "#/components/schemas/Message"
+          - properties:
+              role: {const: tool}
     Boundary:
       type: object
       additionalProperties: false
@@ -404,6 +477,13 @@ components:
           minLength: 1
     Message:
       type: object
+      description: |
+        Text must contain non-whitespace content. User/assistant messages
+        carry no tool identity (tool fields must be omitted or empty), and
+        their message_id may be omitted; if supplied it must match the stable
+        role identity. Tools require canonical tool_name/tool_call_id (no
+        surrounding whitespace or CR/LF/tab) and the exact derived
+        tool-message message_id. Hash equality is checked at runtime.
       additionalProperties: false
       required:
         - role
@@ -418,12 +498,27 @@ components:
         text:
           type: string
           minLength: 1
+          # Explicit Go strings.TrimSpace/Unicode White_Space set; FEFF is content.
+          pattern: "[^\\t-\\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]"
         tool_name:
           type: string
-          minLength: 1
         tool_call_id:
           type: string
-          minLength: 1
+      oneOf:
+        - properties:
+            role:
+              enum: [user, assistant]
+            tool_name: {const: ""}
+            tool_call_id: {const: ""}
+        - required: [message_id, tool_name, tool_call_id]
+          properties:
+            role: {const: tool}
+            tool_name:
+              minLength: 1
+              pattern: "^[^\\t-\\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000](?:[^\\r\\n\\t]*[^\\t-\\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000])?$"
+            tool_call_id:
+              minLength: 1
+              pattern: "^[^\\t-\\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000](?:[^\\r\\n\\t]*[^\\t-\\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000])?$"
     IngestReceipt:
       type: object
       additionalProperties: false

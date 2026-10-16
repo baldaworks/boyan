@@ -33,10 +33,12 @@ behavior may differ under the approved new raw-token policy.
 Old Bleve baseline (main 224cda4, real temporary projection, same documents):
 `кошка дом` → ru; `engineer run test` → en; `настройка connection` → mixed;
 `user_id`, `cache-key` → identifiers; `the и` → stopwords,en;
-`punctuation` → tie-a,tie-b; quoted кошка → ru; `" OR banana --` → decoy;
+`punctuation` → {tie-a,tie-b} (old tie order is not a binary-ID guarantee);
+quoted кошка → ru; `" OR banana --` → decoy;
 `!!!` and precomposed `café` → empty. New NFC handling returns nfc for café.
-The temporary baseline harness was removed after recording observations so the
-gate does not retain a dependency on the retired engine.
+TASK-002 adds a reusable pre-retirement baseline harness and compact provenance
+in [AUDIT_BASELINE.md](AUDIT_BASELINE.md), sharing these exact authored controls.
+TASK-016 removes the legacy harness/import when the engine is retired.
 
 Gate evidence (Go 1.26.5, linux/amd64):
 

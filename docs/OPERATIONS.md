@@ -481,18 +481,31 @@ with lexical fallback instead of server-side truncation.
 ## Semantic lifecycle and rollback
 
 Canonical Badger and lexical Bleve remain authoritative. Startup repairs Bleve
-before serving; optional semantic startup/repair runs in the background.
-Cold models, empty/incompatible state, rebuilds, capacity overflow, and provider
-failure permit ordinary recall through the lexical path. A semantic generation
-is eligible only for the exact active lexical generation/watermark, canonical
+before serving. With embeddings enabled, host construction also opens the
+semantic database, validates every active generation and collects startup
+garbage synchronously before `Host.Start`. An open failure, corruption, active
+generation validation failure or startup garbage-collection failure is fatal:
+the host cannot serve even lexical recall. Store open uses
+`context.Background` for validation and collection; the context supplied to
+`Host.Start` does not bound this work.
+
+After the store opens successfully, optional semantic builds and repair run in
+the background. Cold models, empty/incompatible model-space state, rebuilds,
+capacity overflow and provider failure permit ordinary recall through the
+lexical path. A semantic generation is eligible only for the exact active
+lexical generation/watermark, canonical
 sequence and model-space fingerprint. Changes to model/revision/dimensions,
 prefixes or preprocessing/normalization invalidate old vectors and require a
 complete rebuild. Partial generations are never queried. Queue overflow
 degrades safely; a later scope change, restart or in-process repair can retry.
-There is no new public repair CLI.
+Publication atomically retires obsolete generations, while startup collection
+also removes abandoned staging state. There is no new public repair CLI.
 
-`/readyz` remains about required service/canonical readiness. Optional embedding
-failure does not make it fail. When enabled, `X-Boyan-Semantic-State` reports
+`/readyz` remains about required service/canonical readiness after successful
+host construction. Provider outages and background semantic build failures do
+not make it fail; semantic store open/validation failures prevent the host and
+its readiness endpoint from starting. When enabled,
+`X-Boyan-Semantic-State` reports
 `repairing`, `hybrid-ready`, `degraded` or `stopped`;
 `X-Boyan-Retrieval-Mode` reports `hybrid` or `degraded`, with
 `X-Boyan-Retrieval-Reason: unavailable` when degraded. Disabled deployments
@@ -512,8 +525,10 @@ then start the default deployment with `--remove-orphans` to remove TEI. Do not
 use `down -v`: it would remove the canonical state volume. While Boyan is
 stopped, you may delete only `<state_dir>/embeddings` inside the state volume;
 preserve `<state_dir>/badger` and `<state_dir>/bleve`. The TEI model cache is
-separate and optional to retain. Re-enabling rebuilds semantic state from
-canonical data without a canonical-format migration. This feature rollback
+separate and optional to retain. This is also recovery for a corrupt or
+unopenable semantic store: stop Boyan, then disable embeddings or remove only
+the disposable embeddings directory before restarting. Re-enabling rebuilds
+semantic state from canonical data without a canonical-format migration. This feature rollback
 does not authorize downgrading a writer across the privacy/proof upgrades
 documented above. Deletion is not a forensic-erasure guarantee for backups or
 old disk blocks.

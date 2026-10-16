@@ -23,6 +23,10 @@ func (s *RecallService) Search(ctx context.Context, request memory.RecallRequest
 	}
 
 	now := s.recallNow()
+	// Keep projection prefilters and canonical hydration on the same instant.
+	if normalized.AsOf == nil {
+		normalized.AsOf = &now
+	}
 
 	currentSeq, err := s.currentRecallScopeChangeSeq(ctx, normalized.Scope, normalized.MinScopeChangeSeq)
 	if err != nil {

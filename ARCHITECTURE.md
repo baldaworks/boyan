@@ -15,10 +15,20 @@ Semantic-only authority and native vector/FAISS dependencies are excluded.
 Compatible channels use deterministic RRF; unavailable, stale, partial or
 incompatible state permits lexical fallback for ordinary requests. Enabled
 minimum-watermark requests fail closed if hybrid state cannot be certified.
-Semantic cold start and repair do not gate required readiness or canonical
-writes. Provider text export and vector sensitivity are explicit operator
-boundaries. Disabling/deleting semantic state preserves canonical and Bleve
-formats; model-space changes trigger rebuild rather than vector mixing.
+With embeddings enabled, host construction synchronously opens the semantic
+database, validates all active generations and collects startup garbage before
+`Host.Start`. An open, validation or collection failure is fatal and prevents
+lexical serving too. These store operations use `context.Background`, so the
+`Host.Start` context does not bound them. After successful construction,
+semantic cold builds and repair run in the background and provider outages do
+not gate required readiness or canonical writes. Publication atomically retires
+obsolete semantic generations; startup collection also removes abandoned
+staging state. Provider text export and vector sensitivity are explicit operator
+boundaries. To recover from a corrupt semantic store, stop Boyan and disable
+embeddings or remove only `<state_dir>/embeddings` as described in the rollback
+runbook, preserving canonical Badger and Bleve state. Disabling/deleting semantic
+state preserves canonical and Bleve formats; model-space changes trigger rebuild
+rather than vector mixing.
 
 The authoritative [bounds and identity table](docs/OPERATIONS.md#embeddings-configuration-and-bounds)
 also specifies scheduling, storage, candidate, text and provider limits. See

@@ -1,0 +1,63 @@
+{
+  "profile": "boyan-search-baseline-v1",
+  "old_revision": "224cda43066f358276f130ae98e948eed8a10b93",
+  "old_patch_sha256": "a6f1bd72cbdebe98f06a284a521981b199eadd2d072d49ad0494a04d7a2f2c94",
+  "controls_authored_revision": "a06906ee7c65de977224aeb091acc76edd1ff9ef",
+  "documents": "lexicalControls in ../lexical_test.go, original order, exact UTF-8 bytes",
+  "queries": "lexicalRelevanceQueries in ../lexical_test.go, original order",
+  "scope": {"key": "baseline:v1", "kind": "group"},
+  "generation": "baseline-v1",
+  "at": "2026-08-11T09:00:00Z",
+  "document_defaults": {
+    "item_id": "same as control revision ID",
+    "revision": 1,
+    "kind": "state",
+    "category": "decision",
+    "memory_key": "same as control revision ID",
+    "source_ids": ["baseline-source"],
+    "conversation_ids": ["baseline-conversation"],
+    "observed_at": "2026-08-11T09:00:00Z",
+    "created_at": "2026-08-11T09:00:00Z",
+    "valid_from": null,
+    "valid_until": null,
+    "expires_at": null,
+    "sensitivity": "standard",
+    "retention": "standard",
+    "scope_change_seq": "one-based corpus position"
+  },
+  "lexical": {
+    "engine_config": "default engine configuration; record actual analyzer/schema versions for each engine",
+    "limit": 10,
+    "ordinary_candidate_depth": 40,
+    "filters": ["none", "source_id=baseline-source", "conversation_id=baseline-conversation", "memory_key=ru"],
+    "scope_control": "repeat scope key with personal kind; group request must exclude personal revisions",
+    "large_document_count": 16384,
+    "large_corpus": "for zero-based i use lexicalControls[i%9].text; ID/item/memory_key=bench-%05d formatted i; scope_change_seq=i+1; other defaults unchanged"
+  },
+  "hybrid_retrieval_only": {
+    "provider": "deterministic fake; no network or TEI latency",
+    "model_name": "baseline-onehot-v1",
+    "dimensions": 768,
+    "query_prefix": "query: ",
+    "passage_prefix": "passage: ",
+    "query_vectors": "four float32 unit vectors e0,e1,e2,e3; use identical bytes in both engines",
+    "chunk_vectors": "for zero-based chunk i use float32 unit vector e(i%768)",
+    "chunk_count": 8192,
+    "chunk_assignment": "first 128 chunks belong to bench-00000 with ordinals 0..127; chunks i>=128 belong to bench-%05d formatted i-127, ordinal 0; exact lexical text/defaults as above",
+    "channel_depth": 100,
+    "fused_candidate_cap": 200,
+    "rrf_k": 60,
+    "ranking_oracle": "cosine maximum across every eligible chunk and all four query vectors per revision before top-k; ties by revision ID",
+    "model_identity": "derive from the same existing model-space/preparation API in each checkout; record fingerprint before measurement"
+  },
+  "measurement": {
+    "task": "boyan-48w.19; this profile defines input, not measured performance",
+    "warm": "ingest/build once, one untimed query pass, then timed retrieval without writes",
+    "cold": "close/reopen between repetitions; report OS page-cache state as uncontrolled unless explicitly controlled",
+    "repetitions": 10,
+    "go_benchmark_benchtime": "1s",
+    "metrics": ["lexical ns/op B/op allocs/op", "hybrid retrieval-only ns/op B/op allocs/op", "initial build duration", "rebuild duration", "closed projection directory bytes", "open database/WAL/SHM bytes separately"],
+    "end_to_end_provider": "separate pinned TEI measurement; do not mix provider latency into retrieval-only comparison",
+    "comparability": "same machine, Go version, GOMAXPROCS, corpus bytes/hash, time, filters, vectors and request limits; retain each engine's pinned dependency graph and record differences"
+  }
+}

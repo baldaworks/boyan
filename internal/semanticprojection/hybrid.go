@@ -81,6 +81,12 @@ func (hybrid *Hybrid) search(ctx context.Context,
 		return nil, err
 	}
 
+	// Direct callers also pin eligibility before lexical or provider work.
+	if request.AsOf == nil {
+		at := time.Now().UTC()
+		request.AsOf = &at
+	}
+
 	prepared, err := semanticcore.PrepareQuery(ctx, request.Query, hybrid.space.QueryPrefix)
 	if err != nil {
 		return nil, err

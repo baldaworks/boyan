@@ -69,6 +69,28 @@ func literalMatch(text string) string {
 	return strings.Join(clauses, " OR ")
 }
 
+// These expectations were authored in TASK-001 before observing this task's
+// old-engine ranks. Both gates reuse the same corpus and relevance policy.
+func lexicalRelevanceQueries() []struct {
+	query string
+	want  []string
+} {
+	return []struct {
+		query string
+		want  []string
+	}{
+		{"кошка", []string{"ru"}}, {"дом", []string{"ru"}}, {"кошка дом", []string{"ru"}},
+		{"engineer", []string{"en"}}, {"run", []string{"en"}}, {"test", []string{"en"}},
+		{"engineer run test", []string{"en"}},
+		{"настройка", []string{"mixed"}}, {"connection", []string{"mixed"}}, {"настройка connection", []string{"mixed"}},
+		{"user_id", []string{"identifiers"}}, {"cache-key", []string{"identifiers"}},
+		{"HTTP/2", []string{"identifiers"}}, {"v1.2", []string{"identifiers"}},
+		{"the и", []string{"en", "stopwords"}}, {"café", []string{"nfc"}},
+		{"punctuation", []string{"tie-a", "tie-b"}}, {`"кошка"`, []string{"ru"}},
+		{`" OR banana --`, []string{"decoy"}}, {"!!!", nil},
+	}
+}
+
 // Dropping a language stem field loses required inflections; emitting caller
 // MATCH syntax broadens injection controls or turns punctuation into errors.
 func TestPinnedAnalyzerRelevance(t *testing.T) {
@@ -82,20 +104,7 @@ func TestPinnedAnalyzerRelevance(t *testing.T) {
 		execFixture(t, db, `INSERT INTO gate_fts VALUES (?,?,?,?)`, doc.id, raw, ru, en)
 	}
 
-	for _, tc := range []struct {
-		query string
-		want  []string
-	}{
-		{"кошка", []string{"ru"}}, {"дом", []string{"ru"}}, {"кошка дом", []string{"ru"}},
-		{"engineer", []string{"en"}}, {"run", []string{"en"}}, {"test", []string{"en"}},
-		{"engineer run test", []string{"en"}},
-		{"настройка", []string{"mixed"}}, {"connection", []string{"mixed"}}, {"настройка connection", []string{"mixed"}},
-		{"user_id", []string{"identifiers"}}, {"cache-key", []string{"identifiers"}},
-		{"HTTP/2", []string{"identifiers"}}, {"v1.2", []string{"identifiers"}},
-		{"the и", []string{"en", "stopwords"}}, {"café", []string{"nfc"}},
-		{"punctuation", []string{"tie-a", "tie-b"}}, {`"кошка"`, []string{"ru"}},
-		{`" OR banana --`, []string{"decoy"}}, {"!!!", nil},
-	} {
+	for _, tc := range lexicalRelevanceQueries() {
 		t.Run(tc.query, func(t *testing.T) {
 			for attempt := 0; attempt < 3; attempt++ {
 				got := lexicalIDs(t, db, tc.query)
