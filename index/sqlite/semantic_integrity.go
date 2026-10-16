@@ -141,7 +141,9 @@ func readSemanticCoverage(
 
 	const bounds = `SELECT count(*)>8192 OR coalesce(max(length(CAST(item_id AS BLOB))),0)>512
   OR coalesce(max(length(CAST(revision_id AS BLOB))),0)>512
-  OR coalesce(max(length(CAST(content_hash AS BLOB))),0)>64 FROM semantic_coverage WHERE build_id=?`
+  OR coalesce(max(length(CAST(content_hash AS BLOB))),0)>64
+  OR coalesce(max(typeof(revision)!='blob' OR length(revision)!=8),0)
+  FROM semantic_coverage WHERE build_id=?`
 	if err := tx.QueryRowContext(ctx, bounds, build).Scan(&invalid); err != nil {
 		return nil, nil, err
 	}
@@ -211,6 +213,14 @@ func checkSemanticChunkBounds(ctx context.Context, tx *sql.Tx, build string) err
   OR length(CAST(c.content_hash AS BLOB))>64 OR length(CAST(c.input_hash AS BLOB))>64
   OR length(CAST(c.kind AS BLOB))>512 OR length(CAST(c.category AS BLOB))>512 OR length(CAST(c.memory_key AS BLOB))>512
   OR c.dimensions NOT BETWEEN 1 AND 4096 OR length(c.embedding)!=4*c.dimensions
+  OR typeof(c.embedding)!='blob'
+  OR typeof(c.revision)!='blob' OR length(c.revision)!=8
+  OR typeof(c.change_seq)!='blob' OR length(c.change_seq)!=8
+  OR typeof(c.created_at)!='blob' OR length(c.created_at)!=17
+  OR typeof(c.observed_at)!='blob' OR length(c.observed_at)!=17
+  OR (c.valid_from IS NOT NULL AND (typeof(c.valid_from)!='blob' OR length(c.valid_from)!=17))
+  OR (c.valid_until IS NOT NULL AND (typeof(c.valid_until)!='blob' OR length(c.valid_until)!=17))
+  OR (c.expires_at IS NOT NULL AND (typeof(c.expires_at)!='blob' OR length(c.expires_at)!=17))
   OR (SELECT count(*) FROM semantic_source s WHERE s.chunk_rowid=c.rowid)>256
   OR (SELECT count(*) FROM semantic_conversation s WHERE s.chunk_rowid=c.rowid)>256
   OR EXISTS(SELECT 1 FROM semantic_source s WHERE s.chunk_rowid=c.rowid AND length(CAST(s.id AS BLOB))>512)

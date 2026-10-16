@@ -66,7 +66,8 @@ func activeSemanticState(ctx context.Context, tx *sql.Tx, scope memory.Scope) (s
 		epoch []byte
 	)
 
-	const query = `SELECT CASE WHEN length(CAST(build_id AS BLOB))<=512 THEN build_id END,epoch
+	const query = `SELECT CASE WHEN length(CAST(build_id AS BLOB))<=512 THEN build_id END,
+  CASE WHEN typeof(epoch)='blob' AND length(epoch)=8 THEN epoch END
   FROM semantic_active WHERE scope_kind=? AND scope_key=?`
 
 	err := tx.QueryRowContext(ctx, query, string(scope.Kind), scope.Key).Scan(&build, &epoch)
@@ -219,12 +220,16 @@ func readSemanticState(ctx context.Context, tx *sql.Tx, build string) (semantic.
 		complete                bool
 	)
 
-	const query = `SELECT scope_kind,scope_key,generation_id,watermark,model_space,dimensions,epoch,complete,
+	const query = `SELECT scope_kind,scope_key,generation_id,
+  CASE WHEN typeof(watermark)='blob' AND length(watermark)=8 THEN watermark END,model_space,dimensions,
+  CASE WHEN typeof(epoch)='blob' AND length(epoch)=8 THEN epoch END,complete,
   status,reason,coverage_hash,revision_count,chunk_count,encoded_bytes,omitted_ineligible,omitted_expired,
-  omitted_sensitive,ready_at FROM semantic_build WHERE build_id=?
+  omitted_sensitive,CASE WHEN typeof(ready_at)='blob' AND length(ready_at)=17 THEN ready_at END
+  FROM semantic_build WHERE build_id=?
   AND length(CAST(scope_kind AS BLOB))<=512 AND length(CAST(scope_key AS BLOB))<=4096
   AND length(CAST(generation_id AS BLOB))<=512 AND length(CAST(model_space AS BLOB))<=64
   AND length(CAST(reason AS BLOB))<=512 AND length(CAST(coverage_hash AS BLOB))<=64
+  AND status IN ('ready','degraded','building')
   AND omitted_ineligible<=4294967295 AND omitted_expired<=4294967295 AND omitted_sensitive<=4294967295`
 
 	err := tx.QueryRowContext(ctx, query, build).

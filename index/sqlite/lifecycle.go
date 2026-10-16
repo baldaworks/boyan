@@ -63,6 +63,7 @@ func (store *Store) write(ctx context.Context, apply func(context.Context, *sql.
 
 type readSnapshot struct {
 	tx   *sql.Tx
+	conn *sql.Conn
 	ctx  context.Context
 	once sync.Once
 	done func()
@@ -75,14 +76,31 @@ func (store *Store) read(ctx context.Context) (*readSnapshot, error) {
 		return nil, err
 	}
 
-	tx, err := store.reader.BeginTx(operation, &sql.TxOptions{ReadOnly: true})
+	conn, err := store.reader.Conn(operation)
 	if err != nil {
+		if operation.Err() != nil {
+			err = operation.Err()
+		}
+
 		done()
 
 		return nil, err
 	}
 
-	snapshot := &readSnapshot{tx: tx, ctx: operation, done: done}
+	tx, err := conn.BeginTx(operation, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		_ = conn.Close()
+
+		if operation.Err() != nil {
+			err = operation.Err()
+		}
+
+		done()
+
+		return nil, err
+	}
+
+	snapshot := &readSnapshot{tx: tx, conn: conn, ctx: operation, done: done}
 	// The driver rolls back canceled transactions. Close also releases our
 	// lifecycle lease, including when a canceled caller forgot to close a view.
 	context.AfterFunc(operation, func() { _ = snapshot.Close() })
@@ -95,6 +113,15 @@ func (snapshot *readSnapshot) Close() error {
 		snapshot.err = snapshot.tx.Rollback()
 		if errors.Is(snapshot.err, sql.ErrTxDone) {
 			snapshot.err = nil
+		}
+
+		// ErrTxDone can precede the driver's actual rollback completion. The
+		// owned connection waits for that rollback before releasing this lease.
+		if snapshot.conn != nil {
+			err := snapshot.conn.Close()
+			if !errors.Is(err, sql.ErrConnDone) {
+				snapshot.err = errors.Join(snapshot.err, err)
+			}
 		}
 
 		snapshot.done()

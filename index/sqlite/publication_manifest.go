@@ -13,7 +13,8 @@ type physicalLexicalManifest struct {
 	manifest memory.ProjectionManifest
 }
 
-const committedLexicalQuery = `SELECT b.physical_build_id,b.generation_id,b.watermark,
+const committedLexicalQuery = `SELECT b.physical_build_id,b.generation_id,
+ CASE WHEN typeof(b.watermark)='blob' AND length(b.watermark)=8 THEN b.watermark END,
  b.record_count,b.source_count,b.conversation_count,
  (SELECT count(*) FROM lexical_record r WHERE r.physical_build_id=b.physical_build_id),
  (SELECT count(*) FROM lexical_record r JOIN lexical_fts f ON f.rowid=r.rowid

@@ -25,7 +25,10 @@ func (snapshot *readSnapshot) activeLexicalBuild(scope memory.Scope) (string, er
 	return build, err
 }
 
-const lexicalQuery = `SELECT r.item_id,r.revision_id,r.revision,r.change_seq,bm25(lexical_fts,1.0,1.0,1.0)
+const lexicalQuery = `SELECT r.item_id,r.revision_id,
+ CASE WHEN typeof(r.revision)='blob' AND length(r.revision)=8 THEN r.revision END,
+ CASE WHEN typeof(r.change_seq)='blob' AND length(r.change_seq)=8 THEN r.change_seq END,
+ bm25(lexical_fts,1.0,1.0,1.0)
  FROM lexical_fts JOIN lexical_record r ON r.rowid=lexical_fts.rowid
  JOIN lexical_build b ON b.physical_build_id=r.physical_build_id
  WHERE lexical_fts MATCH ? AND b.physical_build_id=? AND b.scope_kind=? AND b.scope_key=? AND b.state='committed'
