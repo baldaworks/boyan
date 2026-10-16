@@ -171,8 +171,11 @@ func scrubPredicate(scope memory.Scope, ids []string, source, semantic bool) (st
 func placeholders(n int) string { return strings.TrimSuffix(strings.Repeat("?,", n), ",") }
 
 type scrubRow struct {
-	id    int64
-	bytes uint64
+	id              int64
+	bytes           uint64
+	owner, revision string
+	recheck         string
+	args            []any
 }
 
 // Lexical byte expressions count UTF-8 bytes, never SQLite character counts.
@@ -190,12 +193,13 @@ const lexicalScrubBytes = `length(CAST(r.item_id AS BLOB))+2*length(CAST(r.revis
 
 //nolint:cyclop // Enumeration and record-sized deletion groups both propagate errors before continuing.
 func (a *SQLiteCanonicalApplier) scrubRows(ctx context.Context, predicate string, args []any, semantic bool) error {
-	query := `SELECT r.rowid,` + lexicalScrubBytes + ` FROM lexical_record r JOIN lexical_build b USING(physical_build_id)
+	query := `SELECT r.rowid AS id,` + lexicalScrubBytes + ` FROM lexical_record r
+ JOIN lexical_build b USING(physical_build_id)
  WHERE ` + predicate + ` ORDER BY r.rowid LIMIT 128`
 	if semantic {
-		query = `SELECT r.rowid,length(r.embedding)+coalesce((SELECT sum(length(CAST(s.id AS BLOB))+8)
+		query = `SELECT r.rowid AS id,length(r.embedding)+coalesce((SELECT sum(length(CAST(s.id AS BLOB))+8)
  FROM semantic_source s WHERE s.chunk_rowid=r.rowid),0)+coalesce((SELECT sum(length(CAST(c.id AS BLOB))+8)
- FROM semantic_conversation c WHERE c.chunk_rowid=r.rowid),0)
+	 FROM semantic_conversation c WHERE c.chunk_rowid=r.rowid),0),r.build_id AS owner,r.revision_id AS revision
  FROM semantic_chunk r JOIN semantic_build b USING(build_id) WHERE ` + predicate + ` ORDER BY r.rowid LIMIT 128`
 	}
 
@@ -252,12 +256,38 @@ func (store *Store) scrubCandidates(ctx context.Context, query string, args []an
 
 	defer func() { _ = rows.Close() }()
 
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
 	var result []scrubRow
+
+	const semanticCandidateColumns = 4
 
 	for rows.Next() {
 		var row scrubRow
-		if err = rows.Scan(&row.id, &row.bytes); err != nil {
+
+		destinations := []any{&row.id, &row.bytes}
+		if len(columns) == semanticCandidateColumns {
+			destinations = append(destinations, &row.owner, &row.revision)
+		}
+
+		if err = rows.Scan(destinations...); err != nil {
 			return nil, err
+		}
+
+		idColumn := "id"
+		if columns[0] == "rowid" {
+			idColumn = "rowid"
+		}
+
+		row.recheck = "SELECT EXISTS(SELECT 1 FROM (" + query + ") WHERE " + idColumn + "=?)"
+
+		row.args = append(append([]any(nil), args...), row.id)
+		if len(columns) == semanticCandidateColumns {
+			row.recheck = "SELECT EXISTS(SELECT 1 FROM (" + query + ") WHERE id=? AND owner=? AND revision=?)"
+			row.args = append(row.args, row.owner, row.revision)
 		}
 
 		result = append(result, row)
@@ -271,6 +301,15 @@ func (a *SQLiteCanonicalApplier) deleteScrubRows(ctx context.Context, rows []scr
 		for _, row := range rows {
 			if err := ctx.Err(); err != nil {
 				return err
+			}
+
+			matches, err := row.matches(ctx, tx)
+			if err != nil {
+				return err
+			}
+
+			if !matches {
+				continue
 			}
 
 			if semantic {
@@ -294,6 +333,20 @@ func (a *SQLiteCanonicalApplier) deleteScrubRows(ctx context.Context, rows []scr
 	})
 }
 
+// Candidate identity and the original scope/source/revision predicate are
+// checked under writer ownership; SQLite may recycle rowids after retirement.
+func (row scrubRow) matches(ctx context.Context, tx *sql.Tx) (bool, error) {
+	if row.recheck == "" {
+		return false, nil
+	}
+
+	var found bool
+
+	err := tx.QueryRowContext(ctx, row.recheck, row.args...).Scan(&found)
+
+	return found, err
+}
+
 func scrubSemanticRow(ctx context.Context, tx *sql.Tx, id int64) error {
 	var build, revision string
 
@@ -301,6 +354,10 @@ func scrubSemanticRow(ctx context.Context, tx *sql.Tx, id int64) error {
 	if err := tx.QueryRowContext(ctx, lookup, id).Scan(&build, &revision); err == sql.ErrNoRows {
 		return nil
 	} else if err != nil {
+		return err
+	}
+
+	if active, err := degradeActiveSemanticBuild(ctx, tx, build); err != nil || active {
 		return err
 	}
 
@@ -321,10 +378,10 @@ func scrubSemanticRow(ctx context.Context, tx *sql.Tx, id int64) error {
 	return err
 }
 
-//nolint:cyclop // Exact source/revision proof and each finite cleanup page retain explicit error paths.
 func (a *SQLiteCanonicalApplier) scrubZeroCoverage(ctx context.Context,
 	scope memory.Scope, ids []string, source bool) error {
-	query := `SELECT c.rowid,length(CAST(c.revision_id AS BLOB))+length(CAST(c.build_id AS BLOB))
+	query := `SELECT c.rowid AS id,length(CAST(c.revision_id AS BLOB))+length(CAST(c.build_id AS BLOB)),
+ c.build_id AS owner,c.revision_id AS revision
  FROM semantic_coverage c JOIN semantic_build b USING(build_id)
  WHERE b.scope_kind=? AND b.scope_key=? AND NOT EXISTS
  (SELECT 1 FROM semantic_chunk r WHERE r.build_id=c.build_id AND r.revision_id=c.revision_id)`
@@ -366,21 +423,39 @@ func (a *SQLiteCanonicalApplier) scrubZeroCoverage(ctx context.Context,
 		}
 
 		if err = a.store.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
-			for _, row := range rows {
-				const revoke = `UPDATE semantic_build SET complete=0,status='degraded',reason='canonical_forget'
- WHERE build_id=(SELECT build_id FROM semantic_coverage WHERE rowid=?)`
-				if _, err := tx.ExecContext(ctx, revoke, row.id); err != nil {
-					return err
-				}
-
-				if _, err := tx.ExecContext(ctx, `DELETE FROM semantic_coverage WHERE rowid=?`, row.id); err != nil {
-					return err
-				}
-			}
-
-			return nil
+			return scrubZeroCoverageRows(ctx, tx, rows)
 		}); err != nil {
 			return err
 		}
 	}
+}
+
+func scrubZeroCoverageRows(ctx context.Context, tx *sql.Tx, rows []scrubRow) error {
+	for _, row := range rows {
+		matches, err := row.matches(ctx, tx)
+		if err != nil {
+			return err
+		}
+
+		if !matches {
+			continue
+		}
+
+		if active, err := degradeActiveSemanticBuild(ctx, tx, row.owner); err != nil {
+			return err
+		} else if active {
+			continue
+		}
+
+		const revoke = `UPDATE semantic_build SET complete=0,status='degraded',reason='canonical_forget' WHERE build_id=?`
+		if _, err = tx.ExecContext(ctx, revoke, row.owner); err != nil {
+			return err
+		}
+
+		if _, err = tx.ExecContext(ctx, "DELETE FROM semantic_coverage WHERE rowid=?", row.id); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

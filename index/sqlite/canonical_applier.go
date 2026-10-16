@@ -287,6 +287,10 @@ func (a *SQLiteCanonicalApplier) acquire(ctx context.Context) (context.Context, 
 }
 
 func (a *SQLiteCanonicalApplier) lockScope(ctx context.Context, scope memory.Scope) (func(), error) {
+	return a.store.lockScope(ctx, scope)
+}
+
+func (store *Store) lockScope(ctx context.Context, scope memory.Scope) (func(), error) {
 	if err := scope.Validate(); err != nil {
 		return nil, err
 	}
@@ -294,7 +298,7 @@ func (a *SQLiteCanonicalApplier) lockScope(ctx context.Context, scope memory.Sco
 	candidate := make(chan struct{}, 1)
 	candidate <- struct{}{}
 
-	value, _ := a.store.scopeWrites.LoadOrStore(scope, candidate)
+	value, _ := store.scopeWrites.LoadOrStore(scope, candidate)
 
 	lease := value.(chan struct{})
 	select {

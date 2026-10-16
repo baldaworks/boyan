@@ -129,6 +129,20 @@ func TestSemantic8192ChunksAnd8193RejectedBeforeClaim(t *testing.T) {
 		t.Fatalf("8192 stage=%#v %v", state, err)
 	}
 
+	if err := s.Publish(t.Context(), semantic.Publication{View: g.View(), BuildID: g.BuildID}); err != nil {
+		t.Fatal(err)
+	}
+
+	marker := g
+	marker.BuildID = "retirement-marker"
+
+	degraded := semantic.Degraded{Generation: marker, SafeReason: semantic.ReasonUnavailable, ExpectedActiveEpoch: 1}
+	if _, err := s.PublishDegraded(t.Context(), degraded, g.BuildID); err != nil {
+		t.Fatal(err)
+	}
+
+	checkSemanticRows(t, s, g.BuildID, 0)
+
 	r[0].ChunkCount++
 
 	chunks = append(chunks, c[0])

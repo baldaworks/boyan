@@ -273,7 +273,37 @@ func readSemanticState(ctx context.Context, tx *sql.Tx, build string) (semantic.
 		return semantic.State{}, false, semantic.ErrCorrupt
 	}
 
+	if state.Status == semantic.StatusDegraded {
+		if err := validateSemanticDegraded(ctx, tx, state); err != nil {
+			return semantic.State{}, false, err
+		}
+	}
+
 	return state, complete, nil
+}
+
+func validateSemanticDegraded(ctx context.Context, tx *sql.Tx, state semantic.State) error {
+	if !semantic.Reason(state.SafeReason).Valid() || state.ChunkCount != 0 || state.RecordCount != 0 ||
+		state.CoverageHash != semantic.CoverageFingerprint(nil) {
+		return semantic.ErrCorrupt
+	}
+
+	finalized, err := semantic.FinalizeEncodedBytes(state, 0)
+	if err != nil || finalized.EncodedBytes != state.EncodedBytes {
+		return semantic.ErrCorrupt
+	}
+
+	var rows bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM semantic_coverage WHERE build_id=?)
+	 OR EXISTS(SELECT 1 FROM semantic_chunk WHERE build_id=?)`, state.BuildID, state.BuildID).Scan(&rows); err != nil {
+		return err
+	}
+
+	if rows {
+		return semantic.ErrCorrupt
+	}
+
+	return nil
 }
 
 func decodeSemanticVector(encoded []byte, dimensions int) ([]float32, error) {

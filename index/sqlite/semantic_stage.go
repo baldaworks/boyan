@@ -31,7 +31,7 @@ func (store *Store) Stage(ctx context.Context, generation semantic.Generation,
 		return semantic.State{}, semantic.ErrInvalid
 	}
 
-	operation, done, err := store.acquire(ctx)
+	operation, done, err := store.semanticScopeLease(ctx, state.Scope)
 	if err != nil {
 		return semantic.State{}, semanticStorageError(err)
 	}

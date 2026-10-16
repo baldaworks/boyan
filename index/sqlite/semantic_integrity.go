@@ -25,7 +25,7 @@ func validateSemanticBuild(
 	}
 
 	if state.Status != semantic.StatusReady {
-		return semantic.State{}, semantic.ErrCorrupt
+		return state, nil // readSemanticState validates degraded shape and absence of rows.
 	}
 
 	coverage, byRevision, err := readSemanticCoverage(ctx, tx, build)
@@ -385,7 +385,7 @@ func inspectSemantic(ctx context.Context, db *sql.DB) error {
 		)
 
 		err := db.QueryRowContext(ctx, `SELECT rowid,CASE WHEN length(CAST(build_id AS BLOB))<=512 THEN build_id END
-   FROM semantic_build WHERE complete=1 AND status IN ('ready','building') AND rowid>?
+   FROM semantic_build WHERE complete=1 AND rowid>?
    ORDER BY rowid LIMIT 1`, after).Scan(&rowid, &build)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
