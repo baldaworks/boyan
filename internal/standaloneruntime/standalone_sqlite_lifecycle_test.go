@@ -32,7 +32,7 @@ func TestSQLiteRuntimeSemanticInitializerFailureKeepsLexicalReady(t *testing.T) 
 	db := openRuntimeSQL(t, runtime)
 	_, err = db.ExecContext(t.Context(), `INSERT INTO semantic_build
  (build_id,scope_kind,scope_key,generation_id,physical_build_id,watermark,model_space,dimensions,epoch,status)
- VALUES('orphan','personal','orphan','generation','physical',zeroblob(8),'model',2,zeroblob(8),'building');
+ VALUES('orphan','personal','test:orphan','generation','physical',zeroblob(8),'model',2,zeroblob(8),'building');
  CREATE TRIGGER fail_semantic_repair BEFORE DELETE ON semantic_build
  BEGIN SELECT RAISE(ABORT,'private SQL fault sentinel'); END`)
 	requireNoError(t, err, "install semantic fault: %v")

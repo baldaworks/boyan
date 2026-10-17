@@ -29,7 +29,8 @@ func buildStandaloneReadServices(
 		return nil, nil, nil, err
 	}
 
-	forget, err := memoryops.NewForgetServiceWithProjection(forgetOperations, storage.syncer)
+	forget, err := memoryops.NewForgetServiceWithProjection(forgetOperations,
+		&forgetProjectionSyncer{retire: storage.index, next: storage.syncer})
 	if err != nil {
 		return nil, nil, nil, err
 	}

@@ -20,6 +20,11 @@ func (s *standaloneService) startComponents(ctx context.Context) error {
 		return err
 	}
 
+	if err := s.index.ReconcileAllCanonicalDenials(ctx); err != nil {
+		return fmt.Errorf("retire Boyan SQLite canonical denials: %w; stop all writers, back up search and canonical state, "+
+			"then rebuild only disposable search state", err)
+	}
+
 	if err := s.projection.Start(ctx); err != nil {
 		return fmt.Errorf("repair Boyan SQLite projection: %w; stop all writers, back up search and canonical state, "+
 			"then rebuild only disposable search state", err)
