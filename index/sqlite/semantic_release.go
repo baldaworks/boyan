@@ -78,9 +78,12 @@ type semanticReleaseIdentity struct {
 
 //nolint:cyclop // Missing, wrong scope, active and unpublished states must remain distinct.
 func (store *Store) revokeSemanticCandidate(ctx context.Context, tx *sql.Tx, scope memory.Scope, build string) (semanticReleaseIdentity, semantic.CandidateRelease, error) {
-	var identity semanticReleaseIdentity
+	var (
+		identity semanticReleaseIdentity
+		owns     bool
+	)
 
-	err := tx.QueryRowContext(ctx, "SELECT rowid FROM semantic_build WHERE build_id=?", build).Scan(&identity.rowid)
+	err := tx.QueryRowContext(ctx, "SELECT rowid,scope_kind=? AND scope_key=? FROM semantic_build WHERE build_id=?", string(scope.Kind), scope.Key, build).Scan(&identity.rowid, &owns)
 	if errors.Is(err, sql.ErrNoRows) {
 		return identity, semantic.CandidateRelease{Disposition: semantic.CandidateMissing}, nil
 	}
@@ -89,13 +92,17 @@ func (store *Store) revokeSemanticCandidate(ctx context.Context, tx *sql.Tx, sco
 		return identity, semantic.CandidateRelease{}, err
 	}
 
-	state, complete, err := readSemanticState(ctx, tx, build)
-	if err != nil {
+	if !owns {
+		return identity, semantic.CandidateRelease{}, semantic.ErrConflict
+	}
+
+	if err = store.prepareSemanticRelease(ctx, tx, scope, build, identity.rowid); err != nil {
 		return identity, semantic.CandidateRelease{}, err
 	}
 
-	if state.Scope != scope {
-		return identity, semantic.CandidateRelease{}, semantic.ErrConflict
+	state, complete, err := readSemanticState(ctx, tx, build)
+	if err != nil {
+		return identity, semantic.CandidateRelease{}, err
 	}
 
 	var activeCount int
@@ -124,16 +131,29 @@ func (store *Store) revokeSemanticCandidate(ctx context.Context, tx *sql.Tx, sco
 		return identity, semantic.CandidateRelease{}, semantic.ErrCorrupt
 	}
 
-	if operation, live := store.semanticStaging.Load(build); !live || operation != semanticOperationRelease {
-		return identity, semantic.CandidateRelease{}, semantic.ErrConflict
-	}
-
 	identity.state = state
 	_, err = tx.ExecContext(ctx, `UPDATE semantic_build SET complete=0
  WHERE rowid=? AND build_id=? AND scope_kind=? AND scope_key=? AND epoch=?
  AND NOT EXISTS(SELECT 1 FROM semantic_active WHERE build_id=?)`, identity.rowid, build, string(scope.Kind), scope.Key, encodeUint64(0), build)
 
 	return identity, semantic.CandidateRelease{}, err
+}
+
+func (store *Store) prepareSemanticRelease(ctx context.Context, tx *sql.Tx, scope memory.Scope, build string, rowid int64) error {
+	if operation, live := store.semanticStaging.Load(build); !live || operation != semanticOperationRelease {
+		return semantic.ErrConflict
+	}
+
+	// Privacy revocation retains the candidate's original metadata and safe
+	// remainder, unlike a public degraded marker. Restore only this exact owner's
+	// incomplete staging shape so the strict metadata and per-page checks apply.
+	// Completeness remains revoked; a failed metadata check rolls this back too.
+	_, err := tx.ExecContext(ctx, `UPDATE semantic_build SET status='building', reason=''
+ WHERE rowid=? AND build_id=? AND scope_kind=? AND scope_key=? AND epoch=? AND complete=0
+ AND status='degraded' AND reason='canonical_forget'
+ AND NOT EXISTS(SELECT 1 FROM semantic_active WHERE build_id=?)`, rowid, build, string(scope.Kind), scope.Key, encodeUint64(0), build)
+
+	return err
 }
 
 func (store *Store) checkSemanticRelease(ctx context.Context, tx *sql.Tx, identity semanticReleaseIdentity) error {
