@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	semanticstore "github.com/baldaworks/boyan/index/semantic"
+	semanticstore "github.com/baldaworks/boyan/internal/semantic"
 	"github.com/baldaworks/boyan/pkg/memory"
 )
 
@@ -16,12 +16,12 @@ func TestScheduleAfterOlderExplicitRepairSnapshotRerunsNewestCertifiedView(t *te
 	scope := testScope("schedule-after-repair-snapshot")
 	record := testRecord(scope, "item-a", "revision-a", "text", memory.SensitivityStandard, memory.RetentionClassStandard)
 	canonical := newFakeCanonical(scope, 7, record)
-	manifests := &fakeManifestSource{manifest: activeManifest(scope, "bleve-generation-7", 7)}
+	manifests := &fakeManifestSource{manifest: activeManifest(scope, "sqlite-generation-7", 7)}
 	provider := newGenerationBlockingProvider()
-	store := openSemanticStore(t)
+	store := openSemanticStore(t, canonical)
 	manager, err := New(Dependencies{
 		Canonical: canonical, Records: canonical, Manifests: manifests, Physical: manifests,
-		Provider: provider, Store: store, ModelSpace: testModelSpace("model-a"),
+		Provider: provider, Store: store, Lifecycle: store, ModelSpace: testModelSpace("model-a"),
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -45,7 +45,7 @@ func TestScheduleAfterOlderExplicitRepairSnapshotRerunsNewestCertifiedView(t *te
 
 	waitClosed(t, provider.firstEntered, "W7 provider call was not entered")
 	canonical.replace(8, record)
-	manifests.set(activeManifest(scope, "bleve-generation-8", 8))
+	manifests.set(activeManifest(scope, "sqlite-generation-8", 8))
 	if err := manager.Schedule(scope); err != nil {
 		t.Fatalf("Schedule(W8) error = %v", err)
 	}
@@ -64,7 +64,7 @@ func TestScheduleAfterOlderExplicitRepairSnapshotRerunsNewestCertifiedView(t *te
 
 	state := waitActiveState(t, store, scope, func(state semanticstore.State, found bool) bool {
 		return found && state.Status == semanticstore.StatusReady &&
-			state.LexicalGenerationID == "bleve-generation-8" && state.LexicalWatermark == 8
+			state.LexicalGenerationID == "sqlite-generation-8" && state.LexicalWatermark == 8
 	})
 	if provider.Calls() != 2 {
 		t.Fatalf("provider calls = %d, want exactly W7 plus one coalesced W8 rerun", provider.Calls())
@@ -79,9 +79,10 @@ func TestCanceledRepairOverCompatibleReadyProjectionStillReportsReady(t *testing
 	scope := testScope("cancel-over-ready")
 	record := testRecord(scope, "item-a", "revision-a", "text", memory.SensitivityStandard, memory.RetentionClassStandard)
 	canonical := newFakeCanonical(scope, 7, record)
-	manifests := &fakeManifestSource{manifest: activeManifest(scope, "bleve-generation-7", 7)}
+	manifests := &fakeManifestSource{manifest: activeManifest(scope, "sqlite-generation-7", 7)}
 	manager := newTestManager(
-		t, canonical, manifests, &fakeProvider{vector: []float32{1, 0}}, openSemanticStore(t), testModelSpace("model-a"),
+		t, canonical, manifests, &fakeProvider{vector: []float32{1, 0}},
+		openSemanticStore(t, canonical), testModelSpace("model-a"),
 	)
 	if err := manager.Repair(context.Background(), scope); err != nil {
 		t.Fatalf("initial Repair() error = %v", err)
@@ -99,17 +100,30 @@ func TestCanceledRepairOverCompatibleReadyProjectionStillReportsReady(t *testing
 	}
 }
 
-//nolint:lll // State and publication epoch prove the hook ran in the real verify-to-publish gap.
+//nolint:cyclop,lll // State, exact owner and epoch prove the real verify-to-publish gap.
 func TestVerifyPublishGapRacePublishesThenInvalidatesStaleGeneration(t *testing.T) {
 	scope := testScope("verify-publish-gap")
 	record := testRecord(scope, "item-a", "revision-a", "text", memory.SensitivityStandard, memory.RetentionClassStandard)
 	canonical := newFakeCanonical(scope, 7, record)
-	manifests := &fakeManifestSource{manifest: activeManifest(scope, "bleve-generation-7", 7)}
-	store := openSemanticStore(t)
+	manifests := &fakeManifestSource{manifest: activeManifest(scope, "sqlite-generation-7", 7)}
+	store := openSemanticStore(t, canonical)
 	manager := newTestManager(t, canonical, manifests, &fakeProvider{vector: []float32{1, 0}}, store, testModelSpace("model-a"))
 	manager.beforePublish = func() {
 		canonical.replace(8, record)
-		manifests.set(activeManifest(scope, "bleve-generation-8", 8))
+		manifests.set(activeManifest(scope, "sqlite-generation-8", 8))
+	}
+
+	var published semanticstore.State
+
+	manager.afterPublish = func() {
+		var found bool
+
+		var err error
+
+		published, found, err = store.ActiveState(context.Background(), scope)
+		if err != nil || !found || published.Status != semanticstore.StatusReady || published.PublicationEpoch != 1 {
+			t.Fatalf("missing original publication before exact invalidation: %#v %t %v", published, found, err)
+		}
 	}
 
 	if err := manager.Repair(context.Background(), scope); !errors.Is(err, ErrStaleView) {
@@ -117,8 +131,10 @@ func TestVerifyPublishGapRacePublishesThenInvalidatesStaleGeneration(t *testing.
 	}
 
 	state, found, err := store.ActiveState(context.Background(), scope)
-	if err != nil || !found || state.Status != semanticstore.StatusDegraded || state.PublicationEpoch != 2 {
-		t.Fatalf("ActiveState() = (%#v, %t, %v), want W7 publication invalidated at epoch 2", state, found, err)
+	// SQL precisely invalidates the published owner without manufacturing a new
+	// marker/epoch. The original positive publication must become unusable.
+	if err != nil || !found || state.BuildID != published.BuildID || state.Status != semanticstore.StatusDegraded || state.PublicationEpoch != 1 || state.ChunkCount != 0 || state.RecordCount != 0 {
+		t.Fatalf("ActiveState() = (%#v, %t, %v), want exact W7 publication invalidated", state, found, err)
 	}
 }
 
@@ -127,15 +143,15 @@ func TestPostPublishRacePreservesConcurrentNewerWinnerAndReadyStatus(t *testing.
 	scope := testScope("newer-publication-winner")
 	record := testRecord(scope, "item-a", "revision-a", "text", memory.SensitivityStandard, memory.RetentionClassStandard)
 	canonical := newFakeCanonical(scope, 7, record)
-	manifests := &fakeManifestSource{manifest: activeManifest(scope, "bleve-generation-7", 7)}
-	store := openSemanticStore(t)
+	manifests := &fakeManifestSource{manifest: activeManifest(scope, "sqlite-generation-7", 7)}
+	store := openSemanticStore(t, canonical)
 	older := newTestManager(t, canonical, manifests, &fakeProvider{vector: []float32{1, 0}}, store, testModelSpace("model-a"))
 	newer := newTestManager(t, canonical, manifests, &fakeProvider{vector: []float32{0, 1}}, store, testModelSpace("model-a"))
 
 	var winner semanticstore.State
 	older.afterPublish = func() {
 		canonical.replace(8, record)
-		manifests.set(activeManifest(scope, "bleve-generation-8", 8))
+		manifests.set(activeManifest(scope, "sqlite-generation-8", 8))
 		if err := newer.Repair(context.Background(), scope); err != nil {
 			t.Fatalf("newer Repair() error = %v", err)
 		}
@@ -152,7 +168,7 @@ func TestPostPublishRacePreservesConcurrentNewerWinnerAndReadyStatus(t *testing.
 	}
 	active, found, err := store.ActiveState(context.Background(), scope)
 	if err != nil || !found || active.BuildID != winner.BuildID || active.Status != semanticstore.StatusReady ||
-		active.LexicalGenerationID != "bleve-generation-8" {
+		active.LexicalGenerationID != "sqlite-generation-8" {
 		t.Fatalf("ActiveState() = (%#v, %t, %v), want preserved W8 winner %#v", active, found, err, winner)
 	}
 
@@ -174,7 +190,7 @@ func waitClosed(t *testing.T, signal <-chan struct{}, message string) {
 
 func waitActiveState(
 	t *testing.T,
-	store *semanticstore.Store,
+	store *neutralSemanticStore,
 	scope memory.Scope,
 	ready func(semanticstore.State, bool) bool,
 ) semanticstore.State {

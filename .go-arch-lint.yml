@@ -44,8 +44,6 @@ components:
       - internal/embedding
       - internal/semanticprojection
       - store/badger
-      - index/bleve
-      - index/semantic
       - index/sqlite
 
   standalone_shell:

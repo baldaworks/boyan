@@ -218,3 +218,63 @@ including tests and module/architecture files, port the retained fixture plumbin
 and rerun affected tests. This inventory authorizes no deletion itself. TASK017
 owns operator prose; TASK019 comparable benchmarks and real pinned TEI/merged-state
 Verify remain separate gates. Local test success cannot close the Story.
+
+## TASK016 retirement follow-through
+
+The TASK015 handoff above remains historical. TASK016 ports all38 neutral tests
+in manager, repair_loop2/3/4, operational and retirement to the real SQL Store.
+`manager_sqlite_fixture_test.go` supplies an actual sealed empty lexical tuple
+and the independently known fake canonical population through a
+`neutralFixturePrivacy` pointer. It explicitly registers each fixture write's
+known population and preserves history using the accepted fixture representation;
+per-ID checks do not repeatedly import all8192 records. The existing shared
+mutable SQL/Hybrid fixture is unchanged. Unknown identities remain errors. Queue refill,
+same-scope fairness,8192 scanned-ineligible records, high-dimensional admission
+before inference, single-flight, temporal and precise invalidation assertions
+remain. Refresh/forget now holds a real SQL SearchSnapshot across replacements.
+`TestVerifyPublishGapRacePublishesThenInvalidatesStaleGeneration` captures the
+actual ready owner and requires that same owner/positive epoch degraded with
+zero chunks/coverage. SQL exact invalidation retains epoch1; old epoch2 was the
+retired adapter's replacement-marker detail, not an extra publication requirement.
+
+`projection_runtime_sync_test.go` and `projection_runtime_retention_test.go` now
+use real SQL with the actual canonical Store authority. Replay-only applier,
+resumed delta, dirty restart, exact scope, active+previous retention, concurrent
+peer search and canonical-first activation before pruning remain. SQL row counts
+replace old directory/marker checks. The old generation-directory symlink
+pruning fixture is engine-specific; `TestUnsafePathsRejectedBeforeSQLite`
+independently preserves SQLite's path protections. A crashed incomplete owner,
+complete canonical future, live in-process owner and exact abort are checked as
+distinct SQL rows. Missing physical state still rebuilds without canonical change.
+
+`recall_interleaving_test.go` uses actual SQL and retains first-call retryable
+conflict then two-record/sequence2 retry. The additional imports discovered in
+canonicalcore were ported with actual canonical authority: current-head AsOf,
+truncated large-forget/later-turn/replay and beyond-first-page kind filters.
+`TestKindFilterSurvivesMissingSQLiteRebuild` replaces the old v1 mapping fixture;
+the excluded mapping implementation is not a supported SQL upgrade. Host keeps
+actual missing/dirty/never-created cases; SQL unknown/newer-version failure and
+runtime legacy-file nonmutation remain unchanged.
+
+The old lexical/store tables and Hybrid rows above map the71 retired package
+source files and duplicate LegacyHybrid tests to exact permanent assertions.
+`TestSQLiteHybridFallbackBoundsHydrationAtLexicalMaximum` separately retains
+the old fallback hydration bound:300 real lexical rows produce256 ordinary SQL
+candidates, but missing-semantic Hybrid fallback returns exactly200 in stable
+order, reports100 lexical candidates/zero dense/scanned, and invokes no provider.
+This is distinct from healthy-channel fusion's200 bound.
+Only the old observed-codec upgrade and LegacySearchReader typed-nil constructor
+are engine exclusions. The SQL typed-nil BuildStore and required lifecycle tests
+remain, including both default and explicitly composed SQLite identity. Shared
+`delayedRecallReader` and `queryProviderFunc` survive for actual SQL timing/error
+successors. Authored lexical controls, profile, observations and AUDIT_BASELINE
+remain after removing the old measurement harness. The old measurement archive
+is retained for TASK019; no new benchmark or real-TEI result is claimed here.
+
+The final Manager requires exact CandidateLifecycle; legacy nil-lifecycle/GC,
+replacement-marker fallback and default legacy identity branches are retired.
+Canonical Badger, all portable semantic values and candidate-release contracts,
+the accepted SQL privacy/recovery components and original all-Embed saturation
+regression remain. Import/module/runtime graph checks and native results are
+recorded in the TASK016 implementation report/ledger; this inventory is not
+independent acceptance or merged-state verification.

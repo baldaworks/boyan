@@ -1,11 +1,10 @@
-//nolint:testpackage // Exercise consumer ports with the existing real legacy fixtures.
+//nolint:testpackage // Exercise consumer ports with the existing real SQLite fixtures.
 package semanticprojection
 
 import (
 	"context"
 	"testing"
 
-	semanticstore "github.com/baldaworks/boyan/index/semantic"
 	sqlitestore "github.com/baldaworks/boyan/index/sqlite"
 )
 
@@ -14,26 +13,26 @@ var _ CandidateLifecycle = (*sqlitestore.Store)(nil)
 func TestPortableBuildStorePreservesTypedNilRejection(t *testing.T) {
 	t.Parallel()
 
-	var store *semanticstore.Store
+	f := newSQLiteManagerFixture(t)
+	dependencies := f.dependencies()
 
-	canonical := &fakeCanonical{}
-	manifests := &fakeManifestSource{}
+	control, err := New(dependencies)
+	if err != nil {
+		t.Fatalf("valid portable dependencies rejected: %v", err)
+	}
 
-	manager, err := New(Dependencies{Canonical: canonical, Records: canonical,
-		Manifests: manifests, Physical: manifests, Provider: &fakeProvider{}, Store: store,
-		ModelSpace: testModelSpace("model")})
+	if err := control.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	var store *sqlitestore.Store
+
+	dependencies.Store = store
+
+	manager, err := New(dependencies)
 	if err == nil {
 		_ = manager.Close(context.Background())
 
-		t.Fatal("New accepted typed nil legacy store through BuildStore")
-	}
-}
-
-func TestLegacySearchPortPreservesTypedNilRejection(t *testing.T) {
-	hybrid, provider, _, _ := hybridFixture(t)
-
-	var store *semanticstore.Store
-	if _, err := NewLegacyHybrid(hybrid.lexical, store, provider, hybrid.space); err == nil {
-		t.Fatal("NewLegacyHybrid accepted typed nil legacy store through LegacySearchReader")
+		t.Fatal("New accepted typed nil SQLite store through BuildStore")
 	}
 }

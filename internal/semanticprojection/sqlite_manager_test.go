@@ -73,17 +73,22 @@ func TestSQLiteManagerBindsProjectionIdentityAndRequiresLifecycle(t *testing.T) 
 		t.Fatalf("status=%#v err=%v", status, err)
 	}
 
-	for _, lifecycle := range []CandidateLifecycle{nil, (*sqlitestore.Store)(nil)} {
-		deps := f.dependencies()
-		deps.Lifecycle = lifecycle
+	// The default and explicitly composed SQLite identity both require the
+	// exact owner capability; the temporary legacy default no longer exists.
+	for _, projectionID := range []string{"", "sqlite"} {
+		for _, lifecycle := range []CandidateLifecycle{nil, (*sqlitestore.Store)(nil)} {
+			deps := f.dependencies()
+			deps.Lifecycle = lifecycle
+			deps.LexicalProjectionID = projectionID
 
-		manager, err := New(deps)
-		if !errors.Is(err, semanticcore.ErrInvalid) {
-			if manager != nil {
-				_ = manager.Close(t.Context())
+			manager, err := New(deps)
+			if !errors.Is(err, semanticcore.ErrInvalid) {
+				if manager != nil {
+					_ = manager.Close(t.Context())
+				}
+
+				t.Fatalf("missing sqlite capability accepted: %v", err)
 			}
-
-			t.Fatalf("missing sqlite capability accepted: %v", err)
 		}
 	}
 }

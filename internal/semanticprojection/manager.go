@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	lexicalProjectionID     = "bleve"
+	lexicalProjectionID     = "sqlite"
 	canonicalPageSize       = 128
 	projectionScanPageLimit = semanticcore.ProjectionScanRecordLimit/canonicalPageSize + 1
 	semanticCleanupTimeout  = 5 * time.Second
@@ -42,8 +42,7 @@ type Dependencies struct {
 	Provider   embedding.Provider
 	Store      BuildStore
 	ModelSpace semanticcore.ModelSpace
-	// LexicalProjectionID is statically bound by composition; empty preserves
-	// the temporary legacy adapter until runtime cutover.
+	// LexicalProjectionID is statically bound to SQLite by composition.
 	LexicalProjectionID string
 	Lifecycle           CandidateLifecycle
 }
@@ -324,8 +323,7 @@ func configureLifecycle(dependencies *Dependencies) error {
 		dependencies.LexicalProjectionID = lexicalProjectionID
 	}
 
-	if dependencies.Lifecycle != nil && nilDependency(dependencies.Lifecycle) ||
-		dependencies.LexicalProjectionID == "sqlite" && dependencies.Lifecycle == nil {
+	if dependencies.LexicalProjectionID != lexicalProjectionID || nilDependency(dependencies.Lifecycle) {
 		return fmt.Errorf("semantic projection lifecycle dependency: %w", semanticcore.ErrInvalid)
 	}
 
@@ -333,7 +331,7 @@ func configureLifecycle(dependencies *Dependencies) error {
 }
 
 // nilDependency only validates interface nilness; it never discovers or selects
-// a backend. Composition supplies the optional lifecycle explicitly.
+// a backend. Composition supplies the required lifecycle explicitly.
 func nilDependency(dependency any) bool {
 	if dependency == nil {
 		return true

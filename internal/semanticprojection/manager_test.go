@@ -6,14 +6,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"sort"
 	"sync"
 	"testing"
 	"time"
 
-	semanticstore "github.com/baldaworks/boyan/index/semantic"
 	semanticcore "github.com/baldaworks/boyan/internal/semantic"
+	semanticstore "github.com/baldaworks/boyan/internal/semantic"
 	"github.com/baldaworks/boyan/pkg/memory"
 )
 
@@ -27,9 +26,9 @@ func TestRepairBuildsOnlyEligibleCurrentRecordsForExactLexicalView(t *testing.T)
 		testRecord(scope, "item-b", "revision-b", "secret text", memory.SensitivitySensitive, memory.RetentionClassStandard),
 		testRecord(scope, "item-c", "revision-c", "unsupported retention", memory.SensitivityStandard, memory.RetentionClass("unsupported")),
 	)
-	manifests := &fakeManifestSource{manifest: activeManifest(scope, "bleve-generation-7", 7)}
+	manifests := &fakeManifestSource{manifest: activeManifest(scope, "sqlite-generation-7", 7)}
 	provider := &fakeProvider{vector: []float32{1, 0}}
-	store := openSemanticStore(t)
+	store := openSemanticStore(t, canonical)
 	space := testModelSpace("model-a")
 	manager := newTestManager(t, canonical, manifests, provider, store, space)
 
@@ -42,16 +41,16 @@ func TestRepairBuildsOnlyEligibleCurrentRecordsForExactLexicalView(t *testing.T)
 		t.Fatalf("SpaceFingerprint() error = %v", err)
 	}
 
-	snapshot, found, err := store.Snapshot(context.Background(), semanticstore.View{
-		Scope: scope, LexicalGenerationID: "bleve-generation-7", LexicalWatermark: 7,
+	snapshot, found, err := store.LoadReusable(context.Background(), semanticstore.View{
+		Scope: scope, LexicalGenerationID: "sqlite-generation-7", LexicalWatermark: 7,
 		ModelSpace: fingerprint, Dimensions: 2,
 	})
 	if err != nil || !found {
 		t.Fatalf("Snapshot() = (_, %t, %v), want ready snapshot", found, err)
 	}
 
-	chunks := snapshot.Chunks()
-	if len(chunks) != 1 || chunks[0].RevisionID != "revision-a" || chunks[0].ScopeChangeSeq != 7 {
+	chunks := snapshot.Chunks
+	if len(chunks) != 1 || chunks[0].RevisionID != "revision-a" || storedChunkSequence(t, store, "revision-a") != 7 {
 		t.Fatalf("Snapshot().Chunks() = %#v, want only eligible current revision", chunks)
 	}
 
@@ -81,9 +80,9 @@ func TestRepairExcludesNonActiveHydrationBeforeProviderCall(t *testing.T) {
 	)
 	record.State = memory.RevisionStateSuperseded
 	canonical := newFakeCanonical(scope, 7, record)
-	manifests := &fakeManifestSource{manifest: activeManifest(scope, "bleve-generation-7", 7)}
+	manifests := &fakeManifestSource{manifest: activeManifest(scope, "sqlite-generation-7", 7)}
 	provider := &fakeProvider{vector: []float32{1, 0}}
-	store := openSemanticStore(t)
+	store := openSemanticStore(t, canonical)
 	manager := newTestManager(t, canonical, manifests, provider, store, testModelSpace("model-a"))
 
 	if err := manager.Repair(context.Background(), scope); err != nil {
@@ -109,9 +108,9 @@ func TestStatusClassifiesColdProjectionWithoutProviderOrCanonicalWork(t *testing
 	manager := newTestManager(
 		t,
 		canonical,
-		&fakeManifestSource{manifest: activeManifest(scope, "bleve-generation-7", 7)},
+		&fakeManifestSource{manifest: activeManifest(scope, "sqlite-generation-7", 7)},
 		provider,
-		openSemanticStore(t),
+		openSemanticStore(t, canonical),
 		testModelSpace("model-a"),
 	)
 
@@ -135,8 +134,8 @@ func TestRepairReusesOnlySameModelSpaceAndPublishesCompleteReplacement(t *testin
 	scope := testScope("reuse")
 	record := testRecord(scope, "item-a", "revision-a", "stable text", memory.SensitivityStandard, memory.RetentionClassStandard)
 	canonical := newFakeCanonical(scope, 7, record)
-	manifests := &fakeManifestSource{manifest: activeManifest(scope, "bleve-generation-7", 7)}
-	store := openSemanticStore(t)
+	manifests := &fakeManifestSource{manifest: activeManifest(scope, "sqlite-generation-7", 7)}
+	store := openSemanticStore(t, canonical)
 
 	firstProvider := &fakeProvider{vector: []float32{1, 0}}
 	first := newTestManager(t, canonical, manifests, firstProvider, store, testModelSpace("model-a"))
@@ -145,7 +144,7 @@ func TestRepairReusesOnlySameModelSpaceAndPublishesCompleteReplacement(t *testin
 	}
 
 	canonical.setSequence(8)
-	manifests.set(activeManifest(scope, "bleve-generation-8", 8))
+	manifests.set(activeManifest(scope, "sqlite-generation-8", 8))
 	reuseProvider := &fakeProvider{vector: []float32{0, 1}}
 	reuse := newTestManager(t, canonical, manifests, reuseProvider, store, testModelSpace("model-a"))
 	if err := reuse.Repair(context.Background(), scope); err != nil {
@@ -156,7 +155,7 @@ func TestRepairReusesOnlySameModelSpaceAndPublishesCompleteReplacement(t *testin
 	}
 
 	canonical.setSequence(9)
-	manifests.set(activeManifest(scope, "bleve-generation-9", 9))
+	manifests.set(activeManifest(scope, "sqlite-generation-9", 9))
 	changedProvider := &fakeProvider{vector: []float32{0, 1}}
 	changedSpace := testModelSpace("model-b")
 	changed := newTestManager(t, canonical, manifests, changedProvider, store, changedSpace)
@@ -171,11 +170,11 @@ func TestRepairReusesOnlySameModelSpaceAndPublishesCompleteReplacement(t *testin
 	if err != nil {
 		t.Fatalf("SpaceFingerprint() error = %v", err)
 	}
-	snapshot, found, err := store.Snapshot(context.Background(), semanticstore.View{
-		Scope: scope, LexicalGenerationID: "bleve-generation-9", LexicalWatermark: 9,
+	snapshot, found, err := store.LoadReusable(context.Background(), semanticstore.View{
+		Scope: scope, LexicalGenerationID: "sqlite-generation-9", LexicalWatermark: 9,
 		ModelSpace: fingerprint, Dimensions: 2,
 	})
-	if err != nil || !found || len(snapshot.Chunks()) != 1 || snapshot.Chunks()[0].Vector[1] != 1 {
+	if err != nil || !found || len(snapshot.Chunks) != 1 || snapshot.Chunks[0].Vector[1] != 1 {
 		t.Fatalf("changed-space Snapshot() = (%#v, %t, %v)", snapshot, found, err)
 	}
 }
@@ -188,12 +187,12 @@ func TestRepairRejectsCanonicalAndManifestRaceBeforePublication(t *testing.T) {
 	canonical := newFakeCanonical(scope, 7,
 		testRecord(scope, "item-a", "revision-a", "eligible text", memory.SensitivityStandard, memory.RetentionClassStandard),
 	)
-	manifests := &fakeManifestSource{manifest: activeManifest(scope, "bleve-generation-7", 7)}
-	store := openSemanticStore(t)
+	manifests := &fakeManifestSource{manifest: activeManifest(scope, "sqlite-generation-7", 7)}
+	store := openSemanticStore(t, canonical)
 	manager := newTestManager(t, canonical, manifests, &fakeProvider{vector: []float32{1, 0}}, store, testModelSpace("model-a"))
 	manager.beforeFinalCheck = func() {
 		canonical.setSequence(8)
-		manifests.set(activeManifest(scope, "bleve-generation-8", 8))
+		manifests.set(activeManifest(scope, "sqlite-generation-8", 8))
 	}
 
 	err := manager.Repair(context.Background(), scope)
@@ -213,8 +212,8 @@ func TestRepairPrivacyTransitionReplacesOldReadyStateWithEmptyCompleteState(t *t
 	scope := testScope("privacy")
 	record := testRecord(scope, "item-a", "revision-a", "eligible text", memory.SensitivityStandard, memory.RetentionClassStandard)
 	canonical := newFakeCanonical(scope, 7, record)
-	manifests := &fakeManifestSource{manifest: activeManifest(scope, "bleve-generation-7", 7)}
-	store := openSemanticStore(t)
+	manifests := &fakeManifestSource{manifest: activeManifest(scope, "sqlite-generation-7", 7)}
+	store := openSemanticStore(t, canonical)
 	manager := newTestManager(t, canonical, manifests, &fakeProvider{vector: []float32{1, 0}}, store, testModelSpace("model-a"))
 	if err := manager.Repair(context.Background(), scope); err != nil {
 		t.Fatalf("initial Repair() error = %v", err)
@@ -222,7 +221,7 @@ func TestRepairPrivacyTransitionReplacesOldReadyStateWithEmptyCompleteState(t *t
 
 	record.Sensitivity = memory.SensitivitySensitive
 	canonical.replace(8, record)
-	manifests.set(activeManifest(scope, "bleve-generation-8", 8))
+	manifests.set(activeManifest(scope, "sqlite-generation-8", 8))
 	if err := manager.Repair(context.Background(), scope); err != nil {
 		t.Fatalf("privacy Repair() error = %v", err)
 	}
@@ -231,11 +230,11 @@ func TestRepairPrivacyTransitionReplacesOldReadyStateWithEmptyCompleteState(t *t
 	if err != nil {
 		t.Fatalf("SpaceFingerprint() error = %v", err)
 	}
-	snapshot, found, err := store.Snapshot(context.Background(), semanticstore.View{
-		Scope: scope, LexicalGenerationID: "bleve-generation-8", LexicalWatermark: 8,
+	snapshot, found, err := store.LoadReusable(context.Background(), semanticstore.View{
+		Scope: scope, LexicalGenerationID: "sqlite-generation-8", LexicalWatermark: 8,
 		ModelSpace: fingerprint, Dimensions: 2,
 	})
-	if err != nil || !found || len(snapshot.Chunks()) != 0 || snapshot.State().RecordCount != 0 {
+	if err != nil || !found || len(snapshot.Chunks) != 0 || snapshot.State.RecordCount != 0 {
 		t.Fatalf("privacy Snapshot() = (%#v, %t, %v), want complete empty replacement", snapshot, found, err)
 	}
 }
@@ -244,8 +243,8 @@ func TestRepairPrivacyTransitionReplacesOldReadyStateWithEmptyCompleteState(t *t
 func TestSchedulerUsesTwoWorkersCoalescesScopesAndBoundsQueueAt64(t *testing.T) {
 	scope := testScope("scheduler")
 	canonical := newFakeCanonical(scope, 7)
-	manifests := &fakeManifestSource{manifest: activeManifest(scope, "bleve-generation-7", 7)}
-	manager := newTestManager(t, canonical, manifests, &fakeProvider{vector: []float32{1, 0}}, openSemanticStore(t), testModelSpace("model-a"))
+	manifests := &fakeManifestSource{manifest: activeManifest(scope, "sqlite-generation-7", 7)}
+	manager := newTestManager(t, canonical, manifests, &fakeProvider{vector: []float32{1, 0}}, openSemanticStore(t, canonical), testModelSpace("model-a"))
 
 	started := make(chan memory.Scope, semanticcore.SemanticWorkerLimit)
 	release := make(chan struct{})
@@ -321,9 +320,9 @@ func TestRepairRejectsOneOverChunkCapacityBeforeProviderCall(t *testing.T) {
 		)
 	}
 	canonical := newFakeCanonical(scope, 7, records...)
-	manifests := &fakeManifestSource{manifest: activeManifest(scope, "bleve-generation-7", 7)}
+	manifests := &fakeManifestSource{manifest: activeManifest(scope, "sqlite-generation-7", 7)}
 	provider := &fakeProvider{vector: []float32{1, 0}}
-	store := openSemanticStore(t)
+	store := openSemanticStore(t, canonical)
 	manager := newTestManager(t, canonical, manifests, provider, store, testModelSpace("model-a"))
 
 	err := manager.Repair(context.Background(), scope)
@@ -356,9 +355,9 @@ func TestRepairAcceptsExactChunkCapacityInBoundedProviderBatches(t *testing.T) {
 		)
 	}
 	canonical := newFakeCanonical(scope, 7, records...)
-	manifests := &fakeManifestSource{manifest: activeManifest(scope, "bleve-generation-7", 7)}
+	manifests := &fakeManifestSource{manifest: activeManifest(scope, "sqlite-generation-7", 7)}
 	provider := &fakeProvider{vector: []float32{1, 0}}
-	store := openSemanticStore(t)
+	store := openSemanticStore(t, canonical)
 	manager := newTestManager(t, canonical, manifests, provider, store, testModelSpace("model-a"))
 
 	if err := manager.Repair(context.Background(), scope); err != nil {
@@ -388,11 +387,11 @@ func TestProviderFailurePublishesOnlyTextFreeDegradation(t *testing.T) {
 	canonical := newFakeCanonical(scope, 7,
 		testRecord(scope, "item-a", "revision-a", "never durable", memory.SensitivityStandard, memory.RetentionClassStandard),
 	)
-	manifests := &fakeManifestSource{manifest: activeManifest(scope, "bleve-generation-7", 7)}
+	manifests := &fakeManifestSource{manifest: activeManifest(scope, "sqlite-generation-7", 7)}
 	providerErr := &semanticcore.Error{Reason: semanticcore.ReasonUnavailable}
 	manager := newTestManager(
 		t, canonical, manifests, &fakeProvider{vector: []float32{1, 0}, err: providerErr},
-		openSemanticStore(t), testModelSpace("model-a"),
+		openSemanticStore(t, canonical), testModelSpace("model-a"),
 	)
 
 	if err := manager.Repair(context.Background(), scope); !errors.Is(err, providerErr) {
@@ -415,13 +414,13 @@ func TestShutdownCancelsInFlightProviderAndPublishesNothing(t *testing.T) {
 	canonical := newFakeCanonical(scope, 7,
 		testRecord(scope, "item-a", "revision-a", "cancel me", memory.SensitivityStandard, memory.RetentionClassStandard),
 	)
-	manifests := &fakeManifestSource{manifest: activeManifest(scope, "bleve-generation-7", 7)}
+	manifests := &fakeManifestSource{manifest: activeManifest(scope, "sqlite-generation-7", 7)}
 	provider := &cancelProvider{entered: make(chan struct{})}
-	store := openSemanticStore(t)
+	store := openSemanticStore(t, canonical)
 	manager, err := New(Dependencies{
 		Canonical: canonical, Records: canonical, Manifests: manifests,
 		Physical: manifests,
-		Provider: provider, Store: store, ModelSpace: testModelSpace("model-a"),
+		Provider: provider, Store: store, Lifecycle: store, ModelSpace: testModelSpace("model-a"),
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -456,13 +455,15 @@ func TestCloseCancelsAndDrainsExplicitRepair(t *testing.T) {
 		testRecord(scope, "item-a", "revision-a", "cancel repair", memory.SensitivityStandard, memory.RetentionClassStandard),
 	)
 	provider := &cancelProvider{entered: make(chan struct{}), release: make(chan struct{})}
+	store := openSemanticStore(t, canonical)
 	manager, err := New(Dependencies{
 		Canonical:  canonical,
 		Records:    canonical,
-		Manifests:  &fakeManifestSource{manifest: activeManifest(scope, "bleve-generation-7", 7)},
-		Physical:   &fakeManifestSource{manifest: activeManifest(scope, "bleve-generation-7", 7)},
+		Manifests:  &fakeManifestSource{manifest: activeManifest(scope, "sqlite-generation-7", 7)},
+		Physical:   &fakeManifestSource{manifest: activeManifest(scope, "sqlite-generation-7", 7)},
 		Provider:   provider,
-		Store:      openSemanticStore(t),
+		Store:      store,
+		Lifecycle:  store,
 		ModelSpace: testModelSpace("model-a"),
 	})
 	if err != nil {
@@ -501,9 +502,11 @@ func TestStartScrubsUnreachableStagingGeneration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SpaceFingerprint() error = %v", err)
 	}
-	store := openSemanticStore(t)
+	canonical := newFakeCanonical(scope, 7, testRecord(scope, "item-a", "revision-a", "orphan content",
+		memory.SensitivityStandard, memory.RetentionClassStandard))
+	store := openSemanticStore(t, canonical)
 	generation := semanticstore.Generation{
-		Scope: scope, BuildID: "orphan-build", LexicalGenerationID: "bleve-generation-7",
+		Scope: scope, BuildID: "orphan-build", LexicalGenerationID: "sqlite-generation-7",
 		LexicalWatermark: 7, ModelSpace: fingerprint, Dimensions: 2, ReadyAt: time.Now().UTC(),
 	}
 	contentHash := hashText("orphan content")
@@ -511,21 +514,20 @@ func TestStartScrubsUnreachableStagingGeneration(t *testing.T) {
 	coverage := []semanticstore.CoverageRecord{{
 		ItemID: "item-a", RevisionID: "revision-a", Revision: 1, ContentHash: contentHash, ChunkCount: 1,
 	}}
-	chunks := []semanticstore.Chunk{{
+	chunks := []semanticstore.ProjectionChunk{{
 		Scope: scope, BuildID: generation.BuildID, LexicalGenerationID: generation.LexicalGenerationID,
 		LexicalWatermark: 7, ModelSpace: fingerprint, Dimensions: 2,
 		ItemID: "item-a", RevisionID: "revision-a", Revision: 1, Ordinal: 0,
 		ContentHash: contentHash, InputHash: inputHash, ScopeChangeSeq: 7,
 		Kind: memory.MemoryKindState, MemoryKey: "memory-item-a", CreatedAt: time.Unix(10, 0).UTC(),
-		Vector: []float32{1, 0},
+		ObservedAt: &generation.ReadyAt, Vector: []float32{1, 0},
 	}}
 	if _, err := store.Stage(context.Background(), generation, coverage, chunks); err != nil {
 		t.Fatalf("Stage(orphan) error = %v", err)
 	}
 
-	canonical := newFakeCanonical(scope, 7)
 	manager := newTestManager(
-		t, canonical, &fakeManifestSource{manifest: activeManifest(scope, "bleve-generation-7", 7)},
+		t, canonical, &fakeManifestSource{manifest: activeManifest(scope, "sqlite-generation-7", 7)},
 		&fakeProvider{vector: []float32{1, 0}}, store, space,
 	)
 	if err := manager.Start(context.Background()); err != nil {
@@ -541,29 +543,12 @@ func TestStartScrubsUnreachableStagingGeneration(t *testing.T) {
 }
 
 //nolint:wsl_v5 // Construction and cleanup registration are one test-resource operation.
-func openSemanticStore(t *testing.T) *semanticstore.Store {
-	t.Helper()
-
-	store, err := semanticstore.Open(filepath.Join(t.TempDir(), "embeddings"))
-	if err != nil {
-		t.Fatalf("semantic.Open() error = %v", err)
-	}
-	t.Cleanup(func() {
-		if err := store.Close(); err != nil {
-			t.Errorf("semantic Store.Close() error = %v", err)
-		}
-	})
-
-	return store
-}
-
-//nolint:wsl_v5 // Construction and cleanup registration are one test-resource operation.
 func newTestManager(
 	t *testing.T,
 	canonical *fakeCanonical,
 	manifests *fakeManifestSource,
 	provider *fakeProvider,
-	store *semanticstore.Store,
+	store *neutralSemanticStore,
 	space semanticcore.ModelSpace,
 ) *Manager {
 	t.Helper()
@@ -575,6 +560,7 @@ func newTestManager(
 		Physical:   manifests,
 		Provider:   provider,
 		Store:      store,
+		Lifecycle:  store,
 		ModelSpace: space,
 	})
 	if err != nil {
@@ -604,7 +590,7 @@ func testModelSpace(model string) semanticcore.ModelSpace {
 
 func activeManifest(scope memory.Scope, generation string, watermark uint64) memory.ProjectionManifest {
 	return memory.ProjectionManifest{
-		Scope: scope, ProjectionID: "bleve", GenerationID: generation,
+		Scope: scope, ProjectionID: "sqlite", GenerationID: generation,
 		Status: memory.ProjectionGenerationActive, Watermark: watermark, UpdatedAt: time.Unix(100, 0).UTC(),
 	}
 }

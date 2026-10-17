@@ -2,10 +2,11 @@ package memoryread_test
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
-	index "github.com/baldaworks/boyan/index/bleve"
+	index "github.com/baldaworks/boyan/index/sqlite"
 	core "github.com/baldaworks/boyan/internal/canonicalcore"
 	read "github.com/baldaworks/boyan/internal/memoryread"
 	projection "github.com/baldaworks/boyan/internal/projection"
@@ -37,7 +38,7 @@ func (interleavingExtractor) ExtractCanonicalSemantics(
 }
 
 type interleavingProjection struct {
-	*index.BleveRecallProjection
+	*index.Store
 
 	before func()
 }
@@ -52,9 +53,10 @@ func (p *interleavingProjection) SearchRecallConsistent(
 		f()
 	}
 
-	return p.BleveRecallProjection.SearchRecallConsistent(ctx, r)
+	return p.Store.SearchRecallConsistent(ctx, r)
 }
 
+//nolint:funlen // Real canonical ingest, SQL publication and the interleaving hook share one fixture.
 func newInterleavingRecall(t *testing.T) (*read.RecallService, m.RecallRequest) {
 	t.Helper()
 
@@ -77,22 +79,29 @@ func newInterleavingRecall(t *testing.T) (*read.RecallService, m.RecallRequest) 
 		t.Fatal(err)
 	}
 
-	idx, err := index.Open(t.TempDir(), index.Config{Checkpoints: store, ProjectionID: "bleve"})
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	idx, err := index.Open(t.Context(), root, index.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	applier, err := index.NewBleveCanonicalApplier(idx, reader)
+	t.Cleanup(func() { _ = idx.Close() })
+
+	applier, err := index.NewSQLiteCanonicalApplier(idx, reader, store)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	t.Cleanup(func() { _ = applier.Close() })
-
-	syncer, err := projection.NewProjectionRuntime(store, store, applier, "bleve", 128)
+	syncer, err := projection.NewProjectionRuntime(store, store, applier, "sqlite", 128)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	t.Cleanup(func() { _ = syncer.Close(context.Background()) })
 
 	scope := m.Scope{Key: "test:interleaving", Kind: m.ScopeKindPersonal}
 	at := time.Now().UTC().Add(-time.Hour)
@@ -100,8 +109,8 @@ func newInterleavingRecall(t *testing.T) (*read.RecallService, m.RecallRequest) 
 	fixture.commit(t, "first", "memory first", at)
 
 	advancing := &interleavingProjection{
-		BleveRecallProjection: idx,
-		before:                func() { fixture.commit(t, "second", "memory second", at.Add(time.Minute)) },
+		Store:  idx,
+		before: func() { fixture.commit(t, "second", "memory second", at.Add(time.Minute)) },
 	}
 
 	service, err := read.NewRecallService(reader, advancing)

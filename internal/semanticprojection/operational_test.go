@@ -23,7 +23,7 @@ func TestInvalidateStalePreservesReadyOnCanceledVerification(t *testing.T) {
 			provider := &fakeProvider{vector: []float32{1, 0}}
 
 			manager := newTestManager(t, canonical, manifests, provider,
-				openSemanticStore(t), testModelSpace("model-a"))
+				openSemanticStore(t, canonical), testModelSpace("model-a"))
 			if err := manager.Repair(context.Background(), scope); err != nil {
 				t.Fatal(err)
 			}
@@ -72,7 +72,7 @@ func TestInvalidateStaleIsIdempotentAndOwnsNoNewScopes(t *testing.T) {
 	manifests := &fakeManifestSource{manifest: activeManifest(scope, "generation-7", 7)}
 
 	manager := newTestManager(t, canonical, manifests, &fakeProvider{vector: []float32{1, 0}},
-		openSemanticStore(t), testModelSpace("model-a"))
+		openSemanticStore(t, canonical), testModelSpace("model-a"))
 	if err := manager.Repair(context.Background(), scope); err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestInvalidateStalePreservesConcurrentPublication(t *testing.T) {
 	manifests := &fakeManifestSource{manifest: activeManifest(scope, "generation-7", 7)}
 
 	manager := newTestManager(t, canonical, manifests, &fakeProvider{vector: []float32{1, 0}},
-		openSemanticStore(t), testModelSpace("model-a"))
+		openSemanticStore(t, canonical), testModelSpace("model-a"))
 	if err := manager.Repair(context.Background(), scope); err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestInvalidateStalePreservesQueuedAndInflightRepair(t *testing.T) {
 	manifests := &fakeManifestSource{manifest: activeManifest(scope, "generation-7", 7)}
 
 	manager := newTestManager(t, canonical, manifests, &fakeProvider{vector: []float32{1, 0}},
-		openSemanticStore(t), testModelSpace("model-a"))
+		openSemanticStore(t, canonical), testModelSpace("model-a"))
 	if err := manager.Repair(context.Background(), scope); err != nil {
 		t.Fatal(err)
 	}

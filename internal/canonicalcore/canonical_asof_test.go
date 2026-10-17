@@ -2,10 +2,11 @@ package canonicalcore_test
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
-	index "github.com/baldaworks/boyan/index/bleve"
+	index "github.com/baldaworks/boyan/index/sqlite"
 	read "github.com/baldaworks/boyan/internal/memoryread"
 	runtime "github.com/baldaworks/boyan/internal/projection"
 	m "github.com/baldaworks/boyan/pkg/memory"
@@ -24,13 +25,15 @@ func TestNativeAsOfFiltersCurrentHeadAfterSupersession(t *testing.T) {
 	requireNoError(t, err, "replacement: %v")
 	_, err = processor.ProcessTurn(context.Background(), replacement, testProcessorDerivation())
 	requireNoError(t, err, "process: %v")
-	projection, err := index.Open(t.TempDir())
+	root := t.TempDir()
+	requireNoError(t, os.Chmod(root, 0o700), "private state: %v")
+	projection, err := index.Open(t.Context(), root, index.Options{})
 	requireNoError(t, err, "projection: %v")
 	t.Cleanup(func() { requireNoError(t, projection.Close(), "close: %v") })
 
-	applier, err := index.NewBleveCanonicalApplier(projection, reader)
+	applier, err := index.NewSQLiteCanonicalApplier(projection, reader, store)
 	requireNoError(t, err, "applier: %v")
-	runner, err := runtime.NewProjectionRuntime(store, store, applier, "bleve", 128)
+	runner, err := runtime.NewProjectionRuntime(store, store, applier, "sqlite", 128)
 	requireNoError(t, err, "runtime: %v")
 	requireNoError(t, runner.Sync(context.Background(), turn.Scope), "sync: %v")
 

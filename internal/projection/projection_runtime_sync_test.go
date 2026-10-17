@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/baldaworks/boyan/index/bleve"
 	memory "github.com/baldaworks/boyan/pkg/memory"
 	"github.com/baldaworks/boyan/store/badger"
 )
@@ -74,14 +73,10 @@ func TestProjectionSyncResumesCommittedProgress(t *testing.T) {
 	requireNoError(t, err, "%v")
 
 	tracked := &scanTrackingStore{CanonicalStore: store}
-	openRuntime := func() (*ProjectionRuntime, *bleve.BleveCanonicalApplier) {
-		index, err := bleve.Open(filepath.Join(root, "index"))
-		requireNoError(t, err, "%v")
+	openRuntime := func() (*ProjectionRuntime, *projectionSQLApplier) {
+		applier := openProjectionSQLite(t, root, store, reader)
 
-		applier, err := bleve.NewBleveCanonicalApplier(index, reader)
-		requireNoError(t, err, "%v")
-
-		runtime, err := NewProjectionRuntime(tracked, store, applier, "test", 1)
+		runtime, err := NewProjectionRuntime(tracked, store, applier, "sqlite", 1)
 		requireNoError(t, err, "%v")
 
 		return runtime, applier
@@ -97,12 +92,12 @@ func TestProjectionSyncResumesCommittedProgress(t *testing.T) {
 
 	requireNoError(t, runtime.Sync(context.Background(), scope), "%v")
 
-	first, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "test")
+	first, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "sqlite")
 	requireNoError(t, err, "%v")
 
 	requireNoError(t, runtime.Sync(context.Background(), scope), "%v")
 
-	unchanged, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "test")
+	unchanged, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "sqlite")
 	requireNoError(t, err, "%v")
 
 	if unchanged.GenerationID != first.GenerationID ||
@@ -119,13 +114,13 @@ func TestProjectionSyncResumesCommittedProgress(t *testing.T) {
 }
 
 type failedCommitApplier struct {
-	*bleve.BleveCanonicalApplier
+	*projectionSQLApplier
 
 	fail bool
 }
 
-func (a *failedCommitApplier) Commit(ctx context.Context, scope memory.Scope, id string) error {
-	if err := a.BleveCanonicalApplier.Commit(ctx, scope, id); err != nil {
+func (a *failedCommitApplier) CommitProjectionManifest(ctx context.Context, manifest memory.ProjectionManifest) error {
+	if err := a.projectionSQLApplier.CommitProjectionManifest(ctx, manifest); err != nil {
 		return err
 	}
 
@@ -161,10 +156,10 @@ func TestProjectionSyncRecoversDirtyAfterRestart(t *testing.T) {
 		requireNoError(t, runtime.Sync(context.Background(), scope), "%v")
 	}
 
-	first, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "test")
+	first, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "sqlite")
 	requireNoError(t, err, "%v")
 
-	foreign, _, err := store.LoadActiveProjectionManifest(context.Background(), other, "test")
+	foreign, _, err := store.LoadActiveProjectionManifest(context.Background(), other, "sqlite")
 	requireNoError(t, err, "%v")
 
 	if _, err := store.ApplyCanonicalMutation(context.Background(), projectionMutation(scope, 1, "two")); err != nil {
@@ -214,7 +209,7 @@ func TestProjectionSyncSupportsReplayOnlyApplier(t *testing.T) {
 
 	applier := &replayOnlyApplier{}
 
-	runtime, err := NewProjectionRuntime(store, store, applier, "test", 1)
+	runtime, err := NewProjectionRuntime(store, store, applier, "sqlite", 1)
 	requireNoError(t, err, "%v")
 
 	requireNoError(t, runtime.Sync(
@@ -251,7 +246,7 @@ func assertConcurrentProjectionNoop(
 		requireNoError(t, err, "%v")
 	}
 
-	final, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "test")
+	final, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "sqlite")
 	if err != nil || final != recovered {
 		t.Fatalf("concurrent unchanged sync: %+v %v", final, err)
 	}
@@ -275,7 +270,7 @@ func assertResumedProjectionDelta(
 
 	requireNoError(t, runtime.Sync(context.Background(), scope), "%v")
 
-	second, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "test")
+	second, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "sqlite")
 	requireNoError(t, err, "%v")
 
 	if second.GenerationID != first.GenerationID || second.Watermark != 2 {
@@ -295,7 +290,7 @@ func assertDirtyProjectionManifest(
 ) {
 	t.Helper()
 
-	dirty, found, err := store.LoadProjectionManifest(context.Background(), scope, "test", first.GenerationID)
+	dirty, found, err := store.LoadProjectionManifest(context.Background(), scope, "sqlite", first.GenerationID)
 	if err != nil || !found || dirty.Status != memory.ProjectionGenerationDirty ||
 		dirty.Watermark != 1 {
 		t.Fatalf("dirty manifest: %+v %v", dirty, err)
@@ -313,14 +308,14 @@ func assertProjectionRecoveredAfterRestart(
 ) {
 	t.Helper()
 
-	recovered, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "test")
+	recovered, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "sqlite")
 	requireNoError(t, err, "%v")
 
 	if recovered.GenerationID == first.GenerationID || recovered.Watermark != 2 {
 		t.Fatalf("recovery: %+v", recovered)
 	}
 
-	preserved, _, err := store.LoadActiveProjectionManifest(context.Background(), other, "test")
+	preserved, _, err := store.LoadActiveProjectionManifest(context.Background(), other, "sqlite")
 	requireNoError(t, err, "%v")
 
 	if preserved != foreign {
@@ -338,15 +333,11 @@ func openDirtyProjectionRuntime(
 ) (*ProjectionRuntime, *failedCommitApplier) {
 	t.Helper()
 
-	index, err := bleve.Open(filepath.Join(root, "index"))
-	requireNoError(t, err, "%v")
+	actual := openProjectionSQLite(t, root, store, reader)
 
-	actual, err := bleve.NewBleveCanonicalApplier(index, reader)
-	requireNoError(t, err, "%v")
+	applier := &failedCommitApplier{projectionSQLApplier: actual}
 
-	applier := &failedCommitApplier{BleveCanonicalApplier: actual}
-
-	runtime, err := NewProjectionRuntime(store, store, applier, "test", 1)
+	runtime, err := NewProjectionRuntime(store, store, applier, "sqlite", 1)
 	requireNoError(t, err, "%v")
 
 	return runtime, applier

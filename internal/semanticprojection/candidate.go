@@ -9,7 +9,7 @@ import (
 )
 
 func (manager *Manager) finishBuild(ctx context.Context, target buildTarget, buildErr error, stageFailed bool) {
-	if buildErr == nil || manager.lifecycle == nil {
+	if buildErr == nil {
 		return
 	}
 

@@ -2,11 +2,12 @@ package canonicalcore_test
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	index "github.com/baldaworks/boyan/index/bleve"
+	index "github.com/baldaworks/boyan/index/sqlite"
 	"github.com/baldaworks/boyan/internal/forgetops"
 	projection "github.com/baldaworks/boyan/internal/projection"
 	m "github.com/baldaworks/boyan/pkg/memory"
@@ -17,7 +18,7 @@ func TestLargeForgetRebuildsLiveProjectionAndPreservesLaterTurn(t *testing.T) {
 	reader, processor, turn, _, store := nativeFlow(t)
 	ingestNativeHistory(t, processor, turn, 1024)
 	path := filepath.Join(t.TempDir(), "index")
-	open := func() (*index.BleveRecallProjection, *projection.ProjectionRuntime) {
+	open := func() (*index.Store, *projection.ProjectionRuntime) {
 		return openLargeForgetProjection(t, path, store, reader)
 	}
 	idx, runtime := open()
@@ -65,21 +66,22 @@ func TestLargeForgetRebuildsLiveProjectionAndPreservesLaterTurn(t *testing.T) {
 
 func openLargeForgetProjection(t *testing.T, path string, store *b.CanonicalStore,
 	reader *b.CanonicalReader,
-) (*index.BleveRecallProjection, *projection.ProjectionRuntime) {
+) (*index.Store, *projection.ProjectionRuntime) {
 	t.Helper()
 
-	idx, err := index.Open(path, index.Config{Checkpoints: store, ProjectionID: "bleve"})
+	requireNoError(t, os.MkdirAll(path, 0o700), "private state: %v")
+	idx, err := index.Open(t.Context(), path, index.Options{})
 	requireNoError(t, err, "index: %v")
-	applier, err := index.NewBleveCanonicalApplier(idx, reader)
+	applier, err := index.NewSQLiteCanonicalApplier(idx, reader, store)
 	requireNoError(t, err, "applier: %v")
-	runtime, err := projection.NewProjectionRuntime(store, store, applier, "bleve", 128)
+	runtime, err := projection.NewProjectionRuntime(store, store, applier, "sqlite", 128)
 	requireNoError(t, err, "runtime: %v")
 
 	return idx, runtime
 }
 
 func assertLargeForgetIndex(
-	t *testing.T, idx *index.BleveRecallProjection, scope m.Scope, minimum uint64, revision string,
+	t *testing.T, idx *index.Store, scope m.Scope, minimum uint64, revision string,
 ) {
 	t.Helper()
 

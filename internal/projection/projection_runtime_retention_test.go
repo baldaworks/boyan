@@ -1,21 +1,19 @@
-package projection //nolint:testpackage // Exercises shared private test fixtures within the package.
+package projection //nolint:testpackage // Exercises shared SQL/canonical retention fixtures.
 
 import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/baldaworks/boyan/index/bleve"
+	index "github.com/baldaworks/boyan/index/sqlite"
 	memory "github.com/baldaworks/boyan/pkg/memory"
 	"github.com/baldaworks/boyan/store/badger"
 )
 
 func TestProjectionRetainsActiveAndPrevious(t *testing.T) {
 	root := t.TempDir()
-
 	store, err := badger.OpenCanonicalStore(filepath.Join(root, "canonical"))
 	requireNoError(t, err, "%v")
 
@@ -24,16 +22,13 @@ func TestProjectionRetainsActiveAndPrevious(t *testing.T) {
 	reader, err := badger.NewCanonicalReader(store)
 	requireNoError(t, err, "%v")
 
-	index, err := bleve.Open(filepath.Join(root, "index"))
-	requireNoError(t, err, "%v")
-
-	applier, err := bleve.NewBleveCanonicalApplier(index, reader)
-	requireNoError(t, err, "%v")
-
+	applier := openProjectionSQLite(t, root, store, reader)
 	defer applier.Close()
 
-	runtime, err := NewProjectionRuntime(store, store, applier, "test", 1)
+	runtime, err := NewProjectionRuntime(store, store, applier, "sqlite", 1)
 	requireNoError(t, err, "%v")
+
+	defer runtime.Close(context.Background())
 
 	scope := memory.Scope{Kind: memory.ScopeKindPersonal, Key: "test:retention"}
 
@@ -42,29 +37,24 @@ func TestProjectionRetainsActiveAndPrevious(t *testing.T) {
 		requireNoError(t, runtime.Sync(context.Background(), scope), "%v")
 	}
 
-	stopSearch, searchErrors := startRetentionSearch(index, other)
+	stopSearch, searchErrors := startRetentionSearch(applier.store, other)
 	defer stopSearch()
 
 	for range 5 {
-		active, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "test")
+		active, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "sqlite")
 		requireNoError(t, err, "%v")
-
 		requireNoError(t, store.MarkProjectionDirty(context.Background(), active), "%v")
-
 		requireNoError(t, runtime.Sync(context.Background(), scope), "%v")
 	}
 
-	entries, err := os.ReadDir(filepath.Join(root, "index", "generations"))
-	requireNoError(t, err, "%v")
+	var builds int
+	requireNoError(t, applier.db.QueryRowContext(t.Context(), "SELECT count(*) FROM lexical_build").Scan(&builds), "%v")
 
-	if len(entries) > 3 {
-		t.Fatalf(
-			"retained %d generation directories, want at most two plus other scope",
-			len(entries),
-		)
+	if builds > 3 {
+		t.Fatalf("retained %d builds, want at most active+previous plus other scope", builds)
 	}
 
-	if _, found, err := store.LoadActiveProjectionManifest(context.Background(), other, "test"); err != nil || !found {
+	if _, found, err := store.LoadActiveProjectionManifest(context.Background(), other, "sqlite"); err != nil || !found {
 		t.Fatalf("other scope lost: %v %v", found, err)
 	}
 
@@ -77,7 +67,6 @@ func TestProjectionRetainsActiveAndPrevious(t *testing.T) {
 
 func TestProjectionRecoversMissingActiveIndex(t *testing.T) {
 	root := t.TempDir()
-
 	store, err := badger.OpenCanonicalStore(filepath.Join(root, "canonical"))
 	requireNoError(t, err, "%v")
 
@@ -86,46 +75,38 @@ func TestProjectionRecoversMissingActiveIndex(t *testing.T) {
 	reader, err := badger.NewCanonicalReader(store)
 	requireNoError(t, err, "%v")
 
-	open := func() (*ProjectionRuntime, *bleve.BleveCanonicalApplier) {
-		index, err := bleve.Open(filepath.Join(root, "index"))
-		requireNoError(t, err, "%v")
-
-		applier, err := bleve.NewBleveCanonicalApplier(index, reader)
-		requireNoError(t, err, "%v")
-
-		runtime, err := NewProjectionRuntime(store, store, applier, "test", 1)
+	open := func() (*ProjectionRuntime, *projectionSQLApplier) {
+		applier := openProjectionSQLite(t, root, store, reader)
+		runtime, err := NewProjectionRuntime(store, store, applier, "sqlite", 1)
 		requireNoError(t, err, "%v")
 
 		return runtime, applier
 	}
 	runtime, applier := open()
-
 	scope := memory.Scope{Kind: memory.ScopeKindPersonal, Key: "test:missing"}
 	requireNoError(t, runtime.Sync(context.Background(), scope), "%v")
-
-	first, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "test")
+	first, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "sqlite")
 	requireNoError(t, err, "%v")
-
+	requireNoError(t, runtime.Close(context.Background()), "%v")
 	requireNoError(t, applier.Close(), "%v")
-
-	requireNoError(t, os.RemoveAll(filepath.Join(root, "index", "generations", first.GenerationID)), "%v")
+	requireNoError(t, os.Remove(filepath.Join(root, "index", "search", "search.sqlite")), "%v")
 
 	runtime, applier = open()
 	defer applier.Close()
+	defer runtime.Close(context.Background())
 
 	requireNoError(t, runtime.Start(context.Background()), "%v")
-
 	requireNoError(t, runtime.Sync(context.Background(), scope), "%v")
 
-	active, found, err := store.LoadActiveProjectionManifest(context.Background(), scope, "test")
+	active, found, err := store.LoadActiveProjectionManifest(context.Background(), scope, "sqlite")
 	if err != nil || !found || active.GenerationID == first.GenerationID {
 		t.Fatalf("missing index recovery: %+v %v", active, err)
 	}
 }
 
+//nolint:funlen // Reopen, canonical-first activation and pruning share one crash-recovery contract.
 func TestProjectionStartupReconcilesBeforePruning(t *testing.T) {
 	root := t.TempDir()
-
 	store, err := badger.OpenCanonicalStore(filepath.Join(root, "canonical"))
 	requireNoError(t, err, "%v")
 
@@ -134,57 +115,64 @@ func TestProjectionStartupReconcilesBeforePruning(t *testing.T) {
 	reader, err := badger.NewCanonicalReader(store)
 	requireNoError(t, err, "%v")
 
-	open := func() (*ProjectionRuntime, *bleve.BleveCanonicalApplier) {
-		index, err := bleve.Open(filepath.Join(root, "index"))
-		requireNoError(t, err, "%v")
-
-		applier, err := bleve.NewBleveCanonicalApplier(index, reader)
-		requireNoError(t, err, "%v")
-
-		runtime, err := NewProjectionRuntime(store, store, applier, "test", 1)
+	open := func() (*ProjectionRuntime, *projectionSQLApplier) {
+		applier := openProjectionSQLite(t, root, store, reader)
+		runtime, err := NewProjectionRuntime(store, store, applier, "sqlite", 1)
 		requireNoError(t, err, "%v")
 
 		return runtime, applier
 	}
 	runtime, applier := open()
-
 	scope := memory.Scope{Kind: memory.ScopeKindPersonal, Key: "test:reconcile"}
 	requireNoError(t, runtime.Sync(context.Background(), scope), "%v")
-
-	first, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "test")
+	first, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "sqlite")
 	requireNoError(t, err, "%v")
-
 	requireNoError(t, applier.BeginProjectionRebuild(context.Background(), scope, "abandoned"), "%v")
-
+	// Reopen to leave a real unreachable crashed owner, rather than adopting an
+	// in-process producer's stage as a second build.
+	requireNoError(t, runtime.Close(context.Background()), "%v")
+	requireNoError(t, applier.Close(), "%v")
+	runtime, applier = open()
 	requireNoError(t, applier.BeginProjectionRebuild(context.Background(), scope, "committed-future"), "%v")
 
-	requireNoError(t, applier.Commit(context.Background(), scope, "committed-future"), "%v")
-
 	future := first
-
 	future.GenerationID = "committed-future"
+	future.Status = memory.ProjectionGenerationDirty
+	requireNoError(t, applier.CommitProjectionManifest(context.Background(), future), "%v")
 	requireNoError(t, store.MarkProjectionDirty(context.Background(), future), "%v")
-
 	requireNoError(t, store.ActivateProjectionGeneration(context.Background(), future, time.Now().UTC()), "%v")
-
+	requireNoError(t, runtime.Close(context.Background()), "%v")
 	requireNoError(t, applier.Close(), "%v")
-
-	outside := t.TempDir()
-
-	sentinel := filepath.Join(outside, "keep")
-	requireNoError(t, os.WriteFile(sentinel, []byte("safe"), 0600), "%v")
-
-	requireNoError(t, os.Symlink(outside, filepath.Join(root, "index", "generations", "external-link")), "%v")
 
 	runtime, applier = open()
 	defer applier.Close()
+	defer runtime.Close(context.Background())
 
 	requireNoError(t, runtime.Start(context.Background()), "%v")
 
-	assertReconciledProjectionRetention(t, root, sentinel, future, scope, applier)
+	if active := applier.activeManifest(t, scope); active.GenerationID != future.GenerationID {
+		t.Fatalf("canonical-first activation not reconciled: %+v", active)
+	}
+
+	if applier.countGeneration(t, "abandoned") != 0 {
+		t.Fatal("abandoned generation retained")
+	}
+
+	requireNoError(t, applier.BeginProjectionRebuild(context.Background(), scope, "inflight"), "%v")
+	requireNoError(t, applier.ReconcileProjection(context.Background()), "%v")
+
+	if applier.countGeneration(t, "inflight") != 1 {
+		t.Fatal("in-flight generation pruned")
+	}
+
+	requireNoError(t, applier.AbortProjectionSync(context.Background(), "inflight"), "%v")
+
+	if applier.countGeneration(t, "inflight") != 0 {
+		t.Fatal("failed builder retained")
+	}
 }
 
-func startRetentionSearch(index *bleve.BleveRecallProjection, other memory.Scope) (func(), <-chan error) {
+func startRetentionSearch(store *index.Store, other memory.Scope) (func(), <-chan error) {
 	stopSearch := make(chan struct{})
 	searchDone := make(chan struct{})
 	searchErrors := make(chan error, 1)
@@ -199,14 +187,8 @@ func startRetentionSearch(index *bleve.BleveRecallProjection, other memory.Scope
 			default:
 			}
 
-			if _, err := index.SearchRecall(
-				context.Background(),
-				memory.RecallRequest{
-					Scope: other,
-					Query: "test",
-					Limit: 1,
-				},
-			); err != nil {
+			request := memory.RecallRequest{Scope: other, Query: "test", Limit: 1}
+			if _, err := store.SearchRecall(context.Background(), request); err != nil {
 				searchErrors <- err
 
 				return
@@ -215,47 +197,4 @@ func startRetentionSearch(index *bleve.BleveRecallProjection, other memory.Scope
 	}()
 
 	return func() { close(stopSearch); <-searchDone }, searchErrors
-}
-
-func assertReconciledProjectionRetention(
-	t *testing.T,
-	root,
-	sentinel string,
-	future memory.ProjectionManifest,
-	scope memory.Scope,
-	applier *bleve.BleveCanonicalApplier,
-) {
-	t.Helper()
-
-	markers, err := filepath.Glob(filepath.Join(root, "index", ".active-generation.scope.*"))
-	if err != nil || len(markers) != 1 {
-		t.Fatalf("markers: %v %v", markers, err)
-	}
-
-	marker, err := os.ReadFile(markers[0])
-	if err != nil || strings.TrimSpace(string(marker)) != future.GenerationID {
-		t.Fatalf("unreconciled marker: %q %v", marker, err)
-	}
-
-	if _, err := os.Stat(filepath.Join(root, "index", "generations", "abandoned")); !os.IsNotExist(err) {
-		t.Fatalf("abandoned generation retained: %v", err)
-	}
-
-	if _, err := os.Stat(sentinel); err != nil {
-		t.Fatalf("symlink target was touched: %v", err)
-	}
-
-	requireNoError(t, applier.BeginProjectionRebuild(context.Background(), scope, "inflight"), "%v")
-
-	requireNoError(t, applier.ReconcileProjection(context.Background()), "%v")
-
-	if _, err := os.Stat(filepath.Join(root, "index", "generations", "inflight")); err != nil {
-		t.Fatalf("in-flight generation pruned: %v", err)
-	}
-
-	requireNoError(t, applier.AbortProjectionSync(context.Background(), "inflight"), "%v")
-
-	if _, err := os.Stat(filepath.Join(root, "index", "generations", "inflight")); !os.IsNotExist(err) {
-		t.Fatalf("failed builder retained: %v", err)
-	}
 }

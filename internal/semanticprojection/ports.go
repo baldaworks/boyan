@@ -24,7 +24,6 @@ type BuildStore interface {
 	PublishDegraded(ctx context.Context, marker semantic.Degraded, expectedBuildID string) (semantic.State, error)
 	LoadReusable(ctx context.Context, view semantic.View) (semantic.Reusable, bool, error)
 	ObservedMetadataReady(ctx context.Context, view semantic.View) (bool, error)
-	CollectGarbage(ctx context.Context) error
 }
 
 // CandidateLifecycle manages owned candidates independently of source repair.

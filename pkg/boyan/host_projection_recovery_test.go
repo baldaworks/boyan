@@ -11,11 +11,10 @@ import (
 	hostapi "github.com/baldaworks/boyan/pkg/boyan"
 	m "github.com/baldaworks/boyan/pkg/memory"
 	b "github.com/baldaworks/boyan/store/badger"
-	engine "github.com/blevesearch/bleve/v2"
 )
 
 func TestPublicHostRecoversProjectionBeforeReady(t *testing.T) {
-	for _, mode := range []string{"missing", "v1", "dirty", "never-created"} {
+	for _, mode := range []string{"missing", "dirty", "never-created"} {
 		t.Run(mode, func(t *testing.T) {
 			config := testHostConfig(t)
 			turn, err := m.NewTurn(m.Scope{Key: "startup:recovery", Kind: m.ScopeKindPersonal},
@@ -86,30 +85,11 @@ func prepareStartupProjection(
 
 	if mode == "dirty" {
 		requireNoError(t, store.MarkProjectionDirty(context.Background(), manifest), "mark dirty: %v")
-	} else {
-		// Old mapping bytes are an ignored legacy sibling after the cutover.
-		// TASK016 may retire this engine-specific fixture after inventory review.
-		replaceStartupV1Index(t, config, manifest.GenerationID)
 	}
 
 	requireNoError(t, store.Close(), "store close: %v")
 
 	return outcome
-}
-
-func replaceStartupV1Index(t *testing.T, config hostapi.Config, generation string) {
-	t.Helper()
-
-	path := filepath.Join(config.StateDir, "bleve", "generations", generation)
-	requireNoError(t, os.MkdirAll(filepath.Dir(path), 0o700), "legacy parent: %v")
-
-	mapping := engine.NewIndexMapping()
-	mapping.DefaultMapping = engine.NewDocumentStaticMapping()
-	mapping.DefaultMapping.AddFieldMappingsAt("scope_key", engine.NewKeywordFieldMapping())
-	old, err := engine.New(path, mapping)
-	requireNoError(t, err, "old mapping: %v")
-	requireNoError(t, old.Close(), "old index close: %v")
-	requireNoError(t, os.WriteFile(filepath.Join(path, ".committed"), []byte("boyan-bleve/v1\n"), 0o600), "old marker: %v")
 }
 
 func assertStartupCanonicalUnchanged(

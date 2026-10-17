@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	semanticstore "github.com/baldaworks/boyan/index/semantic"
 	semanticcore "github.com/baldaworks/boyan/internal/semantic"
+	semanticstore "github.com/baldaworks/boyan/internal/semantic"
 	"github.com/baldaworks/boyan/pkg/memory"
 )
 
@@ -23,12 +23,12 @@ func TestAcceptedInFlightEpochCompletesWhenQueueRefillsToCapacity(t *testing.T) 
 		memory.SensitivityStandard, memory.RetentionClassStandard,
 	)
 	canonical := newFakeCanonical(scope, 7, record)
-	manifests := &fakeManifestSource{manifest: activeManifest(scope, "bleve-generation-7", 7)}
+	manifests := &fakeManifestSource{manifest: activeManifest(scope, "sqlite-generation-7", 7)}
 	provider := newGenerationBlockingProvider()
-	store := openSemanticStore(t)
+	store := openSemanticStore(t, canonical)
 	manager, err := New(Dependencies{
 		Canonical: canonical, Records: canonical, Manifests: manifests, Physical: manifests,
-		Provider: provider, Store: store, ModelSpace: testModelSpace("model-a"),
+		Provider: provider, Store: store, Lifecycle: store, ModelSpace: testModelSpace("model-a"),
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -71,7 +71,7 @@ func TestAcceptedInFlightEpochCompletesWhenQueueRefillsToCapacity(t *testing.T) 
 	var joinedOnce sync.Once
 	manager.joinedFlight = func() { joinedOnce.Do(func() { close(joined) }) }
 	canonical.replace(8, record)
-	manifests.set(activeManifest(scope, "bleve-generation-8", 8))
+	manifests.set(activeManifest(scope, "sqlite-generation-8", 8))
 	if err := manager.Schedule(scope); err != nil {
 		t.Fatalf("Schedule(W8) error = %v", err)
 	}
@@ -95,7 +95,7 @@ func TestAcceptedInFlightEpochCompletesWhenQueueRefillsToCapacity(t *testing.T) 
 
 	state := waitActiveState(t, store, scope, func(state semanticstore.State, found bool) bool {
 		return found && state.Status == semanticstore.StatusReady &&
-			state.LexicalGenerationID == "bleve-generation-8" && state.LexicalWatermark == 8
+			state.LexicalGenerationID == "sqlite-generation-8" && state.LexicalWatermark == 8
 	})
 	close(releaseBlocker)
 	waitSchedulerQuiescent(t, manager)
@@ -115,12 +115,12 @@ func TestScheduledEpochJoinedBeforeSnapshotSurvivesExplicitRepairCancellation(t 
 		memory.SensitivityStandard, memory.RetentionClassStandard,
 	)
 	canonical := newFakeCanonical(scope, 8, record)
-	manifests := &fakeManifestSource{manifest: activeManifest(scope, "bleve-generation-8", 8)}
+	manifests := &fakeManifestSource{manifest: activeManifest(scope, "sqlite-generation-8", 8)}
 	provider := &fakeProvider{vector: []float32{1, 0}}
-	store := openSemanticStore(t)
+	store := openSemanticStore(t, canonical)
 	manager, err := New(Dependencies{
 		Canonical: canonical, Records: canonical, Manifests: manifests, Physical: manifests,
-		Provider: provider, Store: store, ModelSpace: testModelSpace("model-a"),
+		Provider: provider, Store: store, Lifecycle: store, ModelSpace: testModelSpace("model-a"),
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -189,21 +189,22 @@ func TestScheduledEpochJoinedBeforeSnapshotSurvivesExplicitRepairCancellation(t 
 	if inputs := provider.Inputs(); len(inputs) != 1 {
 		t.Fatalf("worker-context provider inputs = %#v, want one W8 attempt", inputs)
 	}
-	if state.LexicalGenerationID != "bleve-generation-8" {
+	if state.LexicalGenerationID != "sqlite-generation-8" {
 		t.Fatalf("ActiveState() = %#v, want worker-context W8 publication", state)
 	}
 }
 
-//nolint:cyclop,wsl_v5 // Queued, in-flight, admission, and idempotent close are one lifecycle boundary.
+//nolint:cyclop,funlen,wsl_v5 // Queued, in-flight, admission, and idempotent close are one lifecycle boundary.
 func TestStartContextCancellationStopsAdmissionAndReconcilesScheduledScopes(t *testing.T) {
 	scopeA := testScope("parent-cancel-in-flight-a")
 	scopeB := testScope("parent-cancel-in-flight-b")
 	queued := testScope("parent-cancel-queued")
 	canonical := newFakeCanonical(scopeA, 7)
-	manifests := &fakeManifestSource{manifest: activeManifest(scopeA, "bleve-generation-7", 7)}
+	manifests := &fakeManifestSource{manifest: activeManifest(scopeA, "sqlite-generation-7", 7)}
+	store := openSemanticStore(t, canonical)
 	manager, err := New(Dependencies{
 		Canonical: canonical, Records: canonical, Manifests: manifests, Physical: manifests,
-		Provider: &fakeProvider{vector: []float32{1, 0}}, Store: openSemanticStore(t),
+		Provider: &fakeProvider{vector: []float32{1, 0}}, Store: store, Lifecycle: store,
 		ModelSpace: testModelSpace("model-a"),
 	})
 	if err != nil {
@@ -265,9 +266,10 @@ func TestContinuousSameScopeSchedulingYieldsToCompetingScopeWithoutLatentRun(t *
 	blocker := testScope("fairness-worker-blocker")
 	canonical := newFakeCanonical(hot, 7)
 	manifests := allScopeManifestSource{}
+	store := openSemanticStore(t, canonical)
 	manager, err := New(Dependencies{
 		Canonical: canonical, Records: canonical, Manifests: manifests, Physical: manifests,
-		Provider: &fakeProvider{vector: []float32{1, 0}}, Store: openSemanticStore(t),
+		Provider: &fakeProvider{vector: []float32{1, 0}}, Store: store, Lifecycle: store,
 		ModelSpace: testModelSpace("model-a"),
 	})
 	if err != nil {
@@ -364,7 +366,7 @@ func (allScopeManifestSource) LoadActiveProjectionManifest(
 		return memory.ProjectionManifest{}, false, errors.New("unexpected projection ID")
 	}
 
-	return activeManifest(scope, "bleve-generation-7", 7), true, nil
+	return activeManifest(scope, "sqlite-generation-7", 7), true, nil
 }
 
 func (source allScopeManifestSource) LoadActivePhysicalProjectionManifest(

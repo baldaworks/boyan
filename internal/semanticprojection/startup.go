@@ -80,15 +80,8 @@ func (manager *Manager) initialize(ctx context.Context, drained <-chan struct{})
 		return err
 	}
 
-	var err error
-	if manager.lifecycle != nil {
-		// Composition grants this Manager exclusive producer ownership. New
-		// admissions remain closed until this quiescent global repair finishes.
-		err = manager.lifecycle.RepairSemanticOrphans(ctx)
-	} else {
-		// Explicit temporary legacy compatibility until runtime cutover/removal.
-		err = manager.store.CollectGarbage(ctx)
-	}
+	// Admissions remain closed until the quiescent owner repair finishes.
+	err := manager.lifecycle.RepairSemanticOrphans(ctx)
 
 	if err == nil && manager.beforeStartCommit != nil {
 		manager.beforeStartCommit()

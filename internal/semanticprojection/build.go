@@ -97,10 +97,6 @@ func (manager *Manager) build(ctx context.Context, scope memory.Scope, current *
 	}()
 	if _, err := manager.store.Stage(ctx, target.generation, coverage, chunks); err != nil {
 		stageFailed = true
-		if manager.lifecycle == nil {
-			manager.publishFailure(ctx, target, err)
-			manager.recordBuildFailure(scope, target, err)
-		}
 		return fmt.Errorf("stage semantic projection: %w", err)
 	}
 
@@ -128,13 +124,6 @@ func (manager *Manager) build(ctx context.Context, scope memory.Scope, current *
 		manager.afterPublish()
 	}
 	if err := manager.verifyBuildTarget(ctx, target); err != nil {
-		if manager.lifecycle == nil {
-			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), manager.cleanupTimeout)
-			defer cancel()
-			if invalidateErr := manager.invalidatePublished(cleanupCtx, target); invalidateErr != nil {
-				manager.recordCleanupDeferred(scope)
-			}
-		}
 		manager.recordBuildFailure(scope, target, err)
 		return err
 	}
@@ -549,41 +538,6 @@ func (manager *Manager) verifyView(ctx context.Context, view semanticcore.View) 
 	}
 
 	return nil
-}
-
-func (manager *Manager) invalidatePublished(ctx context.Context, target buildTarget) error {
-	for range 3 {
-		active, found, err := manager.store.ActiveState(ctx, target.generation.Scope)
-		if err != nil {
-			return fmt.Errorf("read raced semantic publication: %w", err)
-		}
-
-		if !found || active.BuildID != target.generation.BuildID || active.Status != semanticcore.StatusReady {
-			return nil
-		}
-
-		markerID, err := newBuildID()
-		if err != nil {
-			return err
-		}
-
-		marker := target.generation
-		marker.BuildID = markerID
-
-		_, err = manager.store.PublishDegraded(ctx, semanticcore.Degraded{
-			Generation: marker, SafeReason: semanticcore.ReasonUnavailable,
-			ExpectedActiveEpoch: active.PublicationEpoch,
-		}, active.BuildID)
-		if err == nil {
-			return nil
-		}
-
-		if !errors.Is(err, semanticcore.ErrConflict) {
-			return fmt.Errorf("invalidate raced semantic publication: %w", err)
-		}
-	}
-
-	return fmt.Errorf("invalidate raced semantic publication: %w", semanticcore.ErrConflict)
 }
 
 func validateActivePage(scope memory.Scope, after string, page []memory.ActiveCanonicalMemory) error {

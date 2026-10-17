@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	semanticstore "github.com/baldaworks/boyan/index/semantic"
+	semanticstore "github.com/baldaworks/boyan/internal/semantic"
 	"github.com/baldaworks/boyan/pkg/memory"
 )
 
@@ -22,14 +22,14 @@ func TestRepairReclaimsRetiredGenerationsDuringRefreshAndForgetting(t *testing.T
 		testRecord(scope, "item", "revision-1", "first", memory.SensitivityStandard, memory.RetentionClassStandard),
 	)
 	manifests := &fakeManifestSource{manifest: activeManifest(scope, "lex-1", 1)}
-	store := openSemanticStore(t)
+	store := openSemanticStore(t, canonical)
 	manager := newTestManager(
 		t, canonical, manifests, &fakeProvider{vector: []float32{1, 0}}, store, testModelSpace("model-a"),
 	)
 
 	var (
 		previous semanticstore.State
-		held     *semanticstore.Snapshot
+		held     semanticstore.SearchSnapshot
 	)
 
 	for sequence := uint64(1); sequence <= 5; sequence++ {
@@ -65,10 +65,11 @@ func TestRepairReclaimsRetiredGenerationsDuringRefreshAndForgetting(t *testing.T
 		}
 
 		if sequence == 1 {
-			held, found, err = store.Snapshot(context.Background(), current.View())
-			if err != nil || !found {
-				t.Fatalf("hold snapshot: %t, %v", found, err)
+			held, err = store.OpenSearchSnapshot(context.Background(), scope)
+			if err != nil {
+				t.Fatalf("hold snapshot: %v", err)
 			}
+			defer func() { _ = held.Close() }()
 		}
 
 		if sequence >= 4 && current.ChunkCount != 0 {
@@ -78,7 +79,10 @@ func TestRepairReclaimsRetiredGenerationsDuringRefreshAndForgetting(t *testing.T
 		previous = current
 	}
 
-	if got := held.Chunks(); len(got) != 1 || got[0].RevisionID != "revision-1" {
-		t.Fatalf("held snapshot changed across refresh/forget: %#v", got)
+	request := memory.RecallRequest{Scope: scope, Query: "text", Limit: 10}
+
+	got, _, err := held.SearchSemantic(context.Background(), request, [][]float32{{1, 0}}, 10)
+	if err != nil || len(got) != 1 || got[0].RevisionID != "revision-1" {
+		t.Fatalf("held snapshot changed across refresh/forget: %#v, %v", got, err)
 	}
 }
