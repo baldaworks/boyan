@@ -712,7 +712,7 @@ type sqliteManagerFixture struct {
 	manager     *Manager
 }
 
-func newSQLiteManagerFixture(t *testing.T) *sqliteManagerFixture {
+func newSQLiteManagerFixture(t *testing.T, changes ...func(*memory.RecallRecord)) *sqliteManagerFixture {
 	t.Helper()
 
 	f := &sqliteManagerFixture{scope: testScope("sql-manager")}
@@ -720,6 +720,11 @@ func newSQLiteManagerFixture(t *testing.T) *sqliteManagerFixture {
 		memory.SensitivityStandard, memory.RetentionClassStandard)
 	record.SourceIDs = []string{"source-a"}
 	record.ConversationIDs = []string{"conversation-a"}
+
+	for _, change := range changes {
+		change(&record)
+	}
+
 	f.canonical = newFakeCanonical(f.scope, 7, record)
 	manifest := activeManifest(f.scope, "sqlite-generation-7", 7)
 	manifest.ProjectionID = "sqlite"

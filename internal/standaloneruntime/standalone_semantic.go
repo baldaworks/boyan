@@ -48,7 +48,7 @@ func (storage *standaloneStorage) openSemantic(layout stateLayout, config Embedd
 
 	cleanups.Add(func() { _ = manager.Close(context.Background()) })
 
-	hybrid, err := semanticprojection.NewHybrid(storage.index, store, provider, config.ModelSpace)
+	hybrid, err := semanticprojection.NewLegacyHybrid(storage.index, store, provider, config.ModelSpace)
 	if err != nil {
 		return err
 	}

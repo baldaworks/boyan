@@ -29,16 +29,16 @@ func TestHybridRetrievesSemanticOnlyAndOverlapBeforeCallerLimit(t *testing.T) {
 }
 
 func TestHybridIncompatibleViewsDegradeOnlyOrdinaryRecall(t *testing.T) {
-	cases := map[string]func(*Hybrid, *fakeManifestSource, memory.RecallRequest){
-		"cold": func(h *Hybrid, _ *fakeManifestSource, _ memory.RecallRequest) { h.store = openSemanticStore(t) },
-		"wrong space": func(h *Hybrid, _ *fakeManifestSource, _ memory.RecallRequest) {
+	cases := map[string]func(*LegacyHybrid, *fakeManifestSource, memory.RecallRequest){
+		"cold": func(h *LegacyHybrid, _ *fakeManifestSource, _ memory.RecallRequest) { h.store = openSemanticStore(t) },
+		"wrong space": func(h *LegacyHybrid, _ *fakeManifestSource, _ memory.RecallRequest) {
 			h.spaceID = strings.Repeat("f", 64)
 		},
-		"wrong dimensions": func(h *Hybrid, _ *fakeManifestSource, _ memory.RecallRequest) { h.space.Dimensions = 3 },
-		"watermark mismatch": func(_ *Hybrid, m *fakeManifestSource, r memory.RecallRequest) {
+		"wrong dimensions": func(h *LegacyHybrid, _ *fakeManifestSource, _ memory.RecallRequest) { h.space.Dimensions = 3 },
+		"watermark mismatch": func(_ *LegacyHybrid, m *fakeManifestSource, r memory.RecallRequest) {
 			m.set(activeManifest(r.Scope, "hybrid-generation", 8))
 		},
-		"rebuilding": func(_ *Hybrid, m *fakeManifestSource, r memory.RecallRequest) {
+		"rebuilding": func(_ *LegacyHybrid, m *fakeManifestSource, r memory.RecallRequest) {
 			manifest := activeManifest(r.Scope, "hybrid-generation", 7)
 			manifest.Status = memory.ProjectionGenerationBuilding
 			m.set(manifest)
@@ -169,7 +169,7 @@ func TestHybridFailurePreservesLexicalAndMinimumConflicts(t *testing.T) {
 
 //nolint:funlen,cyclop // Resource creation and cleanup for real Bleve/store integration stay together.
 func hybridFixture(t *testing.T, changes ...func([]memory.RecallRecord)) (
-	*Hybrid, *fakeProvider, *fakeManifestSource, memory.RecallRequest) {
+	*LegacyHybrid, *fakeProvider, *fakeManifestSource, memory.RecallRequest) {
 	t.Helper()
 
 	scope := testScope("hybrid")
@@ -230,7 +230,7 @@ func hybridFixture(t *testing.T, changes ...func([]memory.RecallRecord)) (
 		t.Fatal(err)
 	}
 
-	hybrid, err := NewHybrid(p, store, provider, testModelSpace("model-a"))
+	hybrid, err := NewLegacyHybrid(p, store, provider, testModelSpace("model-a"))
 	if err != nil {
 		t.Fatal(err)
 	}

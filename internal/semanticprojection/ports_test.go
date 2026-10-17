@@ -33,7 +33,7 @@ func TestLegacySearchPortPreservesTypedNilRejection(t *testing.T) {
 	hybrid, provider, _, _ := hybridFixture(t)
 
 	var store *semanticstore.Store
-	if _, err := NewHybrid(hybrid.lexical, store, provider, hybrid.space); err == nil {
-		t.Fatal("NewHybrid accepted typed nil legacy store through LegacySearchReader")
+	if _, err := NewLegacyHybrid(hybrid.lexical, store, provider, hybrid.space); err == nil {
+		t.Fatal("NewLegacyHybrid accepted typed nil legacy store through LegacySearchReader")
 	}
 }

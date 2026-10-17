@@ -4,52 +4,59 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 	"time"
-	"unicode/utf8"
 
 	"github.com/baldaworks/boyan/internal/embedding"
-	semanticcore "github.com/baldaworks/boyan/internal/semantic"
+	semantic "github.com/baldaworks/boyan/internal/semantic"
 	"github.com/baldaworks/boyan/pkg/memory"
 )
 
-// HybridLexical is the required lexical adapter and its physical certificate.
-type HybridLexical interface {
-	memory.RecallProjection
-	memory.CertifiedRecallProjection
-	memory.PhysicalProjectionViewReader
+// ScopeStateReader supplies canonical sequence authority without mutation access.
+type ScopeStateReader interface {
+	LoadScopeState(ctx context.Context, scope memory.Scope) (memory.ScopeState, error)
 }
 
-// Hybrid augments lexical recall with a compatible immutable semantic snapshot.
-// It returns identities only; canonical hydration remains the recall service's job.
+// HybridDependencies binds the SQL snapshot reader and its canonical authority.
+// Composition supplies the lexical fallback explicitly; there is no backend selection.
+type HybridDependencies struct {
+	Canonical  ScopeStateReader
+	Manifests  memory.RecallProjectionCheckpointReader
+	Reader     SearchReader
+	Lexical    memory.RecallProjection
+	Provider   embedding.Provider
+	ModelSpace semantic.ModelSpace
+}
+
+// Hybrid returns certified SQL identities only. Canonical hydration remains the
+// caller's privacy barrier before releasing any remembered text.
 type Hybrid struct {
-	lexical  HybridLexical
-	store    LegacySearchReader
-	provider embedding.Provider
-	space    semanticcore.ModelSpace
-	spaceID  string
+	canonical ScopeStateReader
+	manifests memory.RecallProjectionCheckpointReader
+	reader    SearchReader
+	lexical   memory.RecallProjection
+	provider  embedding.Provider
+	space     semantic.ModelSpace
+	spaceID   string
+	now       func() time.Time
 }
 
-// NewHybrid constructs an enabled projection. Disabled callers use Bleve directly.
-func NewHybrid(lexical HybridLexical, store LegacySearchReader, provider embedding.Provider,
-	space semanticcore.ModelSpace) (*Hybrid, error) {
-	spaceID, err := semanticcore.SpaceFingerprint(space)
+// NewHybrid constructs the shared-snapshot SQLite orchestration.
+func NewHybrid(deps HybridDependencies) (*Hybrid, error) {
+	spaceID, err := semantic.SpaceFingerprint(deps.ModelSpace)
 	if err != nil {
 		return nil, err
 	}
 
-	if lexical == nil || store == nil || provider == nil {
-		return nil, fmt.Errorf("hybrid dependencies are required")
-	}
-	// Preserve rejection of a legacy nil *Store wrapped by the read port.
-	if value := reflect.ValueOf(store); value.Kind() == reflect.Pointer && value.IsNil() {
-		return nil, fmt.Errorf("hybrid dependencies are required")
+	for _, dependency := range []any{deps.Canonical, deps.Manifests, deps.Reader, deps.Lexical, deps.Provider} {
+		if nilDependency(dependency) {
+			return nil, fmt.Errorf("hybrid dependencies are required: %w", semantic.ErrInvalid)
+		}
 	}
 
-	return &Hybrid{lexical: lexical, store: store, provider: provider, space: space, spaceID: spaceID}, nil
+	return &Hybrid{canonical: deps.Canonical, manifests: deps.Manifests, reader: deps.Reader,
+		lexical: deps.Lexical, provider: deps.Provider, space: deps.ModelSpace, spaceID: spaceID, now: time.Now}, nil
 }
 
-// SearchRecall returns independently ranked and fused candidates before caller truncation.
 func (hybrid *Hybrid) SearchRecall(ctx context.Context,
 	request memory.RecallRequest) ([]memory.RecallProjectionHit, error) {
 	hits, _, err := hybrid.SearchRecallWithReport(ctx, request)
@@ -57,145 +64,99 @@ func (hybrid *Hybrid) SearchRecall(ctx context.Context,
 	return hits, err
 }
 
-// SearchRecallWithReport returns immutable per-request, text-free diagnostics.
-func (hybrid *Hybrid) SearchRecallWithReport(ctx context.Context,
-	request memory.RecallRequest) ([]memory.RecallProjectionHit, *memory.RetrievalReport, error) {
-	report := &memory.RetrievalReport{Requested: "hybrid", Effective: "hybrid", ModelSpacePrefix: hybrid.spaceID[:12]}
-
-	hits, err := hybrid.search(ctx, request, report)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return hits, report, nil
-}
-
-// SearchRecallConsistent requires the same physical certificate for both channels,
-// including an empty result. It shares SearchRecall's minimum-watermark policy.
 func (hybrid *Hybrid) SearchRecallConsistent(ctx context.Context,
 	request memory.RecallRequest) ([]memory.RecallProjectionHit, error) {
 	return hybrid.SearchRecall(ctx, request)
 }
 
-//nolint:cyclop,funlen // Each channel failure has an explicit fail-closed minimum/cancellation policy.
-func (hybrid *Hybrid) search(ctx context.Context,
-	request memory.RecallRequest, report *memory.RetrievalReport) ([]memory.RecallProjectionHit, error) {
-	request, err := normalizeHybridRequest(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-
-	// Direct callers also pin eligibility before lexical or provider work.
+func (hybrid *Hybrid) SearchRecallWithReport(ctx context.Context,
+	request memory.RecallRequest) ([]memory.RecallProjectionHit, *memory.RetrievalReport, error) {
+	// Capture before normalization, provider work, or waiting for a SQL connection.
+	at := hybrid.now().UTC()
 	if request.AsOf == nil {
-		at := time.Now().UTC()
 		request.AsOf = &at
 	}
 
-	prepared, err := semanticcore.PrepareQuery(ctx, request.Query, hybrid.space.QueryPrefix)
+	request, err := normalizeHybridRequest(ctx, request)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	report := &memory.RetrievalReport{Requested: "hybrid", Effective: "hybrid", ModelSpacePrefix: hybrid.spaceID[:12]}
+
+	hits, err := hybrid.search(ctx, request, report)
+	if err != nil {
+		return nil, nil, hybridReadError(err)
+	}
+
+	return hits, report, nil
+}
+
+//nolint:cyclop // Each failure boundary keeps canonical/lexical errors distinct from semantic degradation.
+func (hybrid *Hybrid) search(ctx context.Context, request memory.RecallRequest,
+	report *memory.RetrievalReport) ([]memory.RecallProjectionHit, error) {
+	prepared, err := semantic.PrepareQuery(ctx, request.Query, hybrid.space.QueryPrefix)
 	if err != nil {
 		return nil, err
 	}
 
-	report.OmittedQueryRunes = prepared.OmittedRunes
-	report.OmittedQueryWindows = prepared.OmittedWindows
+	report.OmittedQueryRunes, report.OmittedQueryWindows = prepared.OmittedRunes, prepared.OmittedWindows
 
-	depth := semanticcore.CandidateLimit(request.Limit)
-
-	lexical, err := hybrid.lexical.SearchRecallCertified(ctx, request, depth)
-	if err != nil {
-		return nil, err
-	}
-
-	if !lexical.Certified {
-		return hybrid.fallbackReport(ctx, request, report, "unavailable")
-	}
-
-	view := semanticcore.View{Scope: request.Scope, LexicalGenerationID: lexical.Manifest.GenerationID,
-		LexicalWatermark: lexical.Manifest.Watermark, ModelSpace: hybrid.spaceID, Dimensions: hybrid.space.Dimensions}
-
-	snapshot, found, err := hybrid.store.Snapshot(ctx, view)
-	if err != nil || !found {
-		return hybrid.fallbackReport(ctx, request, report, "unavailable")
-	}
-
-	vectors, err := hybrid.embedQuery(ctx, prepared)
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, err
-		}
-
-		return hybrid.fallbackReport(ctx, request, report, safeRecallReason(err))
-	}
-
-	hits, err := hybrid.fuse(ctx, request, lexical.Hits, vectors, snapshot.Chunks(), depth)
-	if err != nil {
-		return hybrid.fallbackReport(ctx, request, report, safeRecallReason(err))
-	}
-
-	report.LexicalCandidates = min(len(lexical.Hits), depth)
-	report.ScannedChunks = len(snapshot.Chunks())
-
-	for _, hit := range hits {
-		if hit.Semantic != 0 {
-			report.SemanticCandidates++
-		}
-	}
-
-	after, certified, err := hybrid.lexical.LoadActivePhysicalProjectionManifest(
-		ctx, request.Scope, lexical.Manifest.ProjectionID)
-	if err != nil {
-		return nil, err
-	}
-
-	if !certified || after != lexical.Manifest {
-		return hybrid.fallbackReport(ctx, request, report, "unavailable")
-	}
-
+	vectors, providerErr := embedHybridQuery(ctx, hybrid.provider, prepared, hybrid.space.Dimensions)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	return hits, nil
-}
-
-func (hybrid *Hybrid) fallbackReport(ctx context.Context, request memory.RecallRequest,
-	report *memory.RetrievalReport, reason string) ([]memory.RecallProjectionHit, error) {
-	report.Effective, report.Reason = "degraded", reason
-	report.SemanticCandidates, report.ScannedChunks = 0, 0
-	hits, err := hybrid.fallback(ctx, request)
-	report.LexicalCandidates = min(len(hits), semanticcore.SemanticCandidateLimit)
-
-	return hits, err
-}
-
-func safeRecallReason(err error) string {
-	if reason, ok := semanticcore.Classify(err); ok {
-		switch reason {
-		case semanticcore.ReasonInvalidInput, semanticcore.ReasonInputLimit:
-			return "invalid_response"
-		default:
-			return string(reason)
-		}
+	if errors.Is(providerErr, context.Canceled) || errors.Is(providerErr, context.DeadlineExceeded) {
+		return nil, providerErr
 	}
 
-	var providerError *embedding.Error
-	if errors.As(err, &providerError) {
-		report := memory.RetrievalReport{Effective: "degraded", Reason: string(providerError.Code)}
-		if report.Validate() == nil {
-			return report.Reason
-		}
+	before, certified, err := hybrid.certifiedSource(ctx, request)
+	if err != nil {
+		return nil, err
 	}
 
-	return "unavailable"
+	if providerErr != nil {
+		return hybrid.fallback(ctx, request, report, safeRecallReason(providerErr))
+	}
+
+	if !certified {
+		return hybrid.fallback(ctx, request, report, "unavailable")
+	}
+
+	result, err := hybrid.readChannels(ctx, request, before, vectors)
+	if err != nil {
+		return nil, err
+	}
+
+	if !result.certified {
+		return hybrid.fallback(ctx, request, report, "unavailable")
+	}
+
+	unchanged, err := hybrid.recertify(ctx, request, before, result.state)
+	if err != nil {
+		return nil, err
+	}
+
+	if !unchanged {
+		return hybrid.fallback(ctx, request, report, "unavailable")
+	}
+
+	report.LexicalCandidates = len(result.lexical)
+	report.SemanticCandidates = len(result.dense)
+	report.ScannedChunks = result.counts.ScannedChunks
+
+	return fuseHybridMatches(ctx, request.Scope, result.lexical, result.dense)
 }
 
-func (hybrid *Hybrid) embedQuery(ctx context.Context, prepared semanticcore.PreparedText) ([][]float32, error) {
+func embedHybridQuery(ctx context.Context, provider embedding.Provider,
+	prepared semantic.PreparedText, dimensions int) ([][]float32, error) {
 	inputs := make([]string, len(prepared.Windows))
 	for i, window := range prepared.Windows {
 		inputs[i] = window.Input
 	}
 
-	vectors, err := hybrid.provider.Embed(ctx, inputs)
+	vectors, err := provider.Embed(ctx, inputs)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +166,7 @@ func (hybrid *Hybrid) embedQuery(ctx context.Context, prepared semanticcore.Prep
 	}
 
 	for _, vector := range vectors {
-		if err := semanticcore.ValidateVector(vector, hybrid.space.Dimensions); err != nil {
+		if err := semantic.ValidateVector(vector, dimensions); err != nil {
 			return nil, err
 		}
 	}
@@ -213,8 +174,156 @@ func (hybrid *Hybrid) embedQuery(ctx context.Context, prepared semanticcore.Prep
 	return vectors, nil
 }
 
-func (hybrid *Hybrid) fallback(ctx context.Context,
-	request memory.RecallRequest) ([]memory.RecallProjectionHit, error) {
+//nolint:cyclop // All independent scope, sequence and active-certificate gates must hold.
+func (hybrid *Hybrid) certifiedSource(ctx context.Context, request memory.RecallRequest) (
+	memory.ProjectionManifest, bool, error) {
+	state, err := hybrid.canonical.LoadScopeState(ctx, request.Scope)
+	if err != nil {
+		return memory.ProjectionManifest{}, false, err
+	}
+
+	manifest, found, err := hybrid.manifests.LoadActiveProjectionManifest(ctx, request.Scope, "sqlite")
+	if err != nil {
+		return memory.ProjectionManifest{}, false, err
+	}
+
+	physical, active, err := hybrid.reader.LoadActivePhysicalProjectionManifest(ctx, request.Scope, "sqlite")
+	if err != nil {
+		return memory.ProjectionManifest{}, false, err
+	}
+
+	valid := found && active && manifest == physical && manifest.Scope == request.Scope &&
+		manifest.ProjectionID == "sqlite" && manifest.Status == memory.ProjectionGenerationActive &&
+		manifest.Validate() == nil && state.Scope == request.Scope && state.Validate() == nil &&
+		state.ChangeSeq == manifest.Watermark && manifest.Watermark >= request.MinScopeChangeSeq
+
+	return manifest, valid, nil
+}
+
+type hybridChannels struct {
+	lexical   []memory.RecallProjectionHit
+	dense     []semantic.DenseMatch
+	counts    semantic.ScanCounts
+	state     semantic.State
+	certified bool
+}
+
+// readChannels closes the shared transaction before any recertification/fallback.
+//
+//nolint:cyclop // Lexical and semantic failures have intentionally different policies.
+func (hybrid *Hybrid) readChannels(ctx context.Context, request memory.RecallRequest,
+	manifest memory.ProjectionManifest, vectors [][]float32) (result hybridChannels, err error) {
+	snapshot, err := hybrid.reader.OpenSearchSnapshot(ctx, request.Scope)
+	if err != nil {
+		return result, err
+	}
+	defer func() {
+		if closeErr := snapshot.Close(); err == nil {
+			err = closeErr
+		}
+	}()
+
+	if !sameHybridTuple(snapshot.LexicalManifest(), manifest) {
+		return result, nil
+	}
+
+	depth := semantic.CandidateLimit(request.Limit)
+
+	result.lexical, err = snapshot.SearchLexical(ctx, request, depth)
+	if err != nil {
+		return result, err
+	}
+
+	state, found, err := snapshot.SemanticState()
+	if err != nil {
+		if semanticUnavailable(err) {
+			return result, nil
+		}
+
+		return result, err
+	}
+
+	if !found || !hybrid.matchesState(state, manifest) {
+		return result, nil
+	}
+
+	result.state = state
+
+	result.dense, result.counts, err = snapshot.SearchSemantic(ctx, request, vectors, depth)
+	if err != nil {
+		if semanticUnavailable(err) {
+			return result, nil
+		}
+
+		return result, err
+	}
+
+	result.certified = true
+
+	return result, ctx.Err()
+}
+
+func (hybrid *Hybrid) matchesState(state semantic.State, manifest memory.ProjectionManifest) bool {
+	return state.Status == semantic.StatusReady && state.PublicationEpoch > 0 &&
+		semantic.ValidProjectionIdentity(state.BuildID) &&
+		semantic.StateMatchesView(state, semantic.View{Scope: manifest.Scope,
+			LexicalGenerationID: manifest.GenerationID, LexicalWatermark: manifest.Watermark,
+			ModelSpace: hybrid.spaceID, Dimensions: hybrid.space.Dimensions})
+}
+
+func (hybrid *Hybrid) recertify(ctx context.Context, request memory.RecallRequest,
+	before memory.ProjectionManifest, state semantic.State) (bool, error) {
+	// A second short metadata snapshot also checks the exact internal physical
+	// build binding, even if a replacement retains the same logical manifest.
+	unchanged, err := hybrid.currentPair(ctx, request.Scope, before, state)
+	if err != nil {
+		return false, err
+	}
+
+	after, certified, err := hybrid.certifiedSource(ctx, request)
+	if err != nil {
+		return false, err
+	}
+
+	return unchanged && certified && before == after, ctx.Err()
+}
+
+func (hybrid *Hybrid) currentPair(ctx context.Context, scope memory.Scope,
+	manifest memory.ProjectionManifest, before semantic.State) (unchanged bool, err error) {
+	snapshot, err := hybrid.reader.OpenSearchSnapshot(ctx, scope)
+	if err != nil {
+		return false, err
+	}
+	defer func() {
+		if closeErr := snapshot.Close(); err == nil {
+			err = closeErr
+		}
+	}()
+
+	state, found, err := snapshot.SemanticState()
+	if err != nil {
+		if semanticUnavailable(err) {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	return found && sameHybridTuple(snapshot.LexicalManifest(), manifest) && state == before, nil
+}
+
+func sameHybridTuple(left, right memory.ProjectionManifest) bool {
+	return left.Scope == right.Scope && left.ProjectionID == right.ProjectionID &&
+		left.GenerationID == right.GenerationID && left.Watermark == right.Watermark && left.Status == right.Status
+}
+
+func semanticUnavailable(err error) bool {
+	return errors.Is(err, semantic.ErrInvalid) || errors.Is(err, semantic.ErrCapacity) ||
+		errors.Is(err, semantic.ErrConflict) || errors.Is(err, semantic.ErrCorrupt) || errors.Is(err, semantic.ErrClosed)
+}
+
+func (hybrid *Hybrid) fallback(ctx context.Context, request memory.RecallRequest,
+	report *memory.RetrievalReport, reason string) ([]memory.RecallProjectionHit, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -228,61 +337,35 @@ func (hybrid *Hybrid) fallback(ctx context.Context,
 		return nil, err
 	}
 
-	return hits[:min(len(hits), semanticcore.FusedCandidateLimit)], nil
-}
-
-//nolint:cyclop,funlen // Bounded prefiltering, ranking, and identity assembly preserve independent channel order.
-func (hybrid *Hybrid) fuse(ctx context.Context, request memory.RecallRequest, lexical []memory.RecallProjectionHit,
-	vectors [][]float32, chunks []semanticcore.ProjectionChunk, depth int) ([]memory.RecallProjectionHit, error) {
-	if len(chunks) > semanticcore.ProjectionChunkLimit {
-		return nil, semanticcore.ErrCapacity
-	}
-
-	eligible := make([]semanticcore.Chunk, 0, len(chunks))
-	identityCapacity := min(len(chunks)+len(lexical), semanticcore.ProjectionChunkLimit)
-	identities := make(map[string]memory.RecallProjectionHit, identityCapacity)
-
-	effective := time.Now().UTC()
-	if request.AsOf != nil {
-		effective = request.AsOf.UTC()
-	}
-
-	for _, chunk := range chunks {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-
-		if chunk.ObservedAt == nil || chunk.ObservedAt.IsZero() {
-			return nil, semanticcore.ErrCorrupt
-		}
-
-		if !hybridChunkEligible(chunk, request, effective) {
-			continue
-		}
-
-		eligible = append(eligible, semanticcore.Chunk{
-			RevisionID: chunk.RevisionID, Ordinal: int(chunk.Ordinal), Vector: chunk.Vector})
-		identities[chunk.RevisionID] = memory.RecallProjectionHit{Scope: chunk.Scope, ItemID: chunk.ItemID,
-			RevisionID: chunk.RevisionID, Revision: chunk.Revision, ScopeChangeSeq: chunk.ScopeChangeSeq}
-	}
-
-	dense, err := semanticcore.Rank(ctx, vectors, eligible, depth)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	lexicalIDs := make([]string, 0, min(len(lexical), depth))
-	for _, hit := range lexical[:min(len(lexical), depth)] {
-		lexicalIDs = append(lexicalIDs, hit.RevisionID)
-		identities[hit.RevisionID] = hit
-	}
+	hits = hits[:min(len(hits), semantic.FusedCandidateLimit)]
+	report.Effective, report.Reason = "degraded", reason
+	report.LexicalCandidates = min(len(hits), semantic.SemanticCandidateLimit)
+	report.SemanticCandidates, report.ScannedChunks = 0, 0
 
-	denseIDs := make([]string, len(dense))
+	return hits, nil
+}
+
+func fuseHybridMatches(ctx context.Context, scope memory.Scope, lexical []memory.RecallProjectionHit,
+	dense []semantic.DenseMatch) ([]memory.RecallProjectionHit, error) {
+	lexical = lexical[:min(len(lexical), semantic.SemanticCandidateLimit)]
+	dense = dense[:min(len(dense), semantic.SemanticCandidateLimit)]
+	lexicalIDs, denseIDs := make([]string, len(lexical)), make([]string, len(dense))
+	identities := make(map[string]memory.RecallProjectionHit, len(lexical)+len(dense))
+
 	for i, match := range dense {
 		denseIDs[i] = match.RevisionID
+		identities[match.RevisionID] = memory.RecallProjectionHit{Scope: scope, RevisionID: match.RevisionID}
 	}
 
-	fused, err := semanticcore.Fuse(ctx, lexicalIDs, denseIDs, semanticcore.FusedCandidateLimit)
+	for i, hit := range lexical {
+		lexicalIDs[i], identities[hit.RevisionID] = hit.RevisionID, hit
+	}
+
+	fused, err := semantic.Fuse(ctx, lexicalIDs, denseIDs, semantic.FusedCandidateLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -290,61 +373,38 @@ func (hybrid *Hybrid) fuse(ctx context.Context, request memory.RecallRequest, le
 	hits := make([]memory.RecallProjectionHit, 0, len(fused))
 	for _, match := range fused {
 		hit := identities[match.RevisionID]
-		hit.Score = match.Score
-		hit.Lexical, hit.Semantic = match.Lexical, match.Semantic
+		hit.Score, hit.Lexical, hit.Semantic = match.Score, match.Lexical, match.Semantic
 		hits = append(hits, hit)
 	}
 
 	return hits, nil
 }
 
-//nolint:cyclop // Every caller filter is checked independently before cosine work.
-func hybridChunkEligible(chunk semanticcore.ProjectionChunk, request memory.RecallRequest, at time.Time) bool {
-	if chunk.Scope != request.Scope || request.Kind != nil && chunk.Kind != *request.Kind ||
-		request.Category != nil && chunk.Category != *request.Category ||
-		request.MemoryKey != "" && chunk.MemoryKey != request.MemoryKey {
-		return false
+func hybridReadError(err error) error {
+	if err == nil || err == context.Canceled || err == context.DeadlineExceeded {
+		return err
 	}
 
-	if request.SourceID != "" && !hasString(chunk.SourceIDs, request.SourceID) ||
-		request.ConversationID != "" && !hasString(chunk.ConversationIDs, request.ConversationID) {
-		return false
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return &hybridReadFailure{cause: err}
 	}
 
-	return memory.TemporalEligibleAt(memory.Temporal{ObservedAt: *chunk.ObservedAt, ValidFrom: chunk.ValidFrom,
-		ValidUntil: chunk.ValidUntil, ExpiresAt: chunk.ExpiresAt}, at)
+	if _, _, classified := memory.ClassifyError(err); classified {
+		return &hybridReadFailure{cause: err}
+	}
+
+	return &hybridReadFailure{cause: memory.PermanentError(memory.CodeStoreFailure,
+		"hybrid recall storage is unavailable", err)}
 }
 
-func hasString(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
+// Retain the original classification and errors.Is chain without formatting
+// private canonical/SQL diagnostics into the public error message.
+type hybridReadFailure struct{ cause error }
 
-	return false
-}
+func (*hybridReadFailure) Error() string { return "hybrid recall could not complete" }
+
+func (failure *hybridReadFailure) Unwrap() error { return failure.cause }
 
 var _ memory.RecallProjection = (*Hybrid)(nil)
 var _ memory.ConsistentRecallProjection = (*Hybrid)(nil)
-
-func normalizeHybridRequest(ctx context.Context, request memory.RecallRequest) (memory.RecallRequest, error) {
-	if ctx == nil {
-		return memory.RecallRequest{}, memory.PermanentError(memory.CodeInvalidQuery, "recall context is required", nil)
-	}
-
-	if err := ctx.Err(); err != nil {
-		return memory.RecallRequest{}, err
-	}
-
-	normalized, err := memory.NormalizeRecallRequest(request)
-	if err != nil {
-		return memory.RecallRequest{}, err
-	}
-
-	if !utf8.ValidString(normalized.Query) {
-		return memory.RecallRequest{}, memory.PermanentError(memory.CodeInvalidQuery, "recall query is invalid", nil)
-	}
-
-	return normalized, nil
-}
+var _ memory.ReportedRecallProjection = (*Hybrid)(nil)

@@ -34,7 +34,7 @@ func (lexical emptyCertifiedLexical) SearchRecallCertified(ctx context.Context,
 	return memory.CertifiedRecallResult{Manifest: manifest, Certified: certified}, err
 }
 
-func temporalHybridFixture(t *testing.T) (*Hybrid, *fakeCanonical, memory.RecallRequest) {
+func temporalHybridFixture(t *testing.T) (*LegacyHybrid, *fakeCanonical, memory.RecallRequest) {
 	t.Helper()
 
 	scope := testScope("temporal")
@@ -60,7 +60,7 @@ func temporalHybridFixture(t *testing.T) (*Hybrid, *fakeCanonical, memory.Recall
 		t.Fatal(err)
 	}
 
-	hybrid, err := NewHybrid(emptyCertifiedLexical{manifests}, store, provider, testModelSpace("model-a"))
+	hybrid, err := NewLegacyHybrid(emptyCertifiedLexical{manifests}, store, provider, testModelSpace("model-a"))
 	if err != nil {
 		t.Fatal(err)
 	}
