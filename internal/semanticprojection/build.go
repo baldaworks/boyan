@@ -30,7 +30,7 @@ type reusableKey struct {
 }
 
 //nolint:cyclop,funlen,nlreturn,wsl_v5 // Publication gates intentionally remain explicit and adjacent.
-func (manager *Manager) build(ctx context.Context, scope memory.Scope, current *flight) error {
+func (manager *Manager) build(ctx context.Context, scope memory.Scope, current *flight) (buildErr error) {
 	if manager.beforeBuild != nil {
 		manager.beforeBuild(ctx, scope)
 	}
@@ -50,7 +50,7 @@ func (manager *Manager) build(ctx context.Context, scope memory.Scope, current *
 		if manager.beforeFinalCheck != nil {
 			manager.beforeFinalCheck()
 		}
-		if err := manager.verifyTarget(ctx, target.manifest); err != nil {
+		if err := manager.verifyBuildTarget(ctx, target); err != nil {
 			manager.recordBuildFailure(scope, target, err)
 			return err
 		}
@@ -88,9 +88,19 @@ func (manager *Manager) build(ctx context.Context, scope memory.Scope, current *
 		return err
 	}
 
+	// Retain our generated identity, even when Stage durably claims and then
+	// returns no State. This terminal attempt finishes before the flight, slot
+	// and producer drain ownership can be released by runSingleFlight.
+	stageFailed := false
+	defer func() {
+		manager.finishBuild(ctx, target, buildErr, stageFailed)
+	}()
 	if _, err := manager.store.Stage(ctx, target.generation, coverage, chunks); err != nil {
-		manager.publishFailure(ctx, target, err)
-		manager.recordBuildFailure(scope, target, err)
+		stageFailed = true
+		if manager.lifecycle == nil {
+			manager.publishFailure(ctx, target, err)
+			manager.recordBuildFailure(scope, target, err)
+		}
 		return fmt.Errorf("stage semantic projection: %w", err)
 	}
 
@@ -98,7 +108,7 @@ func (manager *Manager) build(ctx context.Context, scope memory.Scope, current *
 		manager.beforeFinalCheck()
 	}
 
-	if err := manager.verifyTarget(ctx, target.manifest); err != nil {
+	if err := manager.verifyBuildTarget(ctx, target); err != nil {
 		manager.recordBuildFailure(scope, target, err)
 		return err
 	}
@@ -117,9 +127,13 @@ func (manager *Manager) build(ctx context.Context, scope memory.Scope, current *
 	if manager.afterPublish != nil {
 		manager.afterPublish()
 	}
-	if err := manager.verifyTarget(ctx, target.manifest); err != nil {
-		if invalidateErr := manager.invalidatePublished(target); invalidateErr != nil {
-			err = errors.Join(err, invalidateErr)
+	if err := manager.verifyBuildTarget(ctx, target); err != nil {
+		if manager.lifecycle == nil {
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), manager.cleanupTimeout)
+			defer cancel()
+			if invalidateErr := manager.invalidatePublished(cleanupCtx, target); invalidateErr != nil {
+				manager.recordCleanupDeferred(scope)
+			}
 		}
 		manager.recordBuildFailure(scope, target, err)
 		return err
@@ -484,24 +498,32 @@ func (manager *Manager) verifyTarget(ctx context.Context, before memory.Projecti
 	return nil
 }
 
+func (manager *Manager) verifyBuildTarget(ctx context.Context, target buildTarget) error {
+	if target.generation.ModelSpace != manager.spaceID || target.generation.Dimensions != manager.space.Dimensions {
+		return ErrStaleView
+	}
+
+	return manager.verifyTarget(ctx, target.manifest)
+}
+
 func (manager *Manager) loadCertifiedSource(
 	ctx context.Context,
 	scope memory.Scope,
 ) (memory.ProjectionManifest, error) {
-	durable, found, err := manager.manifests.LoadActiveProjectionManifest(ctx, scope, lexicalProjectionID)
+	durable, found, err := manager.manifests.LoadActiveProjectionManifest(ctx, scope, manager.lexicalID)
 	if err != nil {
 		return memory.ProjectionManifest{}, err
 	}
 
 	physical, physicallyActive, err := manager.physical.LoadActivePhysicalProjectionManifest(
-		ctx, scope, lexicalProjectionID,
+		ctx, scope, manager.lexicalID,
 	)
 	if err != nil {
 		return memory.ProjectionManifest{}, err
 	}
 
 	if !found || !physicallyActive || durable != physical || durable.Scope != scope ||
-		durable.ProjectionID != lexicalProjectionID || durable.Status != memory.ProjectionGenerationActive ||
+		durable.ProjectionID != manager.lexicalID || durable.Status != memory.ProjectionGenerationActive ||
 		durable.Validate() != nil {
 		return memory.ProjectionManifest{}, ErrStaleView
 	}
@@ -529,9 +551,9 @@ func (manager *Manager) verifyView(ctx context.Context, view semanticcore.View) 
 	return nil
 }
 
-func (manager *Manager) invalidatePublished(target buildTarget) error {
+func (manager *Manager) invalidatePublished(ctx context.Context, target buildTarget) error {
 	for range 3 {
-		active, found, err := manager.store.ActiveState(context.Background(), target.generation.Scope)
+		active, found, err := manager.store.ActiveState(ctx, target.generation.Scope)
 		if err != nil {
 			return fmt.Errorf("read raced semantic publication: %w", err)
 		}
@@ -548,7 +570,7 @@ func (manager *Manager) invalidatePublished(target buildTarget) error {
 		marker := target.generation
 		marker.BuildID = markerID
 
-		_, err = manager.store.PublishDegraded(context.Background(), semanticcore.Degraded{
+		_, err = manager.store.PublishDegraded(ctx, semanticcore.Degraded{
 			Generation: marker, SafeReason: semanticcore.ReasonUnavailable,
 			ExpectedActiveEpoch: active.PublicationEpoch,
 		}, active.BuildID)
@@ -590,6 +612,14 @@ func (manager *Manager) publishFailure(ctx context.Context, target buildTarget, 
 	if !ok || ctx.Err() != nil || target.generation.BuildID == "" || manager.verifyTarget(ctx, target.manifest) != nil {
 		return
 	}
+	// Diagnostic markers never reuse a candidate identity, including after a
+	// failed Stage that was already released by the terminal guard.
+	markerID, err := newBuildID()
+	if err != nil {
+		return
+	}
+
+	target.generation.BuildID = markerID
 
 	_, _ = manager.store.PublishDegraded(ctx, semanticcore.Degraded{
 		Generation: target.generation, SafeReason: reason, ExpectedActiveEpoch: target.expectedEpoch,

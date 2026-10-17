@@ -19,6 +19,7 @@ const (
 	lexicalProjectionID     = "bleve"
 	canonicalPageSize       = 128
 	projectionScanPageLimit = semanticcore.ProjectionScanRecordLimit/canonicalPageSize + 1
+	semanticCleanupTimeout  = 5 * time.Second
 	// One direct continuation preserves an accepted in-flight epoch without
 	// letting a continuously refreshed scope monopolize its worker.
 	directContinuationLimit = 1
@@ -41,6 +42,10 @@ type Dependencies struct {
 	Provider   embedding.Provider
 	Store      BuildStore
 	ModelSpace semanticcore.ModelSpace
+	// LexicalProjectionID is statically bound by composition; empty preserves
+	// the temporary legacy adapter until runtime cutover.
+	LexicalProjectionID string
+	Lifecycle           CandidateLifecycle
 }
 
 // State is a bounded per-scope operational state.
@@ -61,6 +66,8 @@ type ScopeStatus struct {
 	LexicalWatermark    uint64
 	ModelSpace          string
 	UpdatedAt           time.Time
+	CleanupDeferred     bool
+	CleanupReason       semanticcore.Reason
 }
 
 type flight struct {
@@ -88,10 +95,13 @@ type Manager struct {
 	store     BuildStore
 	space     semanticcore.ModelSpace
 	spaceID   string
+	lexicalID string
+	lifecycle CandidateLifecycle
 
-	buildSlots   chan struct{}
-	buildTimeout time.Duration
-	now          func() time.Time
+	buildSlots     chan struct{}
+	buildTimeout   time.Duration
+	cleanupTimeout time.Duration
+	now            func() time.Time
 
 	flightMu     sync.Mutex
 	flights      map[string]*flight
@@ -305,12 +315,12 @@ type scheduleState struct {
 func New(dependencies Dependencies) (*Manager, error) {
 	if dependencies.Canonical == nil || dependencies.Records == nil || dependencies.Manifests == nil ||
 		dependencies.Physical == nil ||
-		dependencies.Provider == nil || dependencies.Store == nil {
+		dependencies.Provider == nil || nilDependency(dependencies.Store) {
 		return nil, fmt.Errorf("semantic projection dependencies are required")
 	}
-	// A legacy nil *Store remains nil after conversion to the consumer port.
-	if value := reflect.ValueOf(dependencies.Store); value.Kind() == reflect.Pointer && value.IsNil() {
-		return nil, fmt.Errorf("semantic projection dependencies are required")
+
+	if err := configureLifecycle(&dependencies); err != nil {
+		return nil, err
 	}
 
 	spaceID, err := semanticcore.SpaceFingerprint(dependencies.ModelSpace)
@@ -324,14 +334,44 @@ func New(dependencies Dependencies) (*Manager, error) {
 		canonical: dependencies.Canonical, records: dependencies.Records,
 		manifests: dependencies.Manifests, physical: dependencies.Physical, provider: dependencies.Provider,
 		store: dependencies.Store, space: dependencies.ModelSpace, spaceID: spaceID,
-		buildSlots:   make(chan struct{}, semanticcore.SemanticWorkerLimit),
-		buildTimeout: semanticcore.SemanticBuildTimeout,
-		now:          time.Now,
-		flights:      make(map[string]*flight), statuses: make(map[string]ScopeStatus),
+		lexicalID: dependencies.LexicalProjectionID, lifecycle: dependencies.Lifecycle,
+		buildSlots:     make(chan struct{}, semanticcore.SemanticWorkerLimit),
+		buildTimeout:   semanticcore.SemanticBuildTimeout,
+		cleanupTimeout: semanticCleanupTimeout,
+		now:            time.Now,
+		flights:        make(map[string]*flight), statuses: make(map[string]ScopeStatus),
 		queue:     make(chan memory.Scope, semanticcore.SemanticQueueLimit),
 		schedules: make(map[string]*scheduleState),
 		shutdown:  shutdown, stopAll: stopAll,
 	}, nil
+}
+
+func configureLifecycle(dependencies *Dependencies) error {
+	if dependencies.LexicalProjectionID == "" {
+		dependencies.LexicalProjectionID = lexicalProjectionID
+	}
+
+	if dependencies.Lifecycle != nil && nilDependency(dependencies.Lifecycle) ||
+		dependencies.LexicalProjectionID == "sqlite" && dependencies.Lifecycle == nil {
+		return fmt.Errorf("semantic projection lifecycle dependency: %w", semanticcore.ErrInvalid)
+	}
+
+	return nil
+}
+
+// nilDependency only validates interface nilness; it never discovers or selects
+// a backend. Composition supplies the optional lifecycle explicitly.
+func nilDependency(dependency any) bool {
+	if dependency == nil {
+		return true
+	}
+
+	switch value := reflect.ValueOf(dependency); value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 // Repair synchronously rebuilds one exact scope through the same bounded,
@@ -469,13 +509,13 @@ func (manager *Manager) Status(ctx context.Context, scope memory.Scope) (ScopeSt
 	closed := manager.closed
 	manager.lifecycleMu.Unlock()
 	if closed {
-		return ScopeStatus{State: StateStopped, ModelSpace: manager.spaceID, UpdatedAt: manager.now().UTC()}, nil
+		return manager.stoppedStatus(scope), nil
 	}
 
 	manager.statusMu.RLock()
 	status, statusFound := manager.statuses[scopeKey(scope)]
 	manager.statusMu.RUnlock()
-	if statusFound && status.State == StateRepairing {
+	if statusFound && (status.State == StateRepairing || status.CleanupDeferred) {
 		return status, nil
 	}
 
@@ -515,11 +555,34 @@ func (manager *Manager) Status(ctx context.Context, scope memory.Scope) (ScopeSt
 	}, nil
 }
 
+//nolint:funcorder // The stopped status view stays beside Status.
+func (manager *Manager) stoppedStatus(scope memory.Scope) ScopeStatus {
+	manager.statusMu.RLock()
+	status := manager.statuses[scopeKey(scope)]
+	manager.statusMu.RUnlock()
+
+	status.State = StateStopped
+	status.ModelSpace = manager.spaceID
+	status.UpdatedAt = manager.now().UTC()
+
+	return status
+}
+
 //nolint:funcorder // Kept beside Status while public lifecycle methods remain grouped.
 func (manager *Manager) setStatus(scope memory.Scope, status ScopeStatus) {
 	manager.statusMu.Lock()
 
 	previous := manager.statuses[scopeKey(scope)]
+	if previous.CleanupDeferred {
+		status.CleanupDeferred = true
+
+		status.CleanupReason = previous.CleanupReason
+		if status.State == StateReady {
+			status.State = StateDegraded
+			status.SafeReason = semanticcore.ReasonUnavailable
+		}
+	}
+
 	if previous.State == StateRepairing {
 		manager.repairingCount--
 	}
