@@ -3,14 +3,16 @@ package sqlite
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/baldaworks/boyan/pkg/memory"
 )
 
+//nolint:cyclop // Check complete persisted scope retirement and independent ownership-scan counts together.
 func TestCanonicalDenialReconcileAllPersistedScopes(t *testing.T) {
 	s := denialCanonicalStore(t)
-	store, _ := openTestStore(t, true)
+	store, dir := openTestStore(t, true)
 
 	for i := range 131 {
 		scope := memory.Scope{Kind: memory.ScopeKindGroup, Key: fmt.Sprintf("scope:%03d", i)}
@@ -32,8 +34,37 @@ func TestCanonicalDenialReconcileAllPersistedScopes(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	observer := observeReader(t, store, dir)
 	if err := store.ReconcileAllCanonicalDenials(t.Context()); err != nil {
 		t.Fatal(err)
+	}
+
+	checks := 0
+
+	for _, query := range observer.take() {
+		if strings.Contains(query.query, "pragma_foreign_key_check") {
+			checks++
+		}
+	}
+
+	if checks != 1 {
+		t.Errorf("startup ownership scans = %d, want one across all persisted scopes", checks)
+	}
+
+	if err := store.ReconcileCanonicalDenials(t.Context(), semanticScope); err != nil {
+		t.Fatal(err)
+	}
+
+	checks = 0
+
+	for _, query := range observer.take() {
+		if strings.Contains(query.query, "pragma_foreign_key_check") {
+			checks++
+		}
+	}
+
+	if checks != 1 {
+		t.Errorf("standalone ownership scans = %d, want its own global check", checks)
 	}
 
 	assertPrivacyCount(t, store, `SELECT count(*) FROM lexical_record`, 0)

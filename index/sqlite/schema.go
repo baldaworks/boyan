@@ -157,6 +157,15 @@ func initializeSchema(ctx context.Context, db *sql.DB, fresh, embeddings bool) e
 		}
 	}
 
+	// Copy pages materialize one potentially oversized record at a time. Seek
+	// directly within its build instead of repeatedly sorting the whole build.
+	// This additive index also upgrades supported version-1 databases on reopen.
+	const copyIndex = `CREATE INDEX IF NOT EXISTS lexical_record_build_rowid
+ ON lexical_record(physical_build_id,rowid)`
+	if _, err := tx.ExecContext(ctx, copyIndex); err != nil {
+		return err
+	}
+
 	if embeddings {
 		var present int
 

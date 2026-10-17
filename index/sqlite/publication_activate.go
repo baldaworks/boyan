@@ -40,7 +40,7 @@ func (a *SQLiteCanonicalApplier) Activate(ctx context.Context, scope memory.Scop
 		return stagingConflict()
 	}
 
-	return a.ReconcileProjection(ctx)
+	return a.reconcileProjection(ctx, &scope)
 }
 
 // ResumeProjection repairs the canonical-first activation crash window only

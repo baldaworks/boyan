@@ -286,6 +286,20 @@ func ChunkMatchesCoverage(chunk ProjectionChunk, manifest CoverageRecord, found 
 }
 
 func ValidateChunk(generation Generation, chunk ProjectionChunk) error {
+	if err := ValidateChunkMetadata(generation, chunk); err != nil {
+		return err
+	}
+
+	if err := ValidateVector(chunk.Vector, generation.Dimensions); err != nil {
+		return ErrInvalid
+	}
+
+	return nil
+}
+
+// ValidateChunkMetadata checks every nonvector field. Storage readers that
+// validate components in SQL use it without constructing a synthetic vector.
+func ValidateChunkMetadata(generation Generation, chunk ProjectionChunk) error {
 	if !ChunkMatchesGeneration(generation, chunk) || !ValidChunkIdentity(chunk) {
 		return ErrInvalid
 	}
@@ -300,10 +314,6 @@ func ValidateChunk(generation Generation, chunk ProjectionChunk) error {
 
 	if err := ValidateOptionalMetadata(chunk); err != nil {
 		return err
-	}
-
-	if err := ValidateVector(chunk.Vector, generation.Dimensions); err != nil {
-		return ErrInvalid
 	}
 
 	return nil

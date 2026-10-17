@@ -11,6 +11,13 @@ import (
 // unreachable SQL rows. Process-owned builds and active/previous pointers are
 // retained independently of canonical manifest enumeration.
 func (a *SQLiteCanonicalApplier) ReconcileProjection(ctx context.Context) (result error) {
+	return a.reconcileProjection(ctx, nil)
+}
+
+// Ordinary activation reconciles its full scope only. Startup retains the
+// global repair-before-prune pass. The existing canonical walker still supplies
+// previous-manifest authority; no cached or SQL-only retention proof replaces it.
+func (a *SQLiteCanonicalApplier) reconcileProjection(ctx context.Context, scope *memory.Scope) (result error) {
 	defer func() { result = lexicalStorageError(result) }()
 
 	operation, done, err := a.acquire(ctx)
@@ -29,7 +36,7 @@ func (a *SQLiteCanonicalApplier) ReconcileProjection(ctx context.Context) (resul
 		return nil
 	}
 
-	retained, active, err := retainedProjectionManifests(ctx, walker)
+	retained, active, err := retainedProjectionManifests(ctx, walker, scope)
 	if err != nil {
 		return err
 	}
@@ -53,7 +60,7 @@ func (a *SQLiteCanonicalApplier) ReconcileProjection(ctx context.Context) (resul
 		}
 	}
 
-	return a.pruneBuilds(ctx, keep)
+	return a.pruneBuilds(ctx, keep, scope)
 }
 
 func (a *SQLiteCanonicalApplier) reconcileActive(ctx context.Context, manifest memory.ProjectionManifest) error {
@@ -72,7 +79,8 @@ func (a *SQLiteCanonicalApplier) reconcileActive(ctx context.Context, manifest m
 	return err
 }
 
-func retainedProjectionManifests(ctx context.Context, walker projectionManifestWalker) (
+//nolint:cyclop // Validate every walked manifest before retaining exact scope and previous-generation authority.
+func retainedProjectionManifests(ctx context.Context, walker projectionManifestWalker, scope *memory.Scope) (
 	[]memory.ProjectionManifest, []memory.ProjectionManifest, error) {
 	var keep, active []memory.ProjectionManifest
 
@@ -85,6 +93,10 @@ func retainedProjectionManifests(ctx context.Context, walker projectionManifestW
 
 		if manifest.Validate() != nil || manifest.ProjectionID != "sqlite" {
 			return ErrCorrupt
+		}
+
+		if scope != nil && manifest.Scope != *scope {
+			return nil
 		}
 
 		if referenced {
@@ -117,10 +129,10 @@ type physicalBuildIdentity struct {
 	watermark  uint64
 }
 
-func (a *SQLiteCanonicalApplier) pruneBuilds(ctx context.Context, retained map[string]bool) error {
+func (a *SQLiteCanonicalApplier) pruneBuilds(ctx context.Context, retained map[string]bool, scope *memory.Scope) error {
 	after := ""
 	for {
-		builds, err := a.store.buildPage(ctx, after)
+		builds, err := a.store.buildPage(ctx, after, scope)
 		if err != nil {
 			return err
 		}
@@ -148,17 +160,26 @@ func (a *SQLiteCanonicalApplier) pruneBuilds(ctx context.Context, retained map[s
 	}
 }
 
-func (store *Store) buildPage(ctx context.Context, after string) ([]physicalBuildIdentity, error) {
+func (store *Store) buildPage(ctx context.Context, after string, scope *memory.Scope) ([]physicalBuildIdentity, error) {
 	snapshot, err := store.read(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = snapshot.Close() }()
 
-	const query = `SELECT physical_build_id,scope_kind,scope_key,generation_id,watermark
- FROM lexical_build WHERE physical_build_id>? ORDER BY physical_build_id LIMIT 128`
+	query := `SELECT physical_build_id,scope_kind,scope_key,generation_id,watermark
+ FROM lexical_build WHERE physical_build_id>?`
+	args := []any{after}
 
-	rows, err := snapshot.tx.QueryContext(snapshot.ctx, query, after)
+	if scope != nil {
+		query += ` AND scope_kind=? AND scope_key=?`
+
+		args = append(args, scope.Kind, scope.Key)
+	}
+
+	query += ` ORDER BY physical_build_id LIMIT 128`
+
+	rows, err := snapshot.tx.QueryContext(snapshot.ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +359,7 @@ func (a *SQLiteCanonicalApplier) retainedStage(ctx context.Context,
 	a.mu.Unlock()
 
 	if walker != nil {
-		retained, _, err := retainedProjectionManifests(ctx, walker)
+		retained, _, err := retainedProjectionManifests(ctx, walker, nil)
 		if err != nil {
 			return false, err
 		}

@@ -9,12 +9,10 @@ import (
 )
 
 // validateSearchMetadata retains one chunk and its first sibling's metadata.
-// Actual stored components are validated only by SQL. A synthetic unit vector
-// lets the portable validator check the other fields without weakening it.
-// JSON encodes vector bytes as base64, whose size depends only on dimensions,
-// so this placeholder also preserves the exact portable encoded-byte budget.
+// Actual stored components are validated only by SQL. Portable metadata
+// validation and exact encoded-size accounting need no vector placeholder.
 //
-//nolint:cyclop,funlen // Keep complete coverage, metadata and logical-byte integrity gates together.
+//nolint:cyclop,gocognit,funlen // Keep coverage, streamed membership and byte integrity gates together.
 func (snapshot *sqlSearchSnapshot) validateSearchMetadata(ctx context.Context) error {
 	state := snapshot.state
 
@@ -37,8 +35,18 @@ func (snapshot *sqlSearchSnapshot) validateSearchMetadata(ctx context.Context) e
 	}
 	defer rows.Close()
 
-	unit := make([]float32, state.Dimensions)
-	unit[0] = 1
+	sources, err := openSearchMemberships(ctx, snapshot.tx, state.BuildID, true)
+	if err != nil {
+		return err
+	}
+	defer sources.rows.Close()
+
+	conversations, err := openSearchMemberships(ctx, snapshot.tx, state.BuildID, false)
+	if err != nil {
+		return err
+	}
+	defer conversations.rows.Close()
+
 	seen := make(map[string]uint32, len(coverage))
 
 	var (
@@ -52,16 +60,24 @@ func (snapshot *sqlSearchSnapshot) validateSearchMetadata(ctx context.Context) e
 			return err
 		}
 
-		chunk, readErr := readSearchChunkMetadata(ctx, snapshot.tx, rows, state)
+		chunk, readErr := readSearchChunkMetadata(rows, state)
 		if readErr != nil {
 			return readErr
 		}
 
-		chunk.Vector = unit
+		chunk.SourceIDs, err = sources.read(chunk.RevisionID, chunk.Ordinal)
+		if err != nil {
+			return err
+		}
+
+		chunk.ConversationIDs, err = conversations.read(chunk.RevisionID, chunk.Ordinal)
+		if err != nil {
+			return err
+		}
 
 		manifest, found := byRevision[chunk.RevisionID]
 		if !semantic.ChunkMatchesCoverage(chunk, manifest, found, seen[chunk.RevisionID]) ||
-			semantic.ValidateChunk(semantic.StateFromGeneration(state), chunk) != nil || chunk.ObservedAt == nil {
+			semantic.ValidateChunkMetadata(semantic.StateFromGeneration(state), chunk) != nil || chunk.ObservedAt == nil {
 			return semantic.ErrCorrupt
 		}
 
@@ -74,12 +90,12 @@ func (snapshot *sqlSearchSnapshot) validateSearchMetadata(ctx context.Context) e
 			first.Vector = nil
 		}
 
-		encoded, encodeErr := semantic.EncodeChunk(chunk)
-		if encodeErr != nil || len(encoded) > semantic.MaxChunkValueBytes {
+		encoded, encodeErr := semantic.EncodedChunkBytes(chunk)
+		if encodeErr != nil || encoded > semantic.MaxChunkValueBytes {
 			return semantic.ErrCorrupt
 		}
 
-		bytes += uint64(semantic.LogicalChunkKeyBytes + len(encoded))
+		bytes += uint64(semantic.LogicalChunkKeyBytes + encoded)
 
 		count++
 		if semantic.CheckProjectionBounds(int(count), bytes) != nil {
@@ -94,6 +110,10 @@ func (snapshot *sqlSearchSnapshot) validateSearchMetadata(ctx context.Context) e
 	}
 
 	if count != state.ChunkCount {
+		return semantic.ErrCorrupt
+	}
+
+	if sources.ready || conversations.ready {
 		return semantic.ErrCorrupt
 	}
 
@@ -115,7 +135,7 @@ func (snapshot *sqlSearchSnapshot) validateSearchMetadata(ctx context.Context) e
 // Bounds are checked before this reader materializes identities or memberships.
 //
 
-func readSearchChunkMetadata(ctx context.Context, tx *sql.Tx, rows *sql.Rows,
+func readSearchChunkMetadata(rows *sql.Rows,
 	state semantic.State) (semantic.ProjectionChunk, error) {
 	chunk := semantic.ProjectionChunk{
 		Scope: state.Scope, BuildID: state.BuildID, LexicalGenerationID: state.LexicalGenerationID,
@@ -165,14 +185,5 @@ func readSearchChunkMetadata(ctx context.Context, tx *sql.Tx, rows *sql.Rows,
 		}
 	}
 
-	chunk.SourceIDs, err = readSemanticIDs(ctx, tx,
-		"SELECT id FROM semantic_source WHERE chunk_rowid=? ORDER BY id LIMIT 257", rowid)
-	if err != nil {
-		return semantic.ProjectionChunk{}, err
-	}
-
-	chunk.ConversationIDs, err = readSemanticIDs(ctx, tx,
-		"SELECT id FROM semantic_conversation WHERE chunk_rowid=? ORDER BY id LIMIT 257", rowid)
-
-	return chunk, err
+	return chunk, nil
 }

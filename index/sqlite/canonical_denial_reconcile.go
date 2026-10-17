@@ -68,7 +68,7 @@ func (store *Store) ReconcileAllCanonicalDenials(ctx context.Context) (result er
 		}
 
 		for _, scope := range page {
-			if err := store.ReconcileCanonicalDenials(operation, scope); err != nil {
+			if err := store.reconcileCanonicalDenials(operation, scope, false); err != nil {
 				return err
 			}
 		}
@@ -81,6 +81,17 @@ func (store *Store) ReconcileAllCanonicalDenials(ctx context.Context) (result er
 // retained build in scope. Canonical metadata is read only between closed SQL
 // pages, while the full-scope lease excludes late material producers.
 func (store *Store) ReconcileCanonicalDenials(ctx context.Context, scope memory.Scope) (result error) {
+	return store.reconcileCanonicalDenials(ctx, scope, true)
+}
+
+// The all-scopes pass establishes ownership once before enumeration. Its
+// delete-only transactions and other supported writers preserve FK/FTS
+// ownership, so each scope need not rescan the database. An independent public
+// scope operation must establish its own proof, including unknown-owner rows.
+//
+//nolint:cyclop // Preserve validation, ownership and each required family failure boundary.
+func (store *Store) reconcileCanonicalDenials(ctx context.Context, scope memory.Scope,
+	checkOwnership bool) (result error) {
 	defer func() { result = privacyStorageError(result) }()
 
 	if err := validateScrub(ctx, scope, nil, nil); err != nil {
@@ -103,8 +114,10 @@ func (store *Store) ReconcileCanonicalDenials(ctx context.Context, scope memory.
 		}
 	}()
 
-	if err := store.checkPrivacyOwnership(operation); err != nil {
-		return err
+	if checkOwnership {
+		if err := store.checkPrivacyOwnership(operation); err != nil {
+			return err
+		}
 	}
 
 	var semantic bool
