@@ -124,60 +124,32 @@ type Manager struct {
 	schedules   map[string]*scheduleState
 	workers     sync.WaitGroup
 	builds      sync.WaitGroup
+	// lifecycleMu protects startup election and the producer idle transition.
+	// No waiter holds it across provider work, SQL, initialization or drain.
+	initializing    *initialization
+	initializations sync.WaitGroup
+	producerCount   int
+	producerIdle    chan struct{}
+	startupReason   semanticcore.Reason
 
-	beforeBuild      func(context.Context, memory.Scope)
-	beforeFinalCheck func()
-	beforePublish    func()
-	afterPublish     func()
-	joinedFlight     func()
+	beforeBuild           func(context.Context, memory.Scope)
+	beforeFinalCheck      func()
+	beforePublish         func()
+	afterPublish          func()
+	joinedFlight          func()
+	initializationElected func()
+	joinedInitialization  func()
+	beforeStartCommit     func()
 }
 
-// Start removes unreachable staging state, then starts exactly two background
-// workers. Startup cleanup is completed before any new build can run.
-//
-//nolint:nlreturn,wsl_v5 // Startup cleanup and worker activation must remain visibly ordered.
+// Start closes producer admission, drains admitted builds and their terminal
+// guards, repairs abandoned state, and starts exactly two background workers.
 func (manager *Manager) Start(parent context.Context) error {
 	if manager == nil || parent == nil {
 		return fmt.Errorf("semantic projection manager context is required")
 	}
 
-	manager.lifecycleMu.Lock()
-	if manager.closed {
-		manager.lifecycleMu.Unlock()
-		return ErrClosed
-	}
-	if manager.started {
-		manager.lifecycleMu.Unlock()
-		return nil
-	}
-	manager.lifecycleMu.Unlock()
-
-	if err := manager.store.CollectGarbage(parent); err != nil {
-		return fmt.Errorf("clean semantic projection staging state: %w", err)
-	}
-
-	manager.lifecycleMu.Lock()
-	defer manager.lifecycleMu.Unlock()
-	if manager.closed {
-		return ErrClosed
-	}
-	if manager.started {
-		return nil
-	}
-
-	workerContext, cancel := context.WithCancel(parent)
-	manager.cancel = cancel
-	manager.started = true
-	manager.workers.Add(semanticcore.SemanticWorkerLimit)
-	for range semanticcore.SemanticWorkerLimit {
-		go manager.worker(workerContext)
-	}
-	go func() {
-		<-workerContext.Done()
-		manager.stop()
-	}()
-
-	return nil
+	return manager.start(parent)
 }
 
 // Schedule non-blockingly coalesces one scope. Queue saturation is classified
@@ -343,6 +315,7 @@ func New(dependencies Dependencies) (*Manager, error) {
 		queue:     make(chan memory.Scope, semanticcore.SemanticQueueLimit),
 		schedules: make(map[string]*scheduleState),
 		shutdown:  shutdown, stopAll: stopAll,
+		producerIdle: closedSignal(),
 	}, nil
 }
 
@@ -399,52 +372,29 @@ func (manager *Manager) Repair(ctx context.Context, scope memory.Scope) error {
 	return result.err
 }
 
-//nolint:cyclop,funcorder,funlen,nlreturn,wsl_v5 // Single-flight ownership and cancellation branches remain explicit.
+//nolint:funcorder,nlreturn,wsl_v5 // Single-flight ownership and cancellation branches remain explicit.
 func (manager *Manager) runSingleFlight(ctx context.Context, scope memory.Scope, scheduled bool) flightResult {
-	key := scopeKey(scope)
-
-	manager.flightMu.Lock()
-	if current := manager.flights[key]; current != nil {
-		manager.flightMu.Unlock()
-		if manager.joinedFlight != nil {
-			manager.joinedFlight()
-		}
-
-		select {
-		case <-current.done:
-			return flightResult{
-				completedEpoch: current.snapshotEpoch,
-				err:            current.err,
-				retryScheduled: scheduled && !current.ownerScheduled && current.callerCanceled,
-			}
-		case <-ctx.Done():
-			return flightResult{err: ctx.Err()}
-		}
+	current, owner, err := manager.admitFlight(ctx, scope, scheduled)
+	if err != nil {
+		return flightResult{err: err}
 	}
-
-	manager.lifecycleMu.Lock()
-	if manager.closed {
-		manager.lifecycleMu.Unlock()
-		manager.flightMu.Unlock()
-
-		return flightResult{err: ErrClosed}
+	if !owner {
+		return manager.waitFlight(ctx, current, scheduled)
 	}
-	manager.builds.Add(1)
-	manager.lifecycleMu.Unlock()
-
-	current := &flight{
-		done: make(chan struct{}), snapshotEpoch: manager.currentRequestEpoch(), ownerScheduled: scheduled,
-	}
-	manager.flights[key] = current
-	manager.flightMu.Unlock()
 
 	defer func() {
 		current.callerCanceled = ctx.Err() != nil &&
 			(errors.Is(current.err, context.Canceled) || errors.Is(current.err, context.DeadlineExceeded))
 		manager.flightMu.Lock()
-		delete(manager.flights, key)
+		delete(manager.flights, scopeKey(scope))
 		close(current.done)
 		manager.flightMu.Unlock()
+		manager.lifecycleMu.Lock()
+		manager.producerCount--
+		if manager.producerCount == 0 {
+			close(manager.producerIdle)
+		}
+		manager.lifecycleMu.Unlock()
 		manager.builds.Done()
 	}()
 
@@ -507,6 +457,7 @@ func (manager *Manager) Status(ctx context.Context, scope memory.Scope) (ScopeSt
 
 	manager.lifecycleMu.Lock()
 	closed := manager.closed
+	startupReason := manager.startupReason
 	manager.lifecycleMu.Unlock()
 	if closed {
 		return manager.stoppedStatus(scope), nil
@@ -517,6 +468,9 @@ func (manager *Manager) Status(ctx context.Context, scope memory.Scope) (ScopeSt
 	manager.statusMu.RUnlock()
 	if statusFound && (status.State == StateRepairing || status.CleanupDeferred) {
 		return status, nil
+	}
+	if startupReason != "" {
+		return manager.startupStatus(status, startupReason), nil
 	}
 
 	active, activeFound, err := manager.store.ActiveState(ctx, scope)
@@ -655,6 +609,7 @@ func (manager *Manager) stop() <-chan struct{} {
 }
 
 func (manager *Manager) finishStop(done chan struct{}) {
+	manager.initializations.Wait()
 	manager.workers.Wait()
 	manager.builds.Wait()
 

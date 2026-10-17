@@ -59,10 +59,20 @@ func (manager *Manager) InvalidateStale(ctx context.Context, scope memory.Scope)
 func (manager *Manager) OperationalState() State {
 	manager.lifecycleMu.Lock()
 	closed := manager.closed
+	initializing := manager.initializing != nil
+	startupReason := manager.startupReason
 	manager.lifecycleMu.Unlock()
 
 	if closed {
 		return StateStopped
+	}
+
+	if initializing {
+		return StateRepairing
+	}
+
+	if startupReason != "" {
+		return StateDegraded
 	}
 
 	manager.statusMu.RLock()

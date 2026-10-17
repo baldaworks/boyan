@@ -47,7 +47,21 @@ func (store *Store) write(ctx context.Context, apply func(context.Context, *sql.
 		}
 	}()
 
-	tx, err := store.writer.BeginTx(operation, nil)
+	conn, err := store.writer.Conn(operation)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		// A second Rollback can return ErrTxDone while database/sql's
+		// cancellation goroutine is still inside the driver's rollback. Closing
+		// our owned connection joins that work before the operation lease ends.
+		closeErr := conn.Close()
+		if result == nil && !errors.Is(closeErr, sql.ErrConnDone) {
+			result = closeErr
+		}
+	}()
+
+	tx, err := conn.BeginTx(operation, nil)
 	if err != nil {
 		return err
 	}
