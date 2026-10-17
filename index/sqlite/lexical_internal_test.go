@@ -334,6 +334,8 @@ type lexicalFixture struct {
 func seedLexical(t *testing.T, store *Store, build string, scope memory.Scope, fixtures []lexicalFixture) {
 	t.Helper()
 
+	registerLexicalPrivacy(t, store, scope, fixtures)
+
 	err := store.write(t.Context(), func(ctx context.Context, tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO lexical_build(physical_build_id,scope_kind,scope_key,generation_id,watermark,state) VALUES(?,?,?,?,?,'committed')`, build, scope.Kind, scope.Key, build, encodeUint64(math.MaxUint64)); err != nil {
 			return err

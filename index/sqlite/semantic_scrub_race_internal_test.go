@@ -16,6 +16,8 @@ func TestSemanticChunkScrubRechecksOriginalSource(t *testing.T) {
 	seedSemanticSource(t, s, g)
 
 	c[0].SourceIDs = []string{"source"}
+	registerSemanticPrivacy(t, s, g, r, c)
+
 	if _, err := s.Stage(t.Context(), g, r, c); err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +36,7 @@ func TestSemanticChunkScrubRechecksOriginalSource(t *testing.T) {
 
 	execTest(t, s.writer, "UPDATE semantic_source SET id='other-source'")
 
-	a, err := NewSQLiteCanonicalApplier(s, &applyReader{})
+	a, err := NewSQLiteCanonicalApplier(s, &applyReader{}, fixtureCanonicalPrivacy(t, s, &applyReader{}))
 	if err != nil {
 		t.Fatal(err)
 	}

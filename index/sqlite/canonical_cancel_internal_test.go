@@ -56,7 +56,7 @@ func TestCanonicalCancelDuringOversizedMembershipAndCopy(t *testing.T) {
 		record := applyRecord("new")
 		record.ConversationIDs = []string{large, "zz-cancel"}
 
-		applier, err := NewSQLiteCanonicalApplier(store, &applyReader{records: map[string]memory.RecallRecord{"new": record}})
+		applier, err := NewSQLiteCanonicalApplier(store, &applyReader{records: map[string]memory.RecallRecord{"new": record}}, fixtureCanonicalPrivacy(t, store, &applyReader{records: map[string]memory.RecallRecord{"new": record}}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -135,7 +135,7 @@ func TestCanonicalCancelDuringOversizedScrubPreservesPinnedReader(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	applier, err := NewSQLiteCanonicalApplier(store, &applyReader{})
+	applier, err := NewSQLiteCanonicalApplier(store, &applyReader{}, fixtureCanonicalPrivacy(t, store, &applyReader{}))
 	if err != nil {
 		t.Fatal(err)
 	}

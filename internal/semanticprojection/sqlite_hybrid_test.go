@@ -508,7 +508,7 @@ func TestSQLiteHybridBoundsIndependentChannelsAndRRF(t *testing.T) {
 	manifest.GenerationID = "sql-hybrid-bounds"
 	f.checkpoints.set(manifest)
 
-	applier, err := sqlitestore.NewSQLiteCanonicalApplier(f.store.Store, f.canonical)
+	applier, err := sqlitestore.NewSQLiteCanonicalApplier(f.store.Store, f.canonical, f.privacy)
 	if err != nil {
 		t.Fatal(err)
 	}

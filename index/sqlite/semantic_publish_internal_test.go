@@ -25,7 +25,7 @@ func TestSemanticCanonicalForgetLeavesRepairableCAS(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	applier, err := NewSQLiteCanonicalApplier(s, &applyReader{})
+	applier, err := NewSQLiteCanonicalApplier(s, &applyReader{}, fixtureCanonicalPrivacy(t, s, &applyReader{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,6 +108,8 @@ func TestSemanticScrubRejectsReusedCandidateRow(t *testing.T) {
 	chunks[0].RevisionID = "unrelated"
 
 	chunks[0].BuildID = next.BuildID
+	registerSemanticPrivacy(t, s, next, coverage, chunks)
+
 	if _, err := s.Stage(t.Context(), next, coverage, chunks); err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +118,7 @@ func TestSemanticScrubRejectsReusedCandidateRow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	applier, err := NewSQLiteCanonicalApplier(s, &applyReader{})
+	applier, err := NewSQLiteCanonicalApplier(s, &applyReader{}, fixtureCanonicalPrivacy(t, s, &applyReader{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +225,7 @@ func TestSemanticEmptyPublicationAndCoverageOnlyRetirement(t *testing.T) {
 	seedZeroCoverage(t, s, "coverage-only", g.Scope, "revision")
 	execTest(t, s.writer, "UPDATE semantic_build SET complete=0 WHERE build_id='coverage-only'")
 
-	applier, err := NewSQLiteCanonicalApplier(s, &applyReader{})
+	applier, err := NewSQLiteCanonicalApplier(s, &applyReader{}, fixtureCanonicalPrivacy(t, s, &applyReader{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,6 +331,8 @@ func TestSemanticPublicationEpochGrowthPreservesExactAdmission(t *testing.T) {
 		t.Fatalf("padding deficit=%d", deficit)
 	}
 
+	registerSemanticPrivacy(t, s, g, r, chunks)
+
 	state, err := s.Stage(t.Context(), g, r, chunks)
 	if err != nil {
 		t.Fatal(err)
@@ -375,6 +379,8 @@ func TestSemanticPublicationCancellationRollsBackPointerAndRetirement(t *testing
 			for i := range chunks[0].SourceIDs {
 				chunks[0].SourceIDs[i] = fmt.Sprintf("%04d", i)
 			}
+
+			registerSemanticPrivacy(t, s, g, coverage, chunks)
 
 			if _, err := s.Stage(t.Context(), g, coverage, chunks); err != nil {
 				t.Fatal(err)

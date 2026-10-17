@@ -741,7 +741,7 @@ func TestSQLiteStartupReopenRecoversDeferredAbandonedCandidate(t *testing.T) {
 
 	t.Cleanup(func() { _ = store.Close() })
 
-	applier, err := sqlitestore.NewSQLiteCanonicalApplier(store, f.canonical)
+	applier, err := sqlitestore.NewSQLiteCanonicalApplier(store, f.canonical, f.privacy)
 	if err != nil {
 		t.Fatal(err)
 	}

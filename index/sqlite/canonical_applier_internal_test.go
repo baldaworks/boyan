@@ -25,7 +25,7 @@ func TestCanonicalPageRollbackAndCanceledContinuation(t *testing.T) {
 	store, _ := openTestStore(t, false)
 	reader := &applyReader{records: map[string]memory.RecallRecord{}}
 
-	applier, err := NewSQLiteCanonicalApplier(store, reader)
+	applier, err := NewSQLiteCanonicalApplier(store, reader, fixtureCanonicalPrivacy(t, store, reader))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestCanonicalApplyReplacesMembershipAndDeletesMissing(t *testing.T) {
 	store, _ := openTestStore(t, false)
 	reader := &applyReader{records: map[string]memory.RecallRecord{"r": applyRecord("r")}}
 
-	applier, err := NewSQLiteCanonicalApplier(store, reader)
+	applier, err := NewSQLiteCanonicalApplier(store, reader, fixtureCanonicalPrivacy(t, store, reader))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestCanonicalApplyLargeSplitAndCanonicalOutsideWriter(t *testing.T) {
 	store, _ := openTestStore(t, false)
 	reader := &applyReader{records: map[string]memory.RecallRecord{}}
 
-	applier, err := NewSQLiteCanonicalApplier(store, reader)
+	applier, err := NewSQLiteCanonicalApplier(store, reader, fixtureCanonicalPrivacy(t, store, reader))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestCanonicalScrubExactScopeAndIdentities(t *testing.T) {
 	foreign := memory.Scope{Kind: memory.ScopeKindPersonal, Key: lexicalTestScope.Key}
 	seedLexical(t, store, "b", foreign, []lexicalFixture{{id: "forgotten", raw: "needle", sources: []string{"source"}}})
 
-	applier, err := NewSQLiteCanonicalApplier(store, &applyReader{})
+	applier, err := NewSQLiteCanonicalApplier(store, &applyReader{}, fixtureCanonicalPrivacy(t, store, &applyReader{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +271,7 @@ func TestCanonicalRejectsStaleAndForeignRecords(t *testing.T) {
 		mutate(&record)
 		reader := &applyReader{records: map[string]memory.RecallRecord{"revision": record}}
 
-		applier, err := NewSQLiteCanonicalApplier(store, reader)
+		applier, err := NewSQLiteCanonicalApplier(store, reader, fixtureCanonicalPrivacy(t, store, reader))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -319,7 +319,7 @@ func TestCanonicalApplyStagesAndCopies(t *testing.T) {
 
 	reader := &applyReader{records: map[string]memory.RecallRecord{"new": applyRecord("new")}}
 
-	applier, err := NewSQLiteCanonicalApplier(store, reader)
+	applier, err := NewSQLiteCanonicalApplier(store, reader, fixtureCanonicalPrivacy(t, store, reader))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,7 +353,7 @@ func TestCanonicalRebuildOwnershipAndEmpty(t *testing.T) {
 	store, _ := openTestStore(t, false)
 	reader := &applyReader{}
 
-	applier, err := NewSQLiteCanonicalApplier(store, reader)
+	applier, err := NewSQLiteCanonicalApplier(store, reader, fixtureCanonicalPrivacy(t, store, reader))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,7 +367,7 @@ func TestCanonicalRebuildOwnershipAndEmpty(t *testing.T) {
 		t.Fatalf("non-idempotent: %v", err)
 	}
 
-	competing, err := NewSQLiteCanonicalApplier(store, reader)
+	competing, err := NewSQLiteCanonicalApplier(store, reader, fixtureCanonicalPrivacy(t, store, reader))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,7 +391,7 @@ func TestCanonicalBatchRebuildUsesValidatedScopeAndCanonicalText(t *testing.T) {
 	record := applyRecord("batch")
 	reader := &applyReader{records: map[string]memory.RecallRecord{"batch": record}}
 
-	applier, err := NewSQLiteCanonicalApplier(store, reader)
+	applier, err := NewSQLiteCanonicalApplier(store, reader, fixtureCanonicalPrivacy(t, store, reader))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -31,11 +31,20 @@ func (store *Store) Stage(ctx context.Context, generation semantic.Generation,
 		return semantic.State{}, semantic.ErrInvalid
 	}
 
+	privacy, err := store.canonicalPrivacy()
+	if err != nil {
+		return semantic.State{}, semanticStorageError(err)
+	}
+
 	operation, done, err := store.semanticScopeLease(ctx, state.Scope)
 	if err != nil {
 		return semantic.State{}, semanticStorageError(err)
 	}
 	defer done()
+
+	if err := admitSemanticPopulation(operation, privacy, state.Scope, coverage, ordered); err != nil {
+		return semantic.State{}, semanticStorageError(err)
+	}
 
 	if _, loaded := store.semanticStaging.LoadOrStore(state.BuildID, semanticOperationStage); loaded {
 		return semantic.State{}, semantic.ErrConflict

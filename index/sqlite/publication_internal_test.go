@@ -107,7 +107,7 @@ func (c *publicationCheckpoints) LoadProjectionRetentionFloor(context.Context, m
 func publicationLifecycle(t *testing.T, store *Store, reader memory.RecallCanonicalReader, checkpoints *publicationCheckpoints) (*SQLiteCanonicalApplier, publicationApplier) {
 	t.Helper()
 
-	a, err := NewSQLiteCanonicalApplier(store, reader)
+	a, err := NewSQLiteCanonicalApplier(store, reader, fixtureCanonicalPrivacy(t, store, reader))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +308,7 @@ func TestPublicationCanceledApplyAndScrubCannotSeal(t *testing.T) {
 func TestPublicationEmptyExactAnchor(t *testing.T) {
 	store, _ := openTestStore(t, false)
 
-	applier, err := NewSQLiteCanonicalApplier(store, &applyReader{})
+	applier, err := NewSQLiteCanonicalApplier(store, &applyReader{}, fixtureCanonicalPrivacy(t, store, &applyReader{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -465,7 +465,7 @@ func TestPublicationPinnedReaderSurvivesRetentionAndPendingOwner(t *testing.T) {
 
 	pending := a.stages[lexicalTestScope].id
 
-	other, err := NewSQLiteCanonicalApplier(store, reader)
+	other, err := NewSQLiteCanonicalApplier(store, reader, fixtureCanonicalPrivacy(t, store, reader))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -774,7 +774,7 @@ func TestPublicationPhysicalReaderRechecksScrubRevocation(t *testing.T) {
 func TestPublicationLegacyCommitPreservesLifecycleErrors(t *testing.T) {
 	store, _ := openTestStore(t, false)
 
-	a, err := NewSQLiteCanonicalApplier(store, &applyReader{})
+	a, err := NewSQLiteCanonicalApplier(store, &applyReader{}, fixtureCanonicalPrivacy(t, store, &applyReader{}))
 	if err != nil {
 		t.Fatal(err)
 	}

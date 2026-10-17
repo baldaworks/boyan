@@ -59,7 +59,7 @@ func openStandaloneStorage(
 
 	cleanups.Add(func() { _ = index.Close() })
 
-	applier, err := sqlite.NewSQLiteCanonicalApplier(index, reader)
+	applier, err := sqlite.NewSQLiteCanonicalApplier(index, reader, store)
 	if err != nil {
 		return nil, err
 	}

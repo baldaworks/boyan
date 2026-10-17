@@ -148,7 +148,7 @@ func coordinatorCanonicalFixture(t *testing.T) (*CanonicalStore, *CanonicalReade
 	return store, reader, scope, dir
 }
 
-func coordinatorProjection(t *testing.T, dir string, reader memory.RecallCanonicalReader, checkpoints memory.ProjectionCheckpointStore) (*search.Store, *search.SQLiteCanonicalApplier) {
+func coordinatorProjection(t *testing.T, dir string, reader memory.RecallCanonicalReader, checkpoints memory.ProjectionCheckpointStore, canonical *CanonicalStore) (*search.Store, *search.SQLiteCanonicalApplier) {
 	t.Helper()
 
 	if err := os.Chmod(dir, 0o700); err != nil {
@@ -162,7 +162,7 @@ func coordinatorProjection(t *testing.T, dir string, reader memory.RecallCanonic
 
 	t.Cleanup(func() { _ = store.Close() })
 
-	applier, err := search.NewSQLiteCanonicalApplier(store, reader)
+	applier, err := search.NewSQLiteCanonicalApplier(store, reader, canonical)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func TestSQLiteCoordinatorPublicationInterruptionRecovery(t *testing.T) {
 				fault := coordinatorFault{boundary: boundary, cancel: cancel}
 				checkpoints := &coordinatorCheckpoints{CanonicalStore: canonical, fault: fault}
 				dir := t.TempDir()
-				projection, applier := coordinatorProjection(t, dir, reader, checkpoints)
+				projection, applier := coordinatorProjection(t, dir, reader, checkpoints, canonical)
 
 				db, err := sql.Open("sqlite", filepath.Join(dir, "search", "search.sqlite"))
 				if err != nil {
@@ -293,7 +293,7 @@ func TestSQLiteCoordinatorPublicationInterruptionRecovery(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				projection, applier = coordinatorProjection(t, dir, reader, canonical)
+				projection, applier = coordinatorProjection(t, dir, reader, canonical, canonical)
 
 				resumed, err := applier.ResumeProjection(t.Context(), scope, "g")
 				if err != nil || resumed != wantActive {
@@ -328,7 +328,7 @@ func TestSQLiteCoordinatorPublicationInterruptionRecovery(t *testing.T) {
 
 func TestSQLiteCoordinatorEmptySyncCannotCertifyLostPhysicalState(t *testing.T) {
 	canonical, reader, scope, _ := coordinatorCanonicalFixture(t)
-	projection, applier := coordinatorProjection(t, t.TempDir(), reader, canonical)
+	projection, applier := coordinatorProjection(t, t.TempDir(), reader, canonical, canonical)
 
 	coordinator, err := projectionsync.NewProjectionCoordinator(canonical, canonical, applier, 1)
 	if err != nil {
@@ -357,7 +357,7 @@ func TestSQLiteCoordinatorEmptySyncCannotCertifyLostPhysicalState(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	projection, applier = coordinatorProjection(t, t.TempDir(), reader, canonical)
+	projection, applier = coordinatorProjection(t, t.TempDir(), reader, canonical, canonical)
 
 	coordinator, err = projectionsync.NewProjectionCoordinator(canonical, canonical, applier, 1)
 	if err != nil {
@@ -388,7 +388,7 @@ func TestSQLiteCoordinatorEmptySyncCannotCertifyLostPhysicalState(t *testing.T) 
 
 func TestSQLiteCoordinatorDeltaCannotReplaceLostBase(t *testing.T) {
 	canonical, reader, scope, _ := coordinatorCanonicalFixture(t)
-	_, applier := coordinatorProjection(t, t.TempDir(), reader, canonical)
+	_, applier := coordinatorProjection(t, t.TempDir(), reader, canonical, canonical)
 
 	coordinator, err := projectionsync.NewProjectionCoordinator(canonical, canonical, applier, 1)
 	if err != nil {
@@ -402,7 +402,7 @@ func TestSQLiteCoordinatorDeltaCannotReplaceLostBase(t *testing.T) {
 	// delta into lost SQL must not claim to have copied the first item.
 	coordinatorNextRevision(t, canonical, scope, false)
 
-	_, applier = coordinatorProjection(t, t.TempDir(), reader, canonical)
+	_, applier = coordinatorProjection(t, t.TempDir(), reader, canonical, canonical)
 
 	coordinator, err = projectionsync.NewProjectionCoordinator(canonical, canonical, applier, 1)
 	if err != nil {
@@ -452,7 +452,7 @@ func coordinatorNextRevision(t *testing.T, store *CanonicalStore, scope memory.S
 
 func TestSQLiteCoordinatorRetentionRebuildReplacesOldRows(t *testing.T) {
 	canonical, reader, scope, _ := coordinatorCanonicalFixture(t)
-	projection, applier := coordinatorProjection(t, t.TempDir(), reader, canonical)
+	projection, applier := coordinatorProjection(t, t.TempDir(), reader, canonical, canonical)
 
 	coordinator, err := projectionsync.NewProjectionCoordinator(canonical, canonical, applier, 1)
 	if err != nil {
@@ -489,7 +489,7 @@ func TestSQLiteCoordinatorRetentionRebuildReplacesOldRows(t *testing.T) {
 func TestSQLiteCoordinatorPublishesProvenEmptyScope(t *testing.T) {
 	canonical, reader, _, _ := coordinatorCanonicalFixture(t)
 	scope := memory.Scope{Key: "canonical:empty", Kind: memory.ScopeKindGroup}
-	projection, applier := coordinatorProjection(t, t.TempDir(), reader, canonical)
+	projection, applier := coordinatorProjection(t, t.TempDir(), reader, canonical, canonical)
 
 	coordinator, err := projectionsync.NewProjectionCoordinator(canonical, canonical, applier, 1)
 	if err != nil {
@@ -554,7 +554,7 @@ func (a *coordinatorAnchorApplier) CommitProjectionManifest(ctx context.Context,
 
 func TestSQLiteCoordinatorRebuildSealsInitialAnchorBeforeNewerPages(t *testing.T) {
 	canonical, reader, scope, _ := coordinatorCanonicalFixture(t)
-	projection, applier := coordinatorProjection(t, t.TempDir(), reader, canonical)
+	projection, applier := coordinatorProjection(t, t.TempDir(), reader, canonical, canonical)
 	store := &coordinatorConcurrentStore{CanonicalStore: canonical,
 		advance: func() { coordinatorNextRevision(t, canonical, scope, false) }}
 	observed := &coordinatorAnchorApplier{SQLiteCanonicalApplier: applier}

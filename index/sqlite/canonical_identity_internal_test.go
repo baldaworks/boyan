@@ -19,7 +19,7 @@ func TestCanonicalByteNonemptyIdentitiesAndMemberships(t *testing.T) {
 	record.ConversationIDs = []string{"\x00conversation", "plain\x00tail", "\x00conversation", "\x00"}
 	reader := &applyReader{records: map[string]memory.RecallRecord{record.RevisionID: record}}
 
-	applier, err := NewSQLiteCanonicalApplier(store, reader)
+	applier, err := NewSQLiteCanonicalApplier(store, reader, fixtureCanonicalPrivacy(t, store, reader))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestCanonicalMembershipUnexpectedUniqueConstraintPropagates(t *testing.T) {
 
 			reader := &applyReader{records: map[string]memory.RecallRecord{"first": applyRecord("first"), "second": applyRecord("second")}}
 
-			applier, err := NewSQLiteCanonicalApplier(store, reader)
+			applier, err := NewSQLiteCanonicalApplier(store, reader, fixtureCanonicalPrivacy(t, store, reader))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -103,7 +103,7 @@ func TestCanonicalMembershipOnlySuppressesExactDuplicateConflicts(t *testing.T) 
 				t.Fatal(err)
 			}
 
-			applier, err := NewSQLiteCanonicalApplier(store, &applyReader{records: map[string]memory.RecallRecord{"r": applyRecord("r")}})
+			applier, err := NewSQLiteCanonicalApplier(store, &applyReader{records: map[string]memory.RecallRecord{"r": applyRecord("r")}}, fixtureCanonicalPrivacy(t, store, &applyReader{records: map[string]memory.RecallRecord{"r": applyRecord("r")}}))
 			if err != nil {
 				t.Fatal(err)
 			}

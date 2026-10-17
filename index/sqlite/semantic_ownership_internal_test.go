@@ -33,14 +33,19 @@ func TestSemanticLiveStageExcludesForgetAndRejectsPostForgetSource(t *testing.T)
 	seedLexical(t, s, "source", g.Scope, []lexicalFixture{{id: "revision", raw: "needle", sources: []string{"source"}}})
 	execTest(t, s.writer, "UPDATE lexical_build SET generation_id=?,watermark=?,record_count=1,source_count=1", g.LexicalGenerationID, encodeUint64(1))
 	execTest(t, s.writer, "CREATE TRIGGER pause_stage AFTER INSERT ON semantic_chunk BEGIN SELECT "+name+"(); END")
+	registerSemanticPrivacy(t, s, g, r, c)
 
 	staged := make(chan error, 1)
 
 	go func() { _, err := s.Stage(t.Context(), g, r, c); staged <- err }()
 
-	<-entered
+	select {
+	case <-entered:
+	case err := <-staged:
+		t.Fatalf("Stage exited before SQL pause: %v", err)
+	}
 
-	a, err := NewSQLiteCanonicalApplier(s, &applyReader{})
+	a, err := NewSQLiteCanonicalApplier(s, &applyReader{}, fixtureCanonicalPrivacy(t, s, &applyReader{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,6 +129,8 @@ func TestSemanticForgetPreservesProofAcrossCoveragePages(t *testing.T) {
 	seedSemanticSource(t, s, g)
 
 	c[0].SourceIDs = []string{"source"}
+	registerSemanticPrivacy(t, s, g, r, c)
+
 	if _, err := s.Stage(t.Context(), g, r, c); err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +145,7 @@ func TestSemanticForgetPreservesProofAcrossCoveragePages(t *testing.T) {
 		execTest(t, s.writer, "UPDATE semantic_build SET complete=0 WHERE build_id=?", build)
 	}
 
-	a, err := NewSQLiteCanonicalApplier(s, &applyReader{})
+	a, err := NewSQLiteCanonicalApplier(s, &applyReader{}, fixtureCanonicalPrivacy(t, s, &applyReader{}))
 	if err != nil {
 		t.Fatal(err)
 	}

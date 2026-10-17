@@ -46,6 +46,7 @@ type Store struct {
 	cancel            context.CancelFunc
 	mu                sync.Mutex
 	checkpoints       memory.RecallProjectionCheckpointReader
+	privacy           canonicalPrivacyReader
 	closing           bool
 	work              sync.WaitGroup
 	closeOnce         sync.Once

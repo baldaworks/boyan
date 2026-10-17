@@ -138,6 +138,8 @@ func TestSemanticReleaseCancellationRollsBackCurrentPage(t *testing.T) {
 
 	seedSemanticSource(t, s, g)
 
+	registerSemanticPrivacy(t, s, g, coverage, chunks)
+
 	if _, err := s.Stage(t.Context(), g, coverage, chunks); err != nil {
 		t.Fatal(err)
 	}

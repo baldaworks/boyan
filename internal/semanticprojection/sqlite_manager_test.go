@@ -706,6 +706,7 @@ func (s *sqliteManagerStore) ReleaseUnpublished(ctx context.Context, scope memor
 type sqliteManagerFixture struct {
 	scope       memory.Scope
 	canonical   *fakeCanonical
+	privacy     *sqliteFixturePrivacy
 	checkpoints *sqliteManagerCheckpoints
 	store       *sqliteManagerStore
 	db          *sql.DB
@@ -726,6 +727,7 @@ func newSQLiteManagerFixture(t *testing.T, changes ...func(*memory.RecallRecord)
 	}
 
 	f.canonical = newFakeCanonical(f.scope, 7, record)
+	f.privacy = &sqliteFixturePrivacy{canonical: f.canonical, revisions: make(map[string]memory.MemoryRevision), sources: make(map[string]bool)}
 	manifest := activeManifest(f.scope, "sqlite-generation-7", 7)
 	manifest.ProjectionID = "sqlite"
 	f.checkpoints = &sqliteManagerCheckpoints{fakeManifestSource: &fakeManifestSource{manifest: manifest}}
@@ -751,7 +753,7 @@ func newSQLiteManagerFixture(t *testing.T, changes ...func(*memory.RecallRecord)
 
 	t.Cleanup(func() { _ = f.db.Close() })
 
-	applier, err := sqlitestore.NewSQLiteCanonicalApplier(store, f.canonical)
+	applier, err := sqlitestore.NewSQLiteCanonicalApplier(store, f.canonical, f.privacy)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -37,7 +37,7 @@ func (a *SQLiteCanonicalApplier) CommitProjectionManifest(ctx context.Context,
 		return stagingConflict()
 	}
 
-	operation, done, err := a.acquire(ctx)
+	operation, done, err := a.acquireMaterial(ctx)
 	if err != nil {
 		return err
 	}
@@ -70,7 +70,7 @@ func (a *SQLiteCanonicalApplier) CommitProjectionManifest(ctx context.Context,
 		return stagingConflict()
 	}
 
-	if err := a.copyActive(ctx, stage); err != nil {
+	if err := a.copyActive(ctx, manifest.Scope, stage); err != nil {
 		stage.failed = true
 
 		return err

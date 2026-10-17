@@ -19,6 +19,7 @@ const lexicalPageBytes = 2 * 1024 * 1024
 type SQLiteCanonicalApplier struct {
 	store        *Store
 	reader       memory.RecallCanonicalReader
+	privacy      canonicalPrivacyReader
 	mu           sync.Mutex
 	stages       map[memory.Scope]*lexicalStage
 	checkpoints  memory.ProjectionCheckpointStore
@@ -39,12 +40,19 @@ type revisionIdentity struct {
 	version        uint64
 }
 
-func NewSQLiteCanonicalApplier(store *Store, reader memory.RecallCanonicalReader) (*SQLiteCanonicalApplier, error) {
-	if store == nil || reader == nil {
-		return nil, memory.PermanentError(memory.CodeStoreFailure, "sqlite canonical dependencies are required", nil)
+func NewSQLiteCanonicalApplier(store *Store, reader memory.RecallCanonicalReader,
+	privacy canonicalPrivacyReader) (*SQLiteCanonicalApplier, error) {
+	if store == nil || nilCanonicalDependency(reader) {
+		return nil, invalidCanonicalPrivacy()
 	}
 
-	return &SQLiteCanonicalApplier{store: store, reader: reader, stages: make(map[memory.Scope]*lexicalStage)}, nil
+	applier := &SQLiteCanonicalApplier{store: store, reader: reader, privacy: privacy,
+		stages: make(map[memory.Scope]*lexicalStage)}
+	if err := store.bindCanonicalPrivacy(privacy); err != nil {
+		return nil, err
+	}
+
+	return applier, nil
 }
 
 func stagingConflict() error {
@@ -149,7 +157,7 @@ func (a *SQLiteCanonicalApplier) BeginProjectionRebuild(ctx context.Context,
 	scope memory.Scope, generation string) (result error) {
 	defer func() { result = lexicalStorageError(result) }()
 
-	operation, done, err := a.acquire(ctx)
+	operation, done, err := a.acquireMaterial(ctx)
 	if err != nil {
 		return err
 	}
@@ -194,7 +202,7 @@ func (a *SQLiteCanonicalApplier) EndProjectionRebuild(ctx context.Context,
 	scope memory.Scope, generation string) (result error) {
 	defer func() { result = lexicalStorageError(result) }()
 
-	operation, done, err := a.acquire(ctx)
+	operation, done, err := a.acquireMaterial(ctx)
 	if err != nil {
 		return err
 	}
@@ -218,7 +226,7 @@ func (a *SQLiteCanonicalApplier) Apply(ctx context.Context, scope memory.Scope,
 	generation string, _ []memory.ScopeChange, revisions []memory.MemoryRevision) (result error) {
 	defer func() { result = lexicalStorageError(result) }()
 
-	operation, done, err := a.acquire(ctx)
+	operation, done, err := a.acquireMaterial(ctx)
 	if err != nil {
 		return err
 	}
@@ -247,7 +255,7 @@ func (a *SQLiteCanonicalApplier) Apply(ctx context.Context, scope memory.Scope,
 		return err
 	}
 
-	if err = a.copyActive(ctx, stage); err != nil {
+	if err = a.copyActive(ctx, scope, stage); err != nil {
 		return err
 	}
 
@@ -284,6 +292,18 @@ func (a *SQLiteCanonicalApplier) acquire(ctx context.Context) (context.Context, 
 	}
 
 	return a.store.acquire(ctx)
+}
+
+func (a *SQLiteCanonicalApplier) acquireMaterial(ctx context.Context) (context.Context, func(), error) {
+	if a == nil || a.store == nil {
+		return nil, nil, invalidCanonicalPrivacy()
+	}
+
+	if _, err := a.store.canonicalPrivacy(); err != nil {
+		return nil, nil, err
+	}
+
+	return a.acquire(ctx)
 }
 
 func (a *SQLiteCanonicalApplier) lockScope(ctx context.Context, scope memory.Scope) (func(), error) {
@@ -336,11 +356,21 @@ func (a *SQLiteCanonicalApplier) hydrateInput(ctx context.Context, scope memory.
 		return lexicalInput{}, memory.PermanentError(memory.CodeScopeViolation, "sqlite canonical revision mismatch", nil)
 	}
 
-	return canonicalLexicalInput(record)
+	input, err := canonicalLexicalInput(record)
+	if err != nil {
+		return lexicalInput{}, err
+	}
+
+	return admitLexicalInput(ctx, a.privacy, scope, input)
 }
 
-func (a *SQLiteCanonicalApplier) copyActive(ctx context.Context, stage *lexicalStage) error {
+func (a *SQLiteCanonicalApplier) copyActive(ctx context.Context, scope memory.Scope, stage *lexicalStage) error {
 	buffer := lexicalBuffer{applier: a, build: stage.id}
+	if stage.copying {
+		if err := a.validateCopyOwners(ctx, scope, stage); err != nil {
+			return err
+		}
+	}
 
 	after := stage.copiedThrough
 	for stage.copying {
@@ -353,7 +383,12 @@ func (a *SQLiteCanonicalApplier) copyActive(ctx context.Context, stage *lexicalS
 			break
 		}
 
-		if err = buffer.add(ctx, rows[0]); err != nil {
+		input, err := admitLexicalInput(ctx, a.privacy, scope, rows[0])
+		if err != nil {
+			return err
+		}
+
+		if err = buffer.add(ctx, input); err != nil {
 			return err
 		}
 

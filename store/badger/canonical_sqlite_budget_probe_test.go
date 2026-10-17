@@ -77,10 +77,10 @@ func verifyCanonicalConversationIdentity(t *testing.T, conversation string) {
 	}
 
 	t.Logf("canonical accepted and hydrated indivisible conversation identity: %d bytes", len(conversation))
-	verifyCanonicalLargeSQLite(t, reader, store, scope, mutation.Revisions[0], conversation, now)
+	verifyCanonicalLargeSQLite(t, reader, store, store, scope, mutation.Revisions[0], conversation, now)
 }
 
-func verifyCanonicalLargeSQLite(t *testing.T, reader memory.RecallCanonicalReader, checkpoints memory.ProjectionCheckpointStore, scope memory.Scope,
+func verifyCanonicalLargeSQLite(t *testing.T, reader memory.RecallCanonicalReader, checkpoints memory.ProjectionCheckpointStore, canonical *CanonicalStore, scope memory.Scope,
 	revision memory.MemoryRevision, conversation string, now time.Time) {
 	t.Helper()
 
@@ -96,7 +96,7 @@ func verifyCanonicalLargeSQLite(t *testing.T, reader memory.RecallCanonicalReade
 
 	defer func() { _ = projection.Close() }()
 
-	applier, err := search.NewSQLiteCanonicalApplier(projection, reader)
+	applier, err := search.NewSQLiteCanonicalApplier(projection, reader, canonical)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func verifyCanonicalLargeSQLite(t *testing.T, reader memory.RecallCanonicalReade
 
 	t.Cleanup(func() { _ = projection.Close() })
 
-	applier, err = search.NewSQLiteCanonicalApplier(projection, reader)
+	applier, err = search.NewSQLiteCanonicalApplier(projection, reader, canonical)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -20,7 +20,7 @@ func TestCanonicalScrubValidatesWholeInputBeforeRemoval(t *testing.T) {
 	store, _ := openTestStore(t, false)
 	seedLexical(t, store, "active", lexicalTestScope, []lexicalFixture{{id: "first", raw: "needle", sources: []string{"source"}}})
 
-	applier, err := NewSQLiteCanonicalApplier(store, &applyReader{})
+	applier, err := NewSQLiteCanonicalApplier(store, &applyReader{}, fixtureCanonicalPrivacy(t, store, &applyReader{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestCanonicalScrubCanceledSemanticPageRetainsSourceProofForRetry(t *testing
 		t.Fatal(err)
 	}
 
-	applier, err := NewSQLiteCanonicalApplier(store, &applyReader{})
+	applier, err := NewSQLiteCanonicalApplier(store, &applyReader{}, fixtureCanonicalPrivacy(t, store, &applyReader{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestCanonicalScrubOversizedSourcePreservesPendingAndPinnedReader(t *testing
 		t.Fatal(err)
 	}
 
-	applier, err := NewSQLiteCanonicalApplier(store, &applyReader{})
+	applier, err := NewSQLiteCanonicalApplier(store, &applyReader{}, fixtureCanonicalPrivacy(t, store, &applyReader{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +223,7 @@ func TestCanonicalScrubPagesFilterIdentities(t *testing.T) {
 		_ = conn.Close()
 	}
 
-	applier, err := NewSQLiteCanonicalApplier(store, &applyReader{})
+	applier, err := NewSQLiteCanonicalApplier(store, &applyReader{}, fixtureCanonicalPrivacy(t, store, &applyReader{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func TestCanonicalScrubZeroChunkCoverageAndState(t *testing.T) {
 		seedZeroCoverage(t, store, "foreign", foreign, "revision")
 		seedLexical(t, store, "lexical-proof", lexicalTestScope, []lexicalFixture{{id: "revision", raw: "needle", sources: []string{"matching-source"}}})
 
-		applier, err := NewSQLiteCanonicalApplier(store, &applyReader{})
+		applier, err := NewSQLiteCanonicalApplier(store, &applyReader{}, fixtureCanonicalPrivacy(t, store, &applyReader{}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -294,7 +294,7 @@ func TestCanonicalScrubUnknownSourcePreservesPendingZeroAndEmptyBuilds(t *testin
 		t.Fatal(err)
 	}
 
-	applier, err := NewSQLiteCanonicalApplier(store, &applyReader{})
+	applier, err := NewSQLiteCanonicalApplier(store, &applyReader{}, fixtureCanonicalPrivacy(t, store, &applyReader{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +338,7 @@ func TestCanonicalScrubZeroCoverageUsesSemanticSourceProofWithoutLexicalRows(t *
 		t.Fatal(err)
 	}
 
-	applier, err := NewSQLiteCanonicalApplier(store, &applyReader{})
+	applier, err := NewSQLiteCanonicalApplier(store, &applyReader{}, fixtureCanonicalPrivacy(t, store, &applyReader{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,12 +358,12 @@ func TestCanonicalScrubWaitsForCompetingApplierBeforeRemoval(t *testing.T) {
 	loaded, release := make(chan struct{}), make(chan struct{})
 	reader := &applyReader{records: map[string]memory.RecallRecord{"r": applyRecord("r")}, beforeContext: func(context.Context) { close(loaded); <-release }}
 
-	applier, err := NewSQLiteCanonicalApplier(store, reader)
+	applier, err := NewSQLiteCanonicalApplier(store, reader, fixtureCanonicalPrivacy(t, store, reader))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	competing, err := NewSQLiteCanonicalApplier(store, &applyReader{})
+	competing, err := NewSQLiteCanonicalApplier(store, &applyReader{}, fixtureCanonicalPrivacy(t, store, &applyReader{}))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -45,6 +45,7 @@ func TestSemanticAdmissionBoundaries(t *testing.T) {
 			g, r, c := semanticFixture()
 			test.mutate(&g, r, c)
 			seedSemanticSource(t, s, g)
+			registerSemanticPrivacy(t, s, g, r, c)
 
 			if _, err := s.Stage(t.Context(), g, r, c); err != nil {
 				t.Fatal(err)
@@ -347,6 +348,8 @@ func TestSemanticExact64MiBAdmissionAndOneByteOver(t *testing.T) {
 	}
 
 	seedSemanticSource(t, s, g)
+
+	registerSemanticPrivacy(t, s, g, coverage, chunks)
 
 	got, err := s.Stage(t.Context(), g, coverage, chunks)
 	if err != nil || got.EncodedBytes != 64<<20 {

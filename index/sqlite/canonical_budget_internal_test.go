@@ -28,7 +28,7 @@ func TestCanonicalOversizedRecordIsIsolatedAndHydratedAlone(t *testing.T) {
 	large.ConversationIDs = []string{strings.Repeat("c", lexicalPageBytes+1)}
 	reader.records["oversized"] = large
 
-	applier, err := NewSQLiteCanonicalApplier(store, reader)
+	applier, err := NewSQLiteCanonicalApplier(store, reader, fixtureCanonicalPrivacy(t, store, reader))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestCanonicalCloseCancelsHydrationAndDrains(t *testing.T) {
 	started := make(chan struct{})
 	reader := &applyReader{records: map[string]memory.RecallRecord{"r": applyRecord("r")}, beforeContext: func(ctx context.Context) { close(started); <-ctx.Done() }}
 
-	applier, err := NewSQLiteCanonicalApplier(store, reader)
+	applier, err := NewSQLiteCanonicalApplier(store, reader, fixtureCanonicalPrivacy(t, store, reader))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestCanonicalBudgetTargetEdgesHaveRealTransactionBoundaries(t *testing.T) {
 			record.ConversationIDs = append(record.ConversationIDs, strings.Repeat("c", lexicalPageBytes+delta-293-8))
 			reader := &applyReader{records: map[string]memory.RecallRecord{"edge": record, "tail": applyRecord("tail")}}
 
-			applier, err := NewSQLiteCanonicalApplier(store, reader)
+			applier, err := NewSQLiteCanonicalApplier(store, reader, fixtureCanonicalPrivacy(t, store, reader))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -165,7 +165,7 @@ func TestCanonicalBeginSanitizesSQLFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	applier, err := NewSQLiteCanonicalApplier(store, &applyReader{})
+	applier, err := NewSQLiteCanonicalApplier(store, &applyReader{}, fixtureCanonicalPrivacy(t, store, &applyReader{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestCanonicalAggregateMembershipOversize(t *testing.T) {
 	record.ConversationIDs = append(record.ConversationIDs, record.ConversationIDs[1])
 	reader := &applyReader{records: map[string]memory.RecallRecord{"aggregate": record}}
 
-	applier, err := NewSQLiteCanonicalApplier(store, reader)
+	applier, err := NewSQLiteCanonicalApplier(store, reader, fixtureCanonicalPrivacy(t, store, reader))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func TestCanonicalUnrepresentableRecordRollsBackAndSanitizes(t *testing.T) {
 	record.ConversationIDs = []string{strings.Repeat("private-conversation", 1000)}
 	reader := &applyReader{records: map[string]memory.RecallRecord{record.RevisionID: record}}
 
-	applier, err := NewSQLiteCanonicalApplier(store, reader)
+	applier, err := NewSQLiteCanonicalApplier(store, reader, fixtureCanonicalPrivacy(t, store, reader))
 	if err != nil {
 		t.Fatal(err)
 	}

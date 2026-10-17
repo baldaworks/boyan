@@ -19,6 +19,7 @@ func releaseFixture(t *testing.T) (*Store, semantic.Generation) {
 	chunks[0].ConversationIDs = []string{"conversation"}
 
 	seedSemanticSource(t, s, g)
+	registerSemanticPrivacy(t, s, g, coverage, chunks)
 
 	if _, err := s.Stage(t.Context(), g, coverage, chunks); err != nil {
 		t.Fatal(err)

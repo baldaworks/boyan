@@ -92,6 +92,8 @@ func stageSearchFixture(t *testing.T, s *Store, g semantic.Generation, chunks []
 		coverage = append(coverage, record)
 	}
 
+	registerSemanticPrivacy(t, s, g, coverage, chunks)
+
 	if _, err := s.Stage(t.Context(), g, coverage, chunks); err != nil {
 		t.Fatal(err)
 	}
@@ -589,6 +591,8 @@ func TestSearchSnapshotBothChannelsDuringPublication(t *testing.T) {
 	first.ConversationIDs = []string{"old-conversation"}
 
 	coverage := []semantic.CoverageRecord{{ItemID: first.ItemID, RevisionID: first.RevisionID, Revision: first.Revision, ContentHash: first.ContentHash, ChunkCount: 1}}
+	registerSemanticPrivacy(t, s, g, coverage, []semantic.ProjectionChunk{first})
+
 	if _, err := s.Stage(t.Context(), g, coverage, []semantic.ProjectionChunk{first}); err != nil {
 		t.Fatal(err)
 	}
@@ -619,6 +623,8 @@ func TestSearchSnapshotBothChannelsDuringPublication(t *testing.T) {
 	coverage[0].ItemID = second.ItemID
 
 	coverage[0].RevisionID = second.RevisionID
+	registerSemanticPrivacy(t, s, next, coverage, []semantic.ProjectionChunk{second})
+
 	if _, err = s.Stage(t.Context(), next, coverage, []semantic.ProjectionChunk{second}); err != nil {
 		t.Fatal(err)
 	}

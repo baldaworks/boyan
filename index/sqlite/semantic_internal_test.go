@@ -133,6 +133,9 @@ func TestSemanticStageCanceledLeavesNoCompleteState(t *testing.T) {
 
 func seedSemanticSource(t *testing.T, s *Store, g semantic.Generation) {
 	t.Helper()
+
+	_, coverage, chunks := semanticFixture()
+	registerSemanticPrivacy(t, s, g, coverage, chunks)
 	execTest(
 		t,
 		s.writer,
@@ -350,6 +353,8 @@ func TestSemanticStagePinsExactLexicalSource(t *testing.T) {
 	s, _ := openTestStore(t, true)
 
 	g, r, c := semanticFixture()
+	registerSemanticPrivacy(t, s, g, r, c)
+
 	if _, err := s.Stage(t.Context(), g, r, c); !errors.Is(err, semantic.ErrConflict) {
 		t.Fatalf("missing source: %v", err)
 	}

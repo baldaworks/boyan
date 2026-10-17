@@ -183,13 +183,18 @@ func deleteLexicalRow(ctx context.Context, tx *sql.Tx, row int64) error {
 	return err
 }
 
-//nolint:funlen // The bounded row scan and its memberships share one coherent read snapshot.
-func (store *Store) loadLexicalPage(ctx context.Context, build string, after int64) ([]lexicalInput, int64, error) {
+//nolint:cyclop,funlen // The bounded row scan, memberships and required Close errors share one owned snapshot.
+func (store *Store) loadLexicalPage(ctx context.Context, build string,
+	after int64) (result []lexicalInput, last int64, resultErr error) {
 	snapshot, err := store.read(ctx)
 	if err != nil {
 		return nil, after, err
 	}
-	defer func() { _ = snapshot.Close() }()
+	defer func() {
+		if err := snapshot.Close(); resultErr == nil && err != nil {
+			result, resultErr = nil, err
+		}
+	}()
 
 	const page = `SELECT rowid,` + lexicalInputColumns + ` FROM lexical_record
  WHERE physical_build_id=? AND rowid>? ORDER BY rowid LIMIT ?`
@@ -227,7 +232,9 @@ func (store *Store) loadLexicalPage(ctx context.Context, build string, after int
 	}
 
 	err = rows.Err()
-	_ = rows.Close()
+	if closeErr := rows.Close(); err == nil {
+		err = closeErr
+	}
 
 	if err != nil {
 		return nil, after, err
@@ -252,12 +259,16 @@ func (store *Store) loadLexicalPage(ctx context.Context, build string, after int
 	return inputs, after, nil
 }
 
-func loadMembership(snapshot *readSnapshot, query string, row int64) ([]string, error) {
+func loadMembership(snapshot *readSnapshot, query string, row int64) (result []string, resultErr error) {
 	rows, err := snapshot.tx.QueryContext(snapshot.ctx, query, row)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
+	defer func() {
+		if closeErr := rows.Close(); resultErr == nil {
+			resultErr = closeErr
+		}
+	}()
 
 	var ids []string
 
