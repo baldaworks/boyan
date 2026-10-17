@@ -1,0 +1,14 @@
+{
+  "profile": "boyan-search-actual-canonical-v1",
+  "inherits": "benchmark-profile.json",
+  "original_profile_sha256": "fe0d84bf0f06cb50cec4598976efb47ebfda7aaba0f251ec609b519c6b4c2b51",
+  "scope_change_seq": "Every materialized record and semantic chunk uses the actual current canonical scope ChangeSeq. Both engines hydrate through the unmodified CanonicalReader; seed mutations contain at most64 revisions, so ChangeSeq is ceil(record_count/64).",
+  "clarification": "The original one-based corpus-position projection sequence cannot describe the guarded actual-canonical path: store/badger/canonical_reader_recall_record.go stamps every hydration with current ScopeState.ChangeSeq. Coordinator authorized this measurement clarification; original profile remains unchanged. This is not literal original-v1 identity for that field.",
+  "canonical": "Real Badger, existing ApplyCanonicalMutation, CanonicalCompatibilityPayload for category=decision, fixed-width bench-%05d IDs, actual canonical heads/Evidence/payloads. No metadata rewriting or production bypass.",
+  "warm": "one untimed request, timed actual RecallService consumer calls",
+  "reopen": "10 single-operation repetitions with -benchtime=1x: once between repetitions close/reopen projection pools. Reopening is excluded from retrieval timer/allocations and separately recorded as reopen-ns/op and full-wall-ns/op. OS page cache uncontrolled. This is projection-cold, not OS-cold. Warm remains10 repetitions with -benchtime=1s. Coordinator clarified original between-repetitions condition; the abandoned reopen-every-calibrated-op partial run is retained and excluded.",
+  "semantic_setup": "explicit production Stage and Publish on independently seeded canonical identities;8065 coverage records/8192 chunks, first128 chunks on bench-00000; actual four prepared query windows, deterministic e0..e3 provider vectors",
+  "limits": "Lexical public limit10 and ordinary depth40; Hybrid public limit25 selects the actual existing channel depth100, union cap200, final hydrated results<=25; both engines identical.",
+  "machine": "same host, actual Go1.26.8 linux/amd64, GOMAXPROCS4, each engine pinned graph, -buildvcs=false, GOPROXY=off, task cache",
+  "measurement": {"repetitions":10,"go_benchmark_benchtime":"1s"}
+}

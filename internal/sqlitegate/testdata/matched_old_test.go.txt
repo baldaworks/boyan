@@ -1,0 +1,206 @@
+package sqlitegate_test
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	bleve "github.com/baldaworks/boyan/index/bleve"
+	vector "github.com/baldaworks/boyan/index/semantic"
+	core "github.com/baldaworks/boyan/internal/semantic"
+	"github.com/baldaworks/boyan/internal/semanticprojection"
+	m "github.com/baldaworks/boyan/pkg/memory"
+	"path/filepath"
+)
+
+type matchedOld struct {
+	c          *matchedCorpus
+	store      *bleve.BleveRecallProjection
+	vectors    *vector.Store
+	applier    *bleve.BleveCanonicalApplier
+	h          *semanticprojection.Hybrid
+	provider   *matchedProvider
+	generation string
+}
+
+func matchedEngine() string { return "old" }
+func (b *matchedOld) counters() map[string]uint64 {
+	return map[string]uint64{"provider": uint64(b.provider.calls), "hydrate_calls": b.c.reader.loads, "hydrate_ids": b.c.reader.ids}
+}
+func (b *matchedOld) dense(ctx context.Context) ([]core.DenseMatch, error) {
+	space, _ := core.SpaceFingerprint(matchedSpace())
+	snapshot, found, err := b.vectors.Snapshot(ctx, vector.View{Scope: b.c.scope, LexicalGenerationID: b.generation, LexicalWatermark: b.c.seq, ModelSpace: space, Dimensions: 768})
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, fmt.Errorf("missing dense snapshot")
+	}
+	stored := snapshot.Chunks()
+	chunks := make([]core.Chunk, len(stored))
+	for i, c := range stored {
+		chunks[i] = core.Chunk{RevisionID: c.RevisionID, Ordinal: int(c.Ordinal), Vector: c.Vector}
+	}
+	queries, _ := b.provider.Embed(ctx, []string{"0", "1", "2", "3"})
+	return core.Rank(ctx, queries, chunks, 100)
+}
+func openMatchedBackend(ctx context.Context, c *matchedCorpus) (matchedBackend, error) {
+	b := &matchedOld{c: c, provider: &matchedProvider{}}
+	if err := b.open(ctx); err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+func (b *matchedOld) open(ctx context.Context) error {
+	var err error
+	config := bleve.DefaultConfig()
+	config.Checkpoints = b.c.canonical
+	config.ProjectionID = "bleve"
+	b.store, err = bleve.Open(filepath.Join(b.c.root, "bleve"), config)
+	if err != nil {
+		return err
+	}
+	b.vectors, err = vector.Open(filepath.Join(b.c.root, "embeddings"))
+	if err != nil {
+		return err
+	}
+	b.applier, err = bleve.NewBleveCanonicalApplier(b.store, b.c.reader)
+	if err != nil {
+		return err
+	}
+	b.applier.ConfigureProjectionRetention(b.c.canonical, "bleve")
+	b.h, err = semanticprojection.NewHybrid(b.store, b.vectors, b.provider, matchedSpace())
+	return err
+}
+func (b *matchedOld) lexical() m.RecallProjection { return b.store }
+func (b *matchedOld) hybrid() m.RecallProjection  { return b.h }
+func (b *matchedOld) rebuild(ctx context.Context, generation string) error {
+	if err := b.applier.BeginProjectionRebuild(ctx, b.c.scope, generation); err != nil {
+		return err
+	}
+	for offset := 0; offset < len(b.c.revisions); offset += 128 {
+		if err := b.applier.Apply(ctx, b.c.scope, generation, nil, b.c.revisions[offset:min(offset+128, len(b.c.revisions))]); err != nil {
+			return err
+		}
+	}
+	if err := b.publish(ctx, generation); err != nil {
+		return err
+	}
+	b.generation = generation
+	return nil
+}
+func (b *matchedOld) publish(ctx context.Context, generation string) error {
+	manifest := m.ProjectionManifest{Scope: b.c.scope, ProjectionID: "bleve", GenerationID: generation, Status: m.ProjectionGenerationDirty, Watermark: b.c.seq, UpdatedAt: matchedAt}
+	if err := b.c.canonical.MarkProjectionDirty(ctx, manifest); err != nil {
+		return err
+	}
+	if err := b.applier.Commit(ctx, b.c.scope, generation); err != nil {
+		return err
+	}
+	if err := b.c.canonical.AdvanceProjectionWatermark(ctx, manifest, b.c.seq, matchedAt); err != nil {
+		return err
+	}
+	if err := b.c.canonical.ActivateProjectionGeneration(ctx, manifest, matchedAt); err != nil {
+		return err
+	}
+	return b.applier.Activate(ctx, b.c.scope, generation)
+}
+func (b *matchedOld) copy(ctx context.Context) error {
+	if err := b.applier.Apply(ctx, b.c.scope, b.generation, nil, nil); err != nil {
+		return err
+	}
+	return b.publish(ctx, b.generation)
+}
+func (b *matchedOld) reopen(ctx context.Context) error {
+	if err := b.close(); err != nil {
+		return err
+	}
+	if err := b.open(ctx); err != nil {
+		return err
+	}
+	if b.generation != "" {
+		ok, err := b.applier.ResumeProjection(ctx, b.c.scope, b.generation)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("old resume missing")
+		}
+	}
+	return nil
+}
+func (b *matchedOld) close() error {
+	if b.store == nil {
+		return nil
+	}
+	if err := b.applier.Close(); err != nil {
+		return err
+	}
+	if err := b.store.Close(); err != nil {
+		return err
+	}
+	b.store = nil
+	return b.vectors.Close()
+}
+func (b *matchedOld) bytes() map[string]int64 {
+	out := map[string]int64{}
+	for _, family := range []string{"bleve", "embeddings"} {
+		for path, size := range projectionFootprint(filepath.Join(b.c.root, family)) {
+			out[family+"/"+path] = size
+		}
+	}
+	return out
+}
+func (b *matchedOld) semantic(ctx context.Context, status string) error {
+	space, err := core.SpaceFingerprint(matchedSpace())
+	if err != nil {
+		return err
+	}
+	g := vector.Generation{Scope: b.c.scope, BuildID: "semantic-profile-" + status, LexicalGenerationID: b.generation, LexicalWatermark: b.c.seq, ModelSpace: space, Dimensions: 768, ReadyAt: matchedAt}
+	if status == "missing" {
+		return nil
+	}
+	if status == "degraded" {
+		state, found, err := b.vectors.ActiveState(ctx, b.c.scope)
+		if err != nil {
+			return err
+		}
+		if found && state.Status == vector.StatusDegraded {
+			return nil
+		}
+		_, err = b.vectors.PublishDegraded(ctx, vector.Degraded{Generation: g, SafeReason: core.ReasonUnavailable}, "")
+		return err
+	}
+	coverage := make([]vector.CoverageRecord, len(b.c.records))
+	chunks := make([]vector.Chunk, 0, 8192)
+	for i, r := range b.c.records {
+		hash := sha256.Sum256([]byte(r.Text))
+		digest := hex.EncodeToString(hash[:])
+		n := 1
+		if i == 0 && b.c.name == "semantic8192" {
+			n = 128
+		}
+		coverage[i] = vector.CoverageRecord{ItemID: r.ItemID, RevisionID: r.RevisionID, Revision: 1, ContentHash: digest, ChunkCount: uint32(n)}
+		for ordinal := range n {
+			index := len(chunks)
+			v := make([]float32, 768)
+			v[index%768] = 1
+			chunks = append(chunks, vector.Chunk{Scope: r.Scope, BuildID: g.BuildID, LexicalGenerationID: g.LexicalGenerationID, LexicalWatermark: g.LexicalWatermark, ModelSpace: space, Dimensions: 768, ItemID: r.ItemID, RevisionID: r.RevisionID, Revision: 1, Ordinal: uint32(ordinal), ContentHash: digest, InputHash: digest, ScopeChangeSeq: b.c.seq, Kind: r.Kind, Category: *r.Category, MemoryKey: r.MemoryKey, CreatedAt: r.CreatedAt, ObservedAt: &matchedAt, SourceIDs: r.SourceIDs, ConversationIDs: r.ConversationIDs, Vector: v})
+		}
+	}
+	expected := len(b.c.records)
+	if b.c.name == "semantic8192" {
+		expected += 127
+	}
+	if len(chunks) != expected {
+		return fmt.Errorf("dense chunks=%d", len(chunks))
+	}
+	state, err := b.vectors.Stage(ctx, g, coverage, chunks)
+	if err != nil {
+		return err
+	}
+	if state.ChunkCount != uint32(expected) || state.RecordCount != uint32(len(b.c.records)) {
+		return fmt.Errorf("coverage count mismatch")
+	}
+	return b.vectors.Publish(ctx, vector.Publication{View: g.View(), BuildID: g.BuildID})
+}
