@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	index "github.com/baldaworks/boyan/index/bleve"
+	index "github.com/baldaworks/boyan/index/sqlite"
 	core "github.com/baldaworks/boyan/internal/canonicalcore"
 	"github.com/baldaworks/boyan/internal/projection"
 	"github.com/baldaworks/boyan/pkg/boyan"
@@ -143,18 +143,19 @@ func seed(t *testing.T, cfg boyan.Config, docs []document) map[string]string {
 
 	reader, err := b.NewCanonicalReader(store)
 	check(t, err)
-	idx, err := index.Open(
-		filepath.Join(cfg.StateDir, "bleve"),
-		index.Config{Checkpoints: store, ProjectionID: "bleve"},
-	)
-	check(t, err)
-	applier, err := index.NewBleveCanonicalApplier(idx, reader)
+	idx, err := index.Open(t.Context(), cfg.StateDir, index.Options{})
 
 	check(t, err)
-	defer func() { check(t, applier.Close()) }()
+	defer func() { check(t, idx.Close()) }()
 
-	runtime, err := projection.NewProjectionRuntime(store, store, applier, "bleve", 128)
+	applier, err := index.NewSQLiteCanonicalApplier(idx, reader, store)
+
 	check(t, err)
+	runtime, err := projection.NewProjectionRuntime(store, store, applier, "sqlite", 128)
+
+	check(t, err)
+	defer func() { check(t, runtime.Close(t.Context())) }()
+
 	check(t, runtime.Sync(context.Background(), scope))
 
 	return ids

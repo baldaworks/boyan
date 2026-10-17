@@ -70,14 +70,14 @@ func prepareStartupProjection(
 
 	outcome := persistIntegrationTurn(t, config, turn)
 	if mode == "missing" {
-		requireNoError(t, os.RemoveAll(filepath.Join(config.StateDir, "bleve")), "remove disposable index: %v")
+		requireNoError(t, os.Remove(filepath.Join(config.StateDir, "search", "search.sqlite")), "remove disposable index: %v")
 
 		return outcome
 	}
 
 	store, err := b.Open(filepath.Join(config.StateDir, "badger"))
 	requireNoError(t, err, "store: %v")
-	manifest, found, err := store.LoadActiveProjectionManifest(context.Background(), turn.Scope, "bleve")
+	manifest, found, err := store.LoadActiveProjectionManifest(context.Background(), turn.Scope, "sqlite")
 	requireNoError(t, err, "manifest: %v")
 
 	if !found {
@@ -87,6 +87,8 @@ func prepareStartupProjection(
 	if mode == "dirty" {
 		requireNoError(t, store.MarkProjectionDirty(context.Background(), manifest), "mark dirty: %v")
 	} else {
+		// Old mapping bytes are an ignored legacy sibling after the cutover.
+		// TASK016 may retire this engine-specific fixture after inventory review.
 		replaceStartupV1Index(t, config, manifest.GenerationID)
 	}
 
@@ -99,7 +101,7 @@ func replaceStartupV1Index(t *testing.T, config hostapi.Config, generation strin
 	t.Helper()
 
 	path := filepath.Join(config.StateDir, "bleve", "generations", generation)
-	requireNoError(t, os.RemoveAll(path), "remove disposable generation: %v")
+	requireNoError(t, os.MkdirAll(filepath.Dir(path), 0o700), "legacy parent: %v")
 
 	mapping := engine.NewIndexMapping()
 	mapping.DefaultMapping = engine.NewDocumentStaticMapping()

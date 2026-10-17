@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	index "github.com/baldaworks/boyan/index/bleve"
+	index "github.com/baldaworks/boyan/index/sqlite"
 	core "github.com/baldaworks/boyan/internal/canonicalcore"
 	projection "github.com/baldaworks/boyan/internal/projection"
 	transport "github.com/baldaworks/boyan/mcp"
@@ -108,18 +108,19 @@ func persistIntegrationTurn(t *testing.T, config hostapi.Config, turn m.Turn) m.
 	requireNoError(t, err, "deterministic native ingest: %v")
 	reader, err := b.NewCanonicalReader(store)
 	requireNoError(t, err, "reader: %v")
-	indexer, err := index.Open(
-		filepath.Join(config.StateDir, "bleve"),
-		index.Config{Checkpoints: store, ProjectionID: "bleve"},
-	)
+	indexer, err := index.Open(t.Context(), config.StateDir, index.Options{})
+
 	requireNoError(t, err, "index: %v")
-	applier, err := index.NewBleveCanonicalApplier(indexer, reader)
+	defer func() { requireNoError(t, indexer.Close(), "index close: %v") }()
+
+	applier, err := index.NewSQLiteCanonicalApplier(indexer, reader, store)
 
 	requireNoError(t, err, "applier: %v")
-	defer func() { requireNoError(t, applier.Close(), "projection close: %v") }()
+	runtime, err := projection.NewProjectionRuntime(store, store, applier, "sqlite", 128)
 
-	runtime, err := projection.NewProjectionRuntime(store, store, applier, "bleve", 128)
 	requireNoError(t, err, "projection runtime: %v")
+	defer func() { requireNoError(t, runtime.Close(t.Context()), "projection close: %v") }()
+
 	requireNoError(t, runtime.Sync(context.Background(), turn.Scope), "synchronize durable checkpoint: %v")
 
 	return outcome
