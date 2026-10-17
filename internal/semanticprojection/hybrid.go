@@ -92,7 +92,7 @@ func (hybrid *Hybrid) SearchRecallWithReport(ctx context.Context,
 	return hits, report, nil
 }
 
-//nolint:cyclop // Each failure boundary keeps canonical/lexical errors distinct from semantic degradation.
+//nolint:cyclop,funlen // Keep the ordered availability/provider/channel failure boundaries explicit.
 func (hybrid *Hybrid) search(ctx context.Context, request memory.RecallRequest,
 	report *memory.RetrievalReport) ([]memory.RecallProjectionHit, error) {
 	prepared, err := semantic.PrepareQuery(ctx, request.Query, hybrid.space.QueryPrefix)
@@ -101,6 +101,25 @@ func (hybrid *Hybrid) search(ctx context.Context, request memory.RecallRequest,
 	}
 
 	report.OmittedQueryRunes, report.OmittedQueryWindows = prepared.OmittedRunes, prepared.OmittedWindows
+
+	availability, err := hybrid.probeAvailability(ctx, request.Scope)
+	if err != nil {
+		return nil, err
+	}
+
+	source, certified, err := hybrid.certifiedSource(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if !certified || !availability.found || !sameHybridTuple(availability.manifest, source) ||
+		!hybrid.matchesState(availability.state, source) {
+		return hybrid.fallback(ctx, request, report, "unavailable")
+	}
 
 	vectors, providerErr := embedHybridQuery(ctx, hybrid.provider, prepared, hybrid.space.Dimensions)
 	if err := ctx.Err(); err != nil {

@@ -23,8 +23,9 @@ type sqlSearchSnapshot struct {
 	stateErr  error
 }
 
-// OpenSearchSnapshot pins both active pointers before returning. Provider work
-// belongs to the caller and must finish before this read transaction is opened.
+// OpenSearchSnapshot pins both active pointers before returning. A metadata-only
+// preflight may precede inference if it closes completely first. The shared
+// channel snapshot opens after query vectors are ready.
 func (store *Store) OpenSearchSnapshot(ctx context.Context, scope memory.Scope) (semantic.SearchSnapshot, error) {
 	return store.openSearchSnapshot(ctx, scope, time.Now)
 }

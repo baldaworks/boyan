@@ -148,6 +148,12 @@ func TestSQLiteHybridIncompatibleAndInvalidProviderFallback(t *testing.T) {
 	for _, change := range []string{"model", "dimensions", "generation", "watermark", "incomplete", "bad-count", "bad-dimension", "bad-norm", "nan", "infinity"} {
 		t.Run(change, func(t *testing.T) {
 			f, h, request := newSQLHybrid(t)
+			calls, wantCalls := 0, 0
+			h.provider = queryProviderFunc(func(context.Context, []string) ([][]float32, error) {
+				calls++
+
+				return [][]float32{{1, 0}}, nil
+			})
 
 			switch change {
 			case "model":
@@ -161,6 +167,7 @@ func TestSQLiteHybridIncompatibleAndInvalidProviderFallback(t *testing.T) {
 			case "incomplete":
 				f.exec(t, "UPDATE semantic_build SET complete=0")
 			default:
+				wantCalls = 1
 				vectors := [][]float32{{0, 0}}
 
 				switch change {
@@ -174,11 +181,15 @@ func TestSQLiteHybridIncompatibleAndInvalidProviderFallback(t *testing.T) {
 					vectors = [][]float32{{float32(math.Inf(1)), 0}}
 				}
 
-				h.provider = queryProviderFunc(func(context.Context, []string) ([][]float32, error) { return vectors, nil })
+				h.provider = queryProviderFunc(func(context.Context, []string) ([][]float32, error) {
+					calls++
+
+					return vectors, nil
+				})
 			}
 
 			hits, report, err := h.SearchRecallWithReport(t.Context(), request)
-			if err != nil || len(hits) != 1 || report.Effective != "degraded" || report.Validate() != nil {
+			if err != nil || len(hits) != 1 || report.Effective != "degraded" || report.Validate() != nil || calls != wantCalls {
 				t.Fatalf("incompatible fallback=%#v %#v %v", hits, report, err)
 			}
 
@@ -186,7 +197,7 @@ func TestSQLiteHybridIncompatibleAndInvalidProviderFallback(t *testing.T) {
 			_, _, err = h.SearchRecallWithReport(t.Context(), request)
 
 			code, class, _ := memory.ClassifyError(err)
-			if code != memory.CodeConflict || class != memory.ErrorClassRetryable {
+			if code != memory.CodeConflict || class != memory.ErrorClassRetryable || calls != 2*wantCalls {
 				t.Fatalf("minimum=%v", err)
 			}
 		})
@@ -201,13 +212,17 @@ func (r hybridBoundaryReader) OpenSearchSnapshot(ctx context.Context,
 type hybridBoundarySnapshot struct {
 	semantic.SearchSnapshot
 
-	afterClose func()
-	once       sync.Once
-	lexical    func(context.Context, memory.RecallRequest, int) ([]memory.RecallProjectionHit, error)
-	dense      func(context.Context, memory.RecallRequest, [][]float32, int) ([]semantic.DenseMatch, semantic.ScanCounts, error)
+	afterClose                                                  func()
+	once                                                        sync.Once
+	lexical                                                     func(context.Context, memory.RecallRequest, int) ([]memory.RecallProjectionHit, error)
+	dense                                                       func(context.Context, memory.RecallRequest, [][]float32, int) ([]semantic.DenseMatch, semantic.ScanCounts, error)
+	phase                                                       string
+	lexicalCalls, denseCalls, stateCalls, manifestCalls, closes int
+	wantDense                                                   bool
 }
 
 func (s *hybridBoundarySnapshot) Close() error {
+	s.closes++
 	err := s.SearchSnapshot.Close()
 	s.once.Do(func() {
 		if s.afterClose != nil {
@@ -220,6 +235,7 @@ func (s *hybridBoundarySnapshot) Close() error {
 
 func (s *hybridBoundarySnapshot) SearchLexical(ctx context.Context, request memory.RecallRequest,
 	limit int) ([]memory.RecallProjectionHit, error) {
+	s.lexicalCalls++
 	if s.lexical != nil {
 		return s.lexical(ctx, request, limit)
 	}
@@ -229,6 +245,7 @@ func (s *hybridBoundarySnapshot) SearchLexical(ctx context.Context, request memo
 
 func (s *hybridBoundarySnapshot) SearchSemantic(ctx context.Context, request memory.RecallRequest,
 	queries [][]float32, limit int) ([]semantic.DenseMatch, semantic.ScanCounts, error) {
+	s.denseCalls++
 	if s.dense != nil {
 		return s.dense(ctx, request, queries, limit)
 	}
@@ -236,47 +253,112 @@ func (s *hybridBoundarySnapshot) SearchSemantic(ctx context.Context, request mem
 	return s.SearchSnapshot.SearchSemantic(ctx, request, queries, limit)
 }
 
-func wrapHybridFirstRead(h *Hybrid, change func(*hybridBoundarySnapshot)) {
+func (s *hybridBoundarySnapshot) SemanticState() (semantic.State, bool, error) {
+	s.stateCalls++
+
+	return s.SearchSnapshot.SemanticState()
+}
+
+func (s *hybridBoundarySnapshot) LexicalManifest() memory.ProjectionManifest {
+	s.manifestCalls++
+
+	return s.SearchSnapshot.LexicalManifest()
+}
+
+// The ordinal identifies a phase only alongside assertions proving its actual
+// operations. Final-channel faults must never silently move into the preflight.
+//
+//nolint:funlen // Keep phase selection and its mandatory operation/closure assertions together.
+func wrapHybridChannelRead(t *testing.T, h *Hybrid, change func(*hybridBoundarySnapshot)) func() []string {
+	t.Helper()
+
 	reader := h.reader
-	first := true
+	provider := h.provider
+
+	var snapshots []*hybridBoundarySnapshot
+
+	providerReturned := false
+	h.provider = queryProviderFunc(func(ctx context.Context, inputs []string) ([][]float32, error) {
+		if len(snapshots) != 1 || snapshots[0].phase != "preflight" || snapshots[0].closes != 1 ||
+			snapshots[0].lexicalCalls != 0 || snapshots[0].denseCalls != 0 || snapshots[0].stateCalls != 1 || snapshots[0].manifestCalls != 1 {
+			t.Fatal("provider did not follow a closed metadata-only preflight")
+		}
+
+		vectors, err := provider.Embed(ctx, inputs)
+		providerReturned = true
+
+		return vectors, err
+	})
 	h.reader = hybridBoundaryReader{SearchReader: reader, open: func(ctx context.Context,
 		scope memory.Scope) (semantic.SearchSnapshot, error) {
 		snapshot, err := reader.OpenSearchSnapshot(ctx, scope)
-		if err != nil || !first {
+		if err != nil {
 			return snapshot, err
 		}
 
-		first = false
-		wrapped := &hybridBoundarySnapshot{SearchSnapshot: snapshot}
-		change(wrapped)
+		phases := []string{"preflight", "channels", "postread"}
+		if len(snapshots) >= len(phases) {
+			t.Fatal("unexpected repeated availability/channel read")
+		}
+
+		wrapped := &hybridBoundarySnapshot{SearchSnapshot: snapshot, phase: phases[len(snapshots)], wantDense: true}
+		if wrapped.phase == "channels" {
+			if !providerReturned {
+				t.Fatal("final channel snapshot opened before provider returned")
+			}
+
+			change(wrapped)
+		}
+
+		snapshots = append(snapshots, wrapped)
 
 		return wrapped, nil
 	}}
+
+	t.Cleanup(func() {
+		if len(snapshots) < 2 || snapshots[1].phase != "channels" || snapshots[1].lexicalCalls != 1 ||
+			(snapshots[1].wantDense && snapshots[1].denseCalls != 1) {
+			t.Errorf("intended final-channel fault/hydration boundary was not exercised: %#v", snapshots)
+		}
+
+		for _, snapshot := range snapshots {
+			if snapshot.closes != 1 || (snapshot.phase != "channels" && (snapshot.lexicalCalls != 0 || snapshot.denseCalls != 0 || snapshot.stateCalls != 1)) {
+				t.Errorf("phase %s closure/metadata contract: %#v", snapshot.phase, snapshot)
+			}
+		}
+	})
+
+	return func() []string {
+		phases := make([]string, len(snapshots))
+		for i, snapshot := range snapshots {
+			phases[i] = snapshot.phase
+		}
+
+		return phases
+	}
 }
 
-// Opening a transaction before inference blocks the provider behind the full reader pool.
-func TestSQLiteHybridProviderPrecedesPoolWait(t *testing.T) {
+// TASK013's provider-before-every-SQL expectation is superseded by Design §15.
+// A provider cannot be the only owner able to free readers occupied before a
+// pool-backed preflight. Its resource contract is reentry after that probe closes.
+func TestSQLiteHybridProviderCanReenterBothReadersAfterPreflight(t *testing.T) {
 	f, h, request := newSQLHybrid(t)
+	h.provider = queryProviderFunc(func(ctx context.Context, _ []string) ([][]float32, error) {
+		one, err := f.store.OpenSearchSnapshot(ctx, f.scope)
+		if err != nil {
+			return nil, err
+		}
+		defer one.Close()
 
-	one, err := f.store.OpenSearchSnapshot(t.Context(), f.scope)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer one.Close()
-
-	two, err := f.store.OpenSearchSnapshot(t.Context(), f.scope)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer two.Close()
-	// Provider can itself release both real readers; this deadlocks if any SQL
-	// acquisition happens before inference. The caller deadline bounds failure.
-	h.provider = queryProviderFunc(func(context.Context, []string) ([][]float32, error) {
-		_ = one.Close()
-		_ = two.Close()
+		two, err := f.store.OpenSearchSnapshot(ctx, f.scope)
+		if err != nil {
+			return nil, err
+		}
+		defer two.Close()
 
 		return [][]float32{{1, 0}}, nil
 	})
+	wrapHybridChannelRead(t, h, func(*hybridBoundarySnapshot) {})
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
@@ -300,7 +382,7 @@ func TestSQLiteHybridRejectsChangedCertificatesIncludingEmptyMinimum(t *testing.
 					request.SourceID = "absent"
 				}
 
-				wrapHybridFirstRead(h, func(s *hybridBoundarySnapshot) {
+				wrapHybridChannelRead(t, h, func(s *hybridBoundarySnapshot) {
 					s.afterClose = func() {
 						switch transition {
 						case "canonical":
@@ -596,11 +678,12 @@ func TestSQLiteHybridClosesTransactionsOnFailure(t *testing.T) {
 			f, h, request := newSQLHybrid(t)
 			closed := false
 
-			wrapHybridFirstRead(h, func(s *hybridBoundarySnapshot) {
+			wrapHybridChannelRead(t, h, func(s *hybridBoundarySnapshot) {
 				s.afterClose = func() { closed = true }
 
 				switch boundary {
 				case "lexical":
+					s.wantDense = false
 					s.lexical = func(context.Context, memory.RecallRequest, int) ([]memory.RecallProjectionHit, error) {
 						return nil, errors.New("private SQL")
 					}
@@ -609,6 +692,7 @@ func TestSQLiteHybridClosesTransactionsOnFailure(t *testing.T) {
 						return nil, semantic.ScanCounts{}, semantic.ErrCorrupt
 					}
 				case "certificate":
+					s.wantDense = false
 					// Revoke only the snapshot's selected semantic metadata through a
 					// wrapper so the real transaction still needs explicit closure.
 					s.SearchSnapshot = hybridStateSnapshot{s.SearchSnapshot}
@@ -695,7 +779,7 @@ func TestSQLiteHybridSharesTransactionAcrossConcurrentPublication(t *testing.T) 
 	f, h, request := newSQLHybrid(t)
 	request.MinScopeChangeSeq = 7
 
-	wrapHybridFirstRead(h, func(s *hybridBoundarySnapshot) {
+	wrapHybridChannelRead(t, h, func(s *hybridBoundarySnapshot) {
 		s.lexical = func(ctx context.Context, r memory.RecallRequest, depth int) ([]memory.RecallProjectionHit, error) {
 			hits, err := s.SearchSnapshot.SearchLexical(ctx, r, depth)
 			if err != nil {
@@ -760,17 +844,18 @@ func TestSQLiteHybridErrorPolicy(t *testing.T) {
 			case "canonical":
 				f.checkpoints.err = failure
 			case "post-canonical":
-				wrapHybridFirstRead(h, func(s *hybridBoundarySnapshot) { s.afterClose = func() { f.checkpoints.err = failure } })
+				wrapHybridChannelRead(t, h, func(s *hybridBoundarySnapshot) { s.afterClose = func() { f.checkpoints.err = failure } })
 			case "cancel":
-				wrapHybridFirstRead(h, func(s *hybridBoundarySnapshot) { s.afterClose = cancel })
+				wrapHybridChannelRead(t, h, func(s *hybridBoundarySnapshot) { s.afterClose = cancel })
 			case "lexical":
-				wrapHybridFirstRead(h, func(s *hybridBoundarySnapshot) {
+				wrapHybridChannelRead(t, h, func(s *hybridBoundarySnapshot) {
+					s.wantDense = false
 					s.lexical = func(context.Context, memory.RecallRequest, int) ([]memory.RecallProjectionHit, error) {
 						return nil, failure
 					}
 				})
 			case "semantic-storage":
-				wrapHybridFirstRead(h, func(s *hybridBoundarySnapshot) {
+				wrapHybridChannelRead(t, h, func(s *hybridBoundarySnapshot) {
 					s.dense = func(context.Context, memory.RecallRequest, [][]float32, int) ([]semantic.DenseMatch, semantic.ScanCounts, error) {
 						return nil, semantic.ScanCounts{}, failure
 					}
@@ -818,7 +903,7 @@ func TestSQLiteHybridCanonicalHydrationBarrier(t *testing.T) {
 			at := time.Now().UTC()
 			request.AsOf = &at
 
-			wrapHybridFirstRead(h, func(s *hybridBoundarySnapshot) {
+			wrapHybridChannelRead(t, h, func(s *hybridBoundarySnapshot) {
 				s.afterClose = func() {
 					f.canonical.mu.Lock()
 					defer f.canonical.mu.Unlock()
