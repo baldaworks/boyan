@@ -6,7 +6,10 @@ import (
 	"testing"
 
 	semanticstore "github.com/baldaworks/boyan/index/semantic"
+	sqlitestore "github.com/baldaworks/boyan/index/sqlite"
 )
+
+var _ CandidateLifecycle = (*sqlitestore.Store)(nil)
 
 func TestPortableBuildStorePreservesTypedNilRejection(t *testing.T) {
 	t.Parallel()

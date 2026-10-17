@@ -7,6 +7,15 @@ import (
 	"github.com/baldaworks/boyan/pkg/memory"
 )
 
+// Claims are nonblocking: release reserves before waiting for its scope, while
+// Stage claims after taking its scope. Neither introduces an inverse wait edge.
+type semanticOperation uint8
+
+const (
+	semanticOperationStage semanticOperation = iota + 1
+	semanticOperationRelease
+)
+
 // Semantic writes and canonical forgetting share the existing scope lease.
 // Lock order is scope then writer transaction; provider work happens earlier.
 func (store *Store) semanticScopeLease(ctx context.Context, scope memory.Scope) (context.Context, func(), error) {

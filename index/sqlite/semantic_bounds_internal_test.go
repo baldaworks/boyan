@@ -112,6 +112,7 @@ func maxSemanticIDs() []string {
 	return ids
 }
 
+//nolint:cyclop // At-limit release and retirement preserve the separate over-limit admission assertion.
 func TestSemantic8192ChunksAnd8193RejectedBeforeClaim(t *testing.T) {
 	s, _ := openTestStore(t, true)
 	g, r, c := semanticFixture()
@@ -128,6 +129,27 @@ func TestSemantic8192ChunksAnd8193RejectedBeforeClaim(t *testing.T) {
 	if state, err := s.Stage(t.Context(), g, r, chunks); err != nil || state.ChunkCount != 8192 {
 		t.Fatalf("8192 stage=%#v %v", state, err)
 	}
+
+	t.Run("release at 8192 chunks", func(t *testing.T) {
+		owned := g
+		owned.BuildID = "release-limit"
+
+		ownedChunks := append([]semantic.ProjectionChunk(nil), chunks...)
+		for index := range ownedChunks {
+			ownedChunks[index].BuildID = owned.BuildID
+		}
+
+		if state, err := s.Stage(t.Context(), owned, r, ownedChunks); err != nil || state.ChunkCount != 8192 {
+			t.Fatalf("8192 owned stage=%#v %v", state, err)
+		}
+
+		result, err := s.ReleaseUnpublished(t.Context(), owned.Scope, owned.BuildID)
+		if err != nil || result.Disposition != semantic.CandidateReleased {
+			t.Fatalf("8192 release=%#v %v", result, err)
+		}
+
+		assertReleasedFamilies(t, s, owned.BuildID)
+	})
 
 	if err := s.Publish(t.Context(), semantic.Publication{View: g.View(), BuildID: g.BuildID}); err != nil {
 		t.Fatal(err)
@@ -330,6 +352,28 @@ func TestSemanticExact64MiBAdmissionAndOneByteOver(t *testing.T) {
 	if err != nil || got.EncodedBytes != 64<<20 {
 		t.Fatalf("64MiB stage bytes=%d err=%v", got.EncodedBytes, err)
 	}
+
+	t.Run("release at exact 64MiB", func(t *testing.T) {
+		owned := g
+		// Equal-width generated identity preserves the independent exact-byte fixture.
+		owned.BuildID = "release--build"
+
+		ownedChunks := append([]semantic.ProjectionChunk(nil), chunks...)
+		for index := range ownedChunks {
+			ownedChunks[index].BuildID = owned.BuildID
+		}
+
+		if state, err := s.Stage(t.Context(), owned, coverage, ownedChunks); err != nil || state.EncodedBytes != 64<<20 {
+			t.Fatalf("64MiB owned stage=%#v %v", state, err)
+		}
+
+		result, err := s.ReleaseUnpublished(t.Context(), owned.Scope, owned.BuildID)
+		if err != nil || result.Disposition != semantic.CandidateReleased {
+			t.Fatalf("64MiB release=%#v %v", result, err)
+		}
+
+		assertReleasedFamilies(t, s, owned.BuildID)
+	})
 
 	activateSemanticFixture(t, s, g)
 

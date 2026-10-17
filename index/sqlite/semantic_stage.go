@@ -37,7 +37,7 @@ func (store *Store) Stage(ctx context.Context, generation semantic.Generation,
 	}
 	defer done()
 
-	if _, loaded := store.semanticStaging.LoadOrStore(state.BuildID, struct{}{}); loaded {
+	if _, loaded := store.semanticStaging.LoadOrStore(state.BuildID, semanticOperationStage); loaded {
 		return semantic.State{}, semantic.ErrConflict
 	}
 

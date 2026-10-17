@@ -26,3 +26,11 @@ type BuildStore interface {
 	ObservedMetadataReady(ctx context.Context, view semantic.View) (bool, error)
 	CollectGarbage(ctx context.Context) error
 }
+
+// CandidateLifecycle manages owned candidates independently of source repair.
+// Startup orphan repair requires a quiescent producer admission barrier.
+type CandidateLifecycle interface {
+	ReleaseUnpublished(ctx context.Context, scope memory.Scope, buildID string) (semantic.CandidateRelease, error)
+	InvalidatePublication(ctx context.Context, scope memory.Scope, buildID string, epoch uint64) error
+	RepairSemanticOrphans(ctx context.Context) error
+}

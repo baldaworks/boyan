@@ -35,7 +35,7 @@ const readerConnections = 2
 // operations and drains canceled work before releasing the pools and root.
 type Store struct {
 	embeddingsEnabled bool
-	semanticStaging   sync.Map // build ID -> live Stage ownership; garbage collection must preserve it.
+	semanticStaging   sync.Map // build ID -> semanticOperation; GC preserves Stage and release reservations.
 	connectionLimits  []sqlConnectionLimits
 	stagingMu         sync.Mutex
 	stagingOwners     map[memory.Scope]*SQLiteCanonicalApplier
