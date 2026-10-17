@@ -12,7 +12,7 @@ func TestRuntimeConstructedStop(t *testing.T) {
 	requireNoError(t, err, "%v")
 
 	defer first.service.store.Close()
-	defer first.service.applier.Close()
+	defer first.service.index.Close()
 
 	requireNoError(t, first.Stop(context.Background()), "%v")
 
@@ -20,7 +20,7 @@ func TestRuntimeConstructedStop(t *testing.T) {
 	requireNoError(t, err, "reopen after Stop: %v")
 
 	defer second.service.store.Close()
-	defer second.service.applier.Close()
+	defer second.service.index.Close()
 }
 
 func TestRuntimeWaitAfterConstructedStop(t *testing.T) {
@@ -28,7 +28,7 @@ func TestRuntimeWaitAfterConstructedStop(t *testing.T) {
 	requireNoError(t, err, "%v")
 
 	defer runtime.service.store.Close()
-	defer runtime.service.applier.Close()
+	defer runtime.service.index.Close()
 
 	requireNoError(t, runtime.Stop(context.Background()), "%v")
 

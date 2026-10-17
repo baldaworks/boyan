@@ -3,11 +3,10 @@ package standaloneruntime
 import (
 	"bytes"
 	"context"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 
-	semanticstore "github.com/baldaworks/boyan/index/semantic"
+	"github.com/baldaworks/boyan/index/sqlite"
 	"github.com/baldaworks/boyan/internal/embedding"
 	"github.com/baldaworks/boyan/internal/projection"
 	"github.com/baldaworks/boyan/internal/semanticprojection"
@@ -19,7 +18,6 @@ const semanticScopePageSize = 128
 
 type semanticRuntime struct {
 	manager       *semanticprojection.Manager
-	store         *semanticstore.Store
 	canonical     *badger.CanonicalStore
 	provider      *semanticHealthProvider
 	startup       sync.WaitGroup
@@ -27,20 +25,14 @@ type semanticRuntime struct {
 	startupFailed atomic.Bool
 }
 
-func (storage *standaloneStorage) openSemantic(layout stateLayout, config EmbeddingsConfig,
+func (storage *standaloneStorage) openSemantic(config EmbeddingsConfig,
 	cleanups *standaloneCleanupStack) error {
-	store, err := semanticstore.Open(filepath.Join(layout.Root, "embeddings"))
-	if err != nil {
-		return err
-	}
-
-	cleanups.Add(func() { _ = store.Close() })
-
 	provider := &semanticHealthProvider{Provider: config.Provider}
 
 	manager, err := semanticprojection.New(semanticprojection.Dependencies{
 		Canonical: storage.store, Records: storage.reader, Manifests: storage.store,
-		Physical: storage.index, Provider: provider, Store: store, ModelSpace: config.ModelSpace,
+		Physical: storage.index, Provider: provider, Store: storage.index, ModelSpace: config.ModelSpace,
+		LexicalProjectionID: boyanProjectionID, Lifecycle: storage.index,
 	})
 	if err != nil {
 		return err
@@ -48,12 +40,15 @@ func (storage *standaloneStorage) openSemantic(layout stateLayout, config Embedd
 
 	cleanups.Add(func() { _ = manager.Close(context.Background()) })
 
-	hybrid, err := semanticprojection.NewLegacyHybrid(storage.index, store, provider, config.ModelSpace)
+	hybrid, err := semanticprojection.NewHybrid(semanticprojection.HybridDependencies{
+		Canonical: storage.store, Manifests: storage.store, Reader: storage.index,
+		Lexical: storage.index, Provider: provider, ModelSpace: config.ModelSpace,
+	})
 	if err != nil {
 		return err
 	}
 
-	runtime := &semanticRuntime{manager: manager, store: store, canonical: storage.store, provider: provider}
+	runtime := &semanticRuntime{manager: manager, canonical: storage.store, provider: provider}
 	runtime.repairing.Store(true)
 	storage.semantic = runtime
 	storage.syncer = semanticSyncer{lexical: storage.projection, manager: manager}
@@ -89,8 +84,8 @@ func (runtime *semanticRuntime) start(ctx context.Context) {
 		defer runtime.repairing.Store(false)
 
 		if err := runtime.manager.Start(ctx); err != nil {
-			runtime.startupFailed.Store(true)
-
+			// Manager owns classified initialization failure and clears it only
+			// after a successful retry through its admission barrier.
 			return
 		}
 
@@ -132,8 +127,12 @@ func (runtime *semanticRuntime) close(ctx context.Context) error {
 	// The service cancels its lifetime context before draining components.
 	runtime.startup.Wait()
 
-	return runtime.store.Close()
+	return nil
 }
+
+var _ semanticprojection.BuildStore = (*sqlite.Store)(nil)
+var _ semanticprojection.CandidateLifecycle = (*sqlite.Store)(nil)
+var _ semanticprojection.SearchReader = (*sqlite.Store)(nil)
 
 func (runtime *semanticRuntime) summary() string {
 	state := runtime.manager.OperationalState()

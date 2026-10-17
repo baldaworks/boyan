@@ -2,6 +2,7 @@ package standaloneruntime
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/baldaworks/boyan/internal/forgetops"
 )
@@ -20,7 +21,8 @@ func (s *standaloneService) startComponents(ctx context.Context) error {
 	}
 
 	if err := s.projection.Start(ctx); err != nil {
-		return err
+		return fmt.Errorf("repair Boyan SQLite projection: %w; stop all writers, back up search and canonical state, "+
+			"then rebuild only disposable search state", err)
 	}
 
 	if err := s.sequenced.Start(ctx); err != nil {

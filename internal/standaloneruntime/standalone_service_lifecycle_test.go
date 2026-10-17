@@ -21,7 +21,7 @@ func TestRuntimeFailedStartReleasesStorage(t *testing.T) {
 	requireNoError(t, err, "%v")
 
 	defer first.service.store.Close()
-	defer first.service.applier.Close()
+	defer first.service.index.Close()
 
 	if err := first.Start(context.Background()); err == nil {
 		t.Fatal("Start on occupied address succeeded")
@@ -35,7 +35,7 @@ func TestRuntimeFailedStartReleasesStorage(t *testing.T) {
 	requireNoError(t, err, "reopen after failed Start: %v")
 
 	defer second.service.store.Close()
-	defer second.service.applier.Close()
+	defer second.service.index.Close()
 }
 
 func TestRuntimeWaitBroadcast(t *testing.T) {

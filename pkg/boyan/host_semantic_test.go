@@ -18,8 +18,6 @@ import (
 )
 
 // These tests catch omission of the enabled runtime graph and default side effects.
-//
-//nolint:cyclop // The enabled/disabled graph assertions belong to one comparison.
 func TestHostSemanticLifecycle(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
 		t.Run(map[bool]string{false: "disabled", true: "enabled"}[enabled], func(t *testing.T) {
@@ -39,9 +37,9 @@ func TestHostSemanticLifecycle(t *testing.T) {
 				t.Fatal("semantic availability blocked lexical readiness")
 			}
 
-			_, err = os.Stat(filepath.Join(cfg.StateDir, "embeddings"))
-			if enabled && err != nil || !enabled && !os.IsNotExist(err) {
-				t.Fatalf("embedding directory: %v", err)
+			_, err = os.Stat(filepath.Join(cfg.StateDir, "search", "search.sqlite"))
+			if err != nil {
+				t.Fatalf("shared search database: %v", err)
 			}
 
 			rec := httptest.NewRecorder()

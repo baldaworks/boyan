@@ -42,6 +42,7 @@ func (r *ProjectionRuntime) Sync(ctx context.Context, scope memory.Scope) error 
 	return r.syncScope(ctx, scope, serial)
 }
 
+//nolint:cyclop // Keep resume, abort and replacement ownership transitions in order.
 func (r *ProjectionRuntime) syncScope(ctx context.Context, scope memory.Scope, serial uint64) (result error) {
 	generationID := ""
 	defer func() {
@@ -62,6 +63,16 @@ func (r *ProjectionRuntime) syncScope(ctx context.Context, scope memory.Scope, s
 		if !r.rebuildAfterSync(err) {
 			return err
 		}
+
+		// The resumed delta can already own an unreachable physical stage.
+		// Release it before acquiring this scope for the replacement generation.
+		if r.maintenance != nil {
+			if err := r.maintenance.AbortProjectionSync(ctx, generationID); err != nil {
+				return err
+			}
+		}
+
+		generationID = ""
 	}
 
 	generationID = projectionGenerationID(r.projection, scope, serial, time.Now().UTC())

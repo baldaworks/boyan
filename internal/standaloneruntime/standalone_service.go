@@ -7,7 +7,7 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"github.com/baldaworks/boyan/index/bleve"
+	"github.com/baldaworks/boyan/index/sqlite"
 	"github.com/baldaworks/boyan/internal/derivation"
 	memoryops "github.com/baldaworks/boyan/internal/memoryops"
 	memoryread "github.com/baldaworks/boyan/internal/memoryread"
@@ -23,7 +23,8 @@ type standaloneService struct {
 	store       *badger.CanonicalStore
 	maintenance *badger.CanonicalMaintenance
 	reader      *badger.CanonicalReader
-	applier     *bleve.BleveCanonicalApplier
+	index       *sqlite.Store
+	applier     *sqlite.SQLiteCanonicalApplier
 	projection  *projection.ProjectionRuntime
 	semantic    *semanticRuntime
 	sequenced   *orderedingest.SequencedIngestRuntime

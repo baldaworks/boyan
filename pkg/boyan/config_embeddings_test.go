@@ -274,9 +274,14 @@ func TestNewEnabledConfigOpensPrivateSemanticStateWithoutPersistingCredential(t 
 	requireNoError(t, err, "New() error = %v")
 	t.Cleanup(func() { _ = host.Close() })
 
-	info, statErr := os.Stat(filepath.Join(config.StateDir, "embeddings"))
+	info, statErr := os.Stat(filepath.Join(config.StateDir, "search"))
 	if statErr != nil || info.Mode().Perm() != 0o700 {
-		t.Fatalf("private semantic directory: %v %v", info, statErr)
+		t.Fatalf("private search directory: %v %v", info, statErr)
+	}
+
+	info, statErr = os.Stat(filepath.Join(config.StateDir, "search", "search.sqlite"))
+	if statErr != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("private search database: %v %v", info, statErr)
 	}
 
 	assertTreeOmitsBytes(t, config.StateDir, []byte(config.Embeddings.Endpoint), []byte(secret))

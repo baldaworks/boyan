@@ -1,9 +1,10 @@
 package standaloneruntime
 
 import (
+	"context"
 	"fmt"
 
-	"github.com/baldaworks/boyan/index/bleve"
+	"github.com/baldaworks/boyan/index/sqlite"
 	projection "github.com/baldaworks/boyan/internal/projection"
 	"github.com/baldaworks/boyan/pkg/memory"
 	"github.com/baldaworks/boyan/store/badger"
@@ -13,8 +14,8 @@ type standaloneStorage struct {
 	store            *badger.CanonicalStore
 	maintenance      *badger.CanonicalMaintenance
 	reader           *badger.CanonicalReader
-	index            *bleve.BleveRecallProjection
-	applier          *bleve.BleveCanonicalApplier
+	index            *sqlite.Store
+	applier          *sqlite.SQLiteCanonicalApplier
 	projection       *projection.ProjectionRuntime
 	syncer           projection.Syncer
 	recallProjection memory.RecallProjection
@@ -50,19 +51,18 @@ func openStandaloneStorage(
 		return nil, err
 	}
 
-	index, err := bleve.Open(layout.ProjectionDir, bleve.Config{Checkpoints: store, ProjectionID: boyanProjectionID})
+	index, err := sqlite.Open(context.Background(), layout.Root,
+		sqlite.Options{EmbeddingsEnabled: cfg.Embeddings.Provider != nil})
 	if err != nil {
-		return nil, fmt.Errorf("open Boyan Bleve projection: %w", err)
+		return nil, fmt.Errorf("open Boyan SQLite projection: %w", err)
 	}
 
 	cleanups.Add(func() { _ = index.Close() })
 
-	applier, err := bleve.NewBleveCanonicalApplier(index, reader)
+	applier, err := sqlite.NewSQLiteCanonicalApplier(index, reader)
 	if err != nil {
 		return nil, err
 	}
-
-	cleanups.Add(func() { _ = applier.Close() })
 
 	projection, err := projection.NewProjectionRuntime(store, store, applier, boyanProjectionID, 0)
 	if err != nil {
@@ -80,7 +80,7 @@ func openStandaloneStorage(
 		recallProjection: index,
 	}
 	if cfg.Embeddings.Provider != nil {
-		if err := storage.openSemantic(layout, cfg.Embeddings, cleanups); err != nil {
+		if err := storage.openSemantic(cfg.Embeddings, cleanups); err != nil {
 			return nil, err
 		}
 	}
