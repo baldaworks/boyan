@@ -1,6 +1,7 @@
 // Package sqlite owns Boyan's disposable, private SQLite search projection.
 // Canonical state remains outside this package. No caller SQL or extension path
-// is accepted, and the backend is not wired into runtime until its adapters exist.
+// is accepted. Runtime lexical and optional semantic search share one database;
+// canonical hydration and denial authority remain outside this package.
 package sqlite
 
 import (

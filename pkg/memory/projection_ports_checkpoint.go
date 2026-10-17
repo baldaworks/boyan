@@ -48,7 +48,7 @@ type ProjectionApplier interface {
 
 // ProjectionGenerationActivator is an optional applier extension used by
 // projections with an explicit disposable-generation marker (for example
-// Bleve). The coordinator invokes it only after the canonical watermark has
+// SQLite). The coordinator invokes it only after the canonical watermark has
 // been durably advanced, so a committed but dirty generation is never
 // advertised.
 type ProjectionGenerationActivator interface {

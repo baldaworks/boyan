@@ -2,12 +2,12 @@
 
 ## Optional semantic augmentation
 
-Optional embeddings augment the required Bleve channel; canonical Badger
+Optional embeddings augment the required SQLite FTS5 channel; canonical Badger
 remains authoritative. `internal/embedding` owns bounded OpenAI-compatible
 calls; `internal/semantic` owns versioned preparation, fingerprinting,
-normalization and ranking; `index/semantic` stores disposable generations in
-`<state_dir>/embeddings`; `internal/semanticprojection` schedules complete
-background builds and certifies the exact active lexical generation/watermark,
+normalization and fusion; `index/sqlite` stores lexical and optional semantic
+generations in `<state_dir>/search/search.sqlite`; `internal/semanticprojection`
+schedules complete background builds and certifies the exact active lexical generation/watermark,
 canonical sequence and model space before hybrid recall. Final hydration still
 enforces scope, active head, temporal, privacy, retention and caller filters.
 Semantic-only authority and native vector/FAISS dependencies are excluded.
@@ -15,20 +15,44 @@ Semantic-only authority and native vector/FAISS dependencies are excluded.
 Compatible channels use deterministic RRF; unavailable, stale, partial or
 incompatible state permits lexical fallback for ordinary requests. Enabled
 minimum-watermark requests fail closed if hybrid state cannot be certified.
-With embeddings enabled, host construction synchronously opens the semantic
-database, validates all active generations and collects startup garbage before
-`Host.Start`. An open, validation or collection failure is fatal and prevents
-lexical serving too. These store operations use `context.Background`, so the
-`Host.Start` context does not bound them. After successful construction,
-semantic cold builds and repair run in the background and provider outages do
-not gate required readiness or canonical writes. Publication atomically retires
-obsolete semantic generations; startup collection also removes abandoned
-staging state. Provider text export and vector sensitivity are explicit operator
-boundaries. To recover from a corrupt semantic store, stop Boyan and disable
-embeddings or remove only `<state_dir>/embeddings` as described in the rollback
-runbook, preserving canonical Badger and Bleve state. Disabling/deleting semantic
-state preserves canonical and Bleve formats; model-space changes trigger rebuild
-rather than vector mixing.
+Host construction opens the shared database and checks required integrity
+using `context.Background`; `Host.Start` does not bound that open. Enabled open
+validates semantic data, revoking invalid builds where supported. Required
+structural corruption fails construction without renaming/deleting files.
+Startup then recovers pending canonical erases, prepares source privacy,
+reconciles denied identities across all persisted SQL scopes and repairs lexical
+state before readiness. Optional semantic initialization/builds run in the
+background; their failure or provider outage alone does not gate lexical
+readiness. Fresh disabled storage has no semantic tables, provider, credential
+resolution or semantic workers. Disabled reopen can metadata-clean denied old
+semantic rows without decoding undenied vectors; disabling retains old bytes.
+
+Hybrid first closes a metadata-only negative probe, then checks canonical and
+physical authority before inference. This probe uses the two-reader pool and
+can wait. A negative observation can conservatively choose lexical fallback or
+minimum conflict even if publication becomes ready later. Positive metadata
+permits an attempt, never certifies results. Provider work holds no Store lease,
+connection, transaction or lock. A fresh shared snapshot runs both channels
+after inference; independent postread certification and canonical hydration
+remain required, including empty results. Vector ranking uses exact scalar SQL
+cosine over all eligible chunks/windows, maximizes per revision before top-k,
+and transfers identities/scores rather than entire vector generations into Go.
+
+Semantic replacement retires its exact predecessor atomically. Exact release
+by its generated owner disposes an unpublished candidate; precise build/epoch
+invalidation degrades an active publication. Runtime GC preserves peer pending
+builds. Global orphan repair runs only behind Manager's startup admission/drain
+barrier, including admitted pre-Start Repair calls. Each terminal cleanup has
+one internal five-second cooperative attempt; primary errors retain priority
+and failed cleanup is reported safely as deferred. Revoked partial work can be
+collected at runtime; complete unrevoked abandoned work waits for successful
+quiescent startup. Repeated storage failures can retain multiple bounded
+generations. Manager and startup pager drain before Store Close.
+
+Model-space changes require complete rebuild rather than vector mixing. See the
+[stopped search recovery and rollback procedure](docs/OPERATIONS.md#stopped-search-recovery-and-compatible-rollback).
+Search files and legacy projections remain sensitive; logical cleanup does not
+erase WAL, pinned MVCC, freelist, filesystem snapshots or backup bytes.
 
 The authoritative [bounds and identity table](docs/OPERATIONS.md#embeddings-configuration-and-bounds)
 also specifies scheduling, storage, candidate, text and provider limits. See
@@ -49,7 +73,7 @@ operations.
 - Badger canonical store
 - canonical maintenance worker
 - canonical reader
-- Bleve projection and projection runtime
+- shared SQLite search projection and projection runtime
 - isolated derivation invoker
 - turn processor
 - boundary processor
@@ -109,9 +133,9 @@ storage, and runtime-backed derivation:
 - `internal/forgetops`
 - `internal/derivation`
 - `store/badger`
-- `index/bleve`
+- `index/sqlite`
 
-This layer binds the memory engine to Badger, Bleve, and provider-backed
+This layer binds the memory engine to Badger, SQLite, and provider-backed
 derivation runtimes.
 
 ### Standalone shell
@@ -232,18 +256,20 @@ Boyan owns one explicit state root:
 ```text
 <state_dir>/
 ├── badger/
-└── bleve/
+└── search/
+    └── search.sqlite   # plus private WAL/SHM when present
 ```
 
 - `badger/` is authoritative canonical state.
-- `bleve/` is disposable and rebuildable from canonical records.
+- `search/` is disposable and rebuildable from current canonical records.
+- Legacy `bleve/` and `embeddings/` directories and old `bleve` checkpoints remain untouched.
 
-One process owns one writable Badger directory. Boyan does not support shared
-writer access.
+One process owns the writable state root, including Badger and SQLite. Boyan
+does not support shared writer access.
 
 ## Canonical and projection boundary
 
-Badger is authoritative. Bleve is never returned directly to callers without
+Badger is authoritative. Projection text is never returned directly without
 canonical hydration through the recall or trace path.
 
 Clean projection generations resume from their durable watermark. Unchanged
@@ -255,16 +281,18 @@ A counted forget outcome can omit its reference arrays when they exceed the
 bounded result ceiling. Its durable change then requires a canonical rebuild;
 replaying that change as an empty delta cannot certify a generation.
 
-Physical retention keeps active and at most one previous generation per scope,
-while preserving durable references and in-flight builders. Startup reconciles
+Lexical physical retention keeps active and at most one previous generation per
+scope, while preserving durable references and in-flight builders. Startup reconciles
 committed marker switches before removing abandoned generations. Standalone
-startup first drains pending erase journals, then reconciles projection retention,
+startup first drains pending erase journals, prepares privacy and completes
+SQL denial retirement across all persisted scopes, then reconciles projection retention,
 pages durable scope states and synchronously synchronizes each scope, including
 scopes without a first manifest. Stores without optional scope pagination retain
 lazy synchronization. Repair failures or cancellation fail startup explicitly.
 
-Native kind is indexed by the disposable v2 schema; physical v1 generations
-rebuild from canonical state. Nonzero-minimum recall pins the physical
+SQLite adds its own `sqlite` checkpoint identity without replacing legacy
+checkpoints or changing canonical receipts. Unknown/newer SQLite schemas fail
+closed for stopped operator recovery. Nonzero-minimum recall pins the physical
 generation and verifies the clean exact-scope checkpoint before and after the
 query. Adapters without this optional consistency capability fail closed.
 
@@ -286,6 +314,20 @@ writes against the target set. Denial, the single logical outcome and payload
 scrubbing resume across restart; completion releases the fence only after scrub.
 Durable blob ownership checks reject shared legacy targets before denial, and
 scrub tombstones prevent payload recreation through supported storage writes.
+
+Canonical Complete/outcome persistence precedes public completion: Forget joins
+exact-scope SQL denial reconciliation across all retained builds, then required
+lexical Sync. Nil error means matching logical rows in all eight lexical/semantic
+record, FTS, coverage and membership families are gone. It does not await a
+provider or imply physical erasure. Canonical structural revisions/Evidence,
+denials, journals and receipts survive. Cleanup uses those permanent identities,
+never outcome truncation, current scope sequence or timestamps as a wipe boundary;
+fresh material writers check the same authority under their scope lease.
+An error/cancellation can retain the original receipt and earlier revoked/deleted
+pages. Same-operation retry and startup finish reconciliation while preserving
+eligible later turns and original counts/times/truncation. SourceRef retries use
+the matching validated journal's actual canonical SourceID before payload-based
+resolution; ExportID is not a guessed canonical identity.
 
 Versioned content-free turn certificates bind normalized authoritative input.
 Identity verification precedes model derivation and receipt replay, with another

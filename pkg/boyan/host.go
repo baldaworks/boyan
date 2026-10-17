@@ -260,6 +260,9 @@ func (host *Host) Trace(ctx context.Context, request memory.TraceRequest) (memor
 }
 
 // ForgetSource forgets one immutable source within one Boyan scope.
+// Nil error includes joined logical search retirement and lexical sync, without
+// waiting for semantic inference or promising physical erasure. On a later
+// cleanup error the original durable outcome may be returned; retry the same operation.
 func (host *Host) ForgetSource(ctx context.Context, command memory.ForgetSourceCommand) (memory.ForgetOutcome, error) {
 	if host == nil || host.runtime == nil {
 		return memory.ForgetOutcome{}, fmt.Errorf("Boyan host runtime is unavailable")
@@ -269,6 +272,9 @@ func (host *Host) ForgetSource(ctx context.Context, command memory.ForgetSourceC
 }
 
 // ForgetScope forgets one exact Boyan scope.
+// Nil error includes joined logical search retirement and lexical sync. Error
+// or cancellation may leave a durable outcome and partial retirement; retry the
+// same operation to preserve its original boundary and outcome.
 func (host *Host) ForgetScope(ctx context.Context, command memory.ForgetScopeCommand) (memory.ForgetOutcome, error) {
 	if host == nil || host.runtime == nil {
 		return memory.ForgetOutcome{}, fmt.Errorf("Boyan host runtime is unavailable")

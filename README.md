@@ -5,7 +5,7 @@ Boyan is a standalone local service for grounded temporal memory for AI agents.
 It owns:
 
 - canonical temporal memory state in Badger
-- a rebuildable Bleve search projection
+- a rebuildable SQLite FTS5 search projection with optional sqlite-vec retrieval
 - HTTP/JSON ingest for completed turns and explicit boundaries
 - Streamable HTTP MCP tools for search, trace, and controlled forgetting
 - an isolated runtime-backed derivation worker
@@ -98,7 +98,8 @@ By default Boyan stores data in `./.state/boyan` with this layout:
 ```text
 .state/boyan/
 ├── badger/
-└── bleve/
+└── search/
+    └── search.sqlite   # private database; WAL/SHM may also exist
 ```
 
 ## Configuration
@@ -106,21 +107,25 @@ By default Boyan stores data in `./.state/boyan` with this layout:
 Embeddings are optional and disabled by default. Enable the pinned local CPU
 TEI profile with the [sidecar overlay](deploy/sidecar/embeddings.compose.yaml),
 or configure an OpenAI-compatible endpoint. Hybrid recall combines lexical and
-semantic candidates while canonically revalidating every result. When enabled,
-opening the semantic database, validating all active generations and collecting
-startup garbage run synchronously before `Host.Start` and can fail host
-construction; corruption or an open failure prevents even lexical serving.
-After a successful open, cold/rebuilding or incompatible model-space state and
-provider outages permit lexical fallback for ordinary requests while semantic
-builds run in the background; enabled minimum-watermark requests require hybrid
-certification. Semantic open uses `context.Background` and is not bounded by
-the context passed to `Host.Start`.
+semantic candidates while canonically revalidating every result. Both channels
+share private `<state_dir>/search/search.sqlite`; canonical Badger remains the
+authority. Required database integrity, canonical-denial retirement and lexical
+repair must succeed before serving. Optional semantic initialization/build
+failures and provider outages allow ordinary lexical fallback; enabled
+minimum-watermark requests require hybrid certification. A short metadata probe
+can wait for the two-reader pool and closes before inference; provider calls
+hold no Store resource. Fresh disabled state creates no semantic tables,
+provider, credential lookup or semantic workers. Disabling existing state does
+not erase its old vectors. Legacy `bleve/` and `embeddings/` directories remain
+untouched and can still contain sensitive bytes.
 See the authoritative [configuration and bounds](docs/OPERATIONS.md#embeddings-configuration-and-bounds),
 [deployment, readiness and rollback](docs/OPERATIONS.md#optional-tei-sidecar),
 and [real-provider verification](docs/OPERATIONS.md#embeddings-verification).
 Remote endpoints receive eligible memory and query text. Vectors remain
-sensitive disposable data under `<state_dir>/embeddings`; Badger/Bleve formats
-remain unchanged. The pinned reference is Linux amd64 and adds no CGO dependency
+sensitive disposable data in the SQLite search database. SQLite uses static
+FTS5/sqlite-vec integration without caller-supplied extensions. Lexical Russian/
+English stemming and BM25 scores can differ from Bleve; no speedup is promised.
+The pinned reference is Linux amd64 and adds no CGO dependency
 to Boyan. The [evaluation corpus and quality gate](docs/SEMANTIC_EVALUATION.md)
 define Boyan-specific top-k expectations and distinguish offline coverage from
 real-provider evidence.

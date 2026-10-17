@@ -71,11 +71,13 @@ paths:
       description: |
         Returns `ok` when Boyan is ready to accept work. Readiness currently
         checks the local maintenance and startup diagnostics.
-        After successful host construction, provider outages and background
-        semantic build failures do not gate readiness. With embeddings enabled,
-        semantic database open, active-generation validation and startup
-        garbage collection are synchronous before Host.Start; failure prevents
-        the host and this endpoint from starting. When enabled,
+        Shared SQLite open/integrity checks run during host construction before
+        Host.Start. Required corruption or unsupported schema prevents serving.
+        Startup recovers pending canonical erases, prepares source privacy,
+        reconciles canonical denials across persisted SQL scopes and repairs
+        lexical state before readiness; required failure prevents readiness.
+        Provider outages, optional semantic initialization/orphan repair and
+        background semantic build failures alone do not gate readiness. When enabled,
         X-Boyan-Semantic-State reports repairing, hybrid-ready, degraded or
         stopped; X-Boyan-Retrieval-Mode reports hybrid or degraded, and
         X-Boyan-Retrieval-Reason is unavailable when degraded. Disabled

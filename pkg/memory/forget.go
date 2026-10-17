@@ -30,7 +30,10 @@ type ForgetScopeCommand struct {
 	ForgottenAt   time.Time `json:"forgotten_at"`
 }
 
-// ForgetOutcome is the durable, content-free result of one atomic forget.
+// ForgetOutcome is the durable, content-free canonical result of one forget.
+// Persistence of this result alone does not certify public completion: the host
+// also joins logical search retirement and required lexical synchronization.
+// A later error may accompany this original outcome; retry preserves it.
 type ForgetOutcome struct {
 	SchemaVersion       string        `json:"schema_version"`
 	OperationID         string        `json:"operation_id"`

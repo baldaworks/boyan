@@ -4,8 +4,11 @@ For optional embeddings, run the [deployment/configuration checks and real TEI
 evaluation](docs/OPERATIONS.md#embeddings-verification). Rendering Compose does
 not prove model readiness or quality. Record real-provider results against the
 pinned amd64 model/profile, and rerun integration checks on the merged target
-branch before closing the story. Disabling/deleting only semantic state leaves
-canonical Badger and Bleve intact; follow the [rollback procedure](docs/OPERATIONS.md#semantic-lifecycle-and-rollback).
+branch before closing the story. Disabling embeddings retains old vectors;
+both search channels share SQLite. Follow the [stopped recovery and compatible
+rollback procedure](docs/OPERATIONS.md#stopped-search-recovery-and-compatible-rollback).
+Retain complete canonical/search/legacy backups and all canonical upgrade fences;
+never open upgraded state with an unsupported older writer.
 
 Boyan already supports local builds and local distribution. This document
 describes the current standalone release shape only.
@@ -34,10 +37,14 @@ Before treating a change as releaseable locally, run:
 ```bash
 go test ./...
 go test -race ./...
+CGO_ENABLED=0 go test ./...
+CGO_ENABLED=0 go build ./...
 go build ./...
+go vet ./...
 go tool golangci-lint run ./...
 go tool go-arch-lint check --project-path .
 go mod verify
+go mod tidy -diff
 git diff --check
 ```
 
@@ -84,6 +91,16 @@ them.
 7. Recovery regressions cover interrupted payload scrubbing, counted large erases
    with projection rebuilds, immutable legacy/native replay, lost receipts with
    an unavailable extractor, and startup index repair without new ingest.
+8. Stopped disposable-fixture backup/search rebuild preserves canonical receipts,
+   structural denial evidence, fences/capabilities and legacy bytes. Public
+   forget/replay and same-SQL restart prove joined eight-family logical removal
+   before successful return/readiness; errors retain original outcomes and may
+   leave partial retirement. Optional provider failure stays distinct from
+   required storage/cleanup failure.
+9. Lexical multilingual/identifier controls, exact filtered cosine, large-record
+   isolation, owner cleanup and closed-probe/pool/certification controls pass.
+   Record comparable measured old/new costs (including denial history scans and
+   extra Hybrid metadata reads); do not infer a speedup or physical disk quota.
 
 ## Boundary contract compatibility
 

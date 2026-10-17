@@ -75,7 +75,7 @@ func validateScrub(ctx context.Context, scope memory.Scope, sources, revisions [
 	if err := scope.Validate(); err != nil {
 		return err
 	}
-	// Preserve the existing Bleve forget port's bounded identity-array contract.
+	// Preserve the existing forget port's bounded identity-array contract.
 	if len(sources) > memory.MaxSnapshotItems || len(revisions) > memory.MaxSnapshotItems {
 		return memory.PermanentError(memory.CodeLimitExceeded, "sqlite forget identity bound exceeded", nil)
 	}

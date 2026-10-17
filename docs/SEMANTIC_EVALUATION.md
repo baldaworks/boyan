@@ -31,7 +31,7 @@ other returned result is relevant. The English `bicycle commuting` control
 must have zero lexical candidates and retrieve the Russian commute assertion.
 
 Both suites persist canonical records through the real turn processor, build
-the real Bleve projection, construct `boyan.Host`, and use `Host.Search`.
+the real SQLite projection, construct `boyan.Host`, and use `Host.Search`.
 They validate hybrid mode, every healthy query's minimum watermark, exact-scope,
 conversation/source/kind/as-of exclusions, update supersession, scope deletion,
 and outage fallback with a conflicting uncertifiable minimum. Repeated calls

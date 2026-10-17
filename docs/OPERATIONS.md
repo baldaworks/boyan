@@ -106,9 +106,12 @@ SDK's HTTP 400 response; ingest retains its structured error envelope.
 Readiness fails if the standalone runtime reports a current readiness
 diagnostic. Startup first rejects incomplete loading restores or resumes validated
 restore preparation, then finishes pending canonical erases and prepares source
-privacy before projection repair, sequenced writers and public readers can serve
-work. It reconciles retained index metadata and synchronously repairs durable
-scopes in bounded pages before accepting work. Missing, v1, dirty and never-created indexes recover without a
+privacy, then reconciles permanent canonical denials across every persisted SQL
+scope before lexical repair, sequenced writers and public readers can serve
+work. Required cleanup/repair errors fail startup with stopped backup/rebuild
+guidance; optional semantic initialization failure does not. It reconciles retained
+index metadata and synchronously repairs durable scopes in bounded pages before
+accepting work. Missing, dirty and never-created indexes recover without a
 new ingest or manual Sync call. Canonical versions and change sequences are not
 advanced merely to repair an index.
 
@@ -136,10 +139,21 @@ Current layout:
 ```text
 <state_dir>/
 ├── badger/
-└── bleve/
+└── search/
+    ├── search.sqlite
+    ├── search.sqlite-wal   # when present
+    └── search.sqlite-shm   # when present
 ```
 
 Do not point two Boyan processes at the same writable state root.
+The search directory is private (0700); database and auxiliary files are 0600.
+Unsafe ownership, symlinks and nonregular database/auxiliary paths prevent opening.
+Concurrent external mutation by the same OS owner is unsupported. Static
+FTS5/sqlite-vec code is bundled; no user extension path or SQL endpoint exists.
+Legacy `bleve/` and `embeddings/` directories remain untouched and sensitive.
+SQLite uses WAL, FULL synchronous writes, one writer connection and two
+query-only readers. The internal 1,000 ms busy timeout bounds lock waiting;
+it does not bound reader-pool admission, computation or I/O duration.
 
 ## Logging
 
@@ -159,9 +173,10 @@ Set `log.level` to `debug`, `info`, `warn`, or `error`.
 
 1. Stop admission and cancel active operation contexts.
 2. Shut down HTTP and drain embedded operations.
-3. Close sequenced ingest and projection work.
-4. Close the derivation invoker and Bleve applier.
-5. Stop canonical maintenance and close Badger.
+3. Drain sequenced ingest.
+4. Drain the semantic Manager/startup pager and its terminal guards, then lexical
+   projection work, the derivation invoker and the shared SQLite Store.
+5. Stop canonical maintenance and close Badger after all storage users drain.
 
 `http.shutdown_timeout` bounds how long the caller waits. A timeout reports a
 typed error and leaves one cleanup owner running while the process stays alive;
@@ -171,11 +186,11 @@ Closing a constructed host before startup also releases its storage.
 
 ## Projection recovery and retention
 
-Clean Bleve generations apply changes after their durable watermark; unchanged
-syncs are no-ops. Dirty, missing or incompatible generations rebuild from canonical
-active state. Disposable Bleve v1 generations are incompatible with the v2
-kind-field mapping and rebuild through this same path; canonical memory is
-preserved. A retention floor advancing beyond the committed watermark also forces a fresh
+Clean SQLite generations apply changes after their durable watermark; unchanged
+syncs are no-ops. Dirty, missing or preprocessing-incompatible generations rebuild
+from current canonical state. Unknown/newer database schemas and required
+corruption fail safely, preserving original files for operator recovery.
+A retention floor advancing beyond the committed watermark also forces a fresh
 rebuild. Exact scopes
 serialize synchronization while independent scopes can progress separately.
 
@@ -191,6 +206,31 @@ preserves all referenced and in-flight generations, keeps at most one previous
 generation per scope, and removes abandoned builders after their handles close.
 Badger remains authoritative; deleting canonical records is not an index repair
 procedure.
+
+The `sqlite` checkpoint is additive: legacy `bleve` checkpoints/retention entries
+and old search directories are not removed or repurposed. Canonical schemas and
+receipt contracts are unchanged by this search migration.
+
+Lexical document/query preparation applies NFC, lowercase and Unicode letter/
+digit runs, splitting punctuation (including identifier separators). Raw tokens
+retain stopwords and all scripts; Russian/English Snowball fields add stems.
+Queries bind internally quoted token alternatives and filters as data, so caller
+FTS/SQL operators do not execute. Punctuation-only input yields no candidates.
+BM25 results use nonnegative `max(0,-bm25)` scores and binary revision-ID ties;
+scores/order can differ from Bleve. No measured speedup is claimed.
+
+Lexical writes/copy group at most 128 complete record mutations with a normal
+2 MiB deterministic encoded-input target including generated tokens and
+memberships. A canonical-valid oversized record is isolated in its own
+transaction; hydration/copy loads one record at a time. This is scheduling,
+not lexical admission, aggregate canonical size, heap, disk/WAL, deletion-work
+or latency quota. A source reader's 4 MiB bound and Badger transaction accounting
+do not establish an aggregate canonical-record maximum. One large record or
+membership cascade can still occupy a writer and grow WAL substantially.
+SQL's effective value/row/variable limits remain; an unrepresentable record or
+storage exhaustion fails safely without successful partial certification or
+changing canonical policy. Cancellation is cooperative through context-aware
+operations, not a hard deadline for CPU/I/O/lock cleanup.
 
 A search requesting `min_scope_change_seq` can return a retryable `conflict`
 while its checkpoint lags, is dirty, or changes during the query. A canonical
@@ -210,10 +250,30 @@ reconciliation scan time, while page and retained-match memory stay bounded.
 
 A scope erase journals bounded progress and fences new writes to its exact key
 and kind. Cancellation or a transient failure can leave pending work; repeat the
-same request or restart to resume. Successful response requires payload scrub
-and journal completion, not just logical denial. Replaying an old completed
+same request or restart to resume. Canonical Complete/outcome may already be
+durable before SQL retirement and required lexical Sync finish. Public nil error
+requires canonical scrub/completion, joined denial-based removal across every
+retained SQL build, and successful lexical Sync. This removes matching logical
+rows in all eight families: lexical record/FTS/source/conversation and semantic
+chunk/coverage/source/conversation. It neither waits for inference nor requires
+semantic readiness. Replaying an old completed
 request cannot erase later writes. Scope-free raw payload maintenance writes are
 blocked while any journal is pending.
+
+Cleanup selects permanent exact-scope source/revision denials and surviving
+immutable revision Evidence, including zero-chunk coverage. It never derives
+operation membership from truncated outcomes, scope versions, current heads or
+timestamps. An error/cancellation can leave the original durable outcome and
+prior revoked/deleted pages; it is not a rollback or successful completion.
+Retry the same operation: original counts, times, references and truncation are
+preserved while reconciliation/Sync run again and eligible later turns survive.
+SourceRef retries first validate the matching journal and use its actual
+canonical SourceID, without guessing from ExportID or requiring erased payload.
+Required startup cleanup repeats across all persisted SQL scopes after pending
+canonical recovery/privacy preparation, before lexical Start. It can inspect
+retained history; database-wide foreign-key/FTS ownership probes run at entry
+and can repeat per scope. Cost depends on retained history, with no fixed
+startup or erase latency promise.
 
 Large outcomes report exact counts and omit both reference arrays above 2048
 combined references. This does not cap erasable scope history. Source forget
@@ -232,9 +292,10 @@ cannot reconstruct an unknowable old snapshot.
 Physical backups and supported logical exports retain erase recovery journals
 and fences, certificates and erased-payload tombstones. Restoring interrupted state
 still requires normal startup recovery. Payload API absence is logical cleanup;
-it does not promise forensic removal from disk, old backups or previous
-disposable index generations. Existing retention cleanup remains responsible
-for disposable generations.
+it does not promise forensic removal from WAL, pinned MVCC views, freelist,
+filesystem snapshots, backups or untouched legacy projections. Canonical
+structural/deny evidence is deliberately retained. Disabling embeddings does
+not erase old rows or those sensitive copies.
 
 ## Boundary contract upgrades
 
@@ -388,8 +449,8 @@ embedding key accepts the corresponding `BOYAN_EMBEDDINGS_<UPPERCASE_KEY>`
 environment override. Empty `BOYAN_*` values are ignored by the configuration
 loader and leave YAML values unchanged; clear a setting explicitly in YAML.
 Defaults omit embeddings; `enabled: false` ignores all
-other embedding fields, resolves no credential, makes no provider calls and
-does not create an embeddings directory.
+other embedding fields, resolves no credential, makes no provider calls, starts
+no semantic workers and creates no semantic tables in a fresh search database.
 
 | Setting or bound | Contract |
 | --- | --- |
@@ -408,6 +469,7 @@ does not create an embeddings directory.
 | Text preparation | CRLF→LF, NFC, trim outer whitespace; 384-rune windows, 64-rune overlap; 128 passage windows, 4 query windows |
 | Text limits | Record 32,768 bytes; query 4,096 bytes; query omissions reported in Go while full query remains lexical |
 | Projection per scope | 8,192 chunks, 8,192 scanned records, 67,108,864 encoded bytes including metadata; complete publication only |
+| Semantic metadata admission | Identity 512 bytes, IDs 256 per metadata array, scope 4,096 bytes, encoded chunk 2 MiB; separate from lexical scheduling |
 | Build scheduling | 2 workers, 64 queued scopes, 1 concurrent build/scope, 15-minute build deadline; startup enumerates 128-scope pages |
 | Ranking | At most 100 candidates/channel, 200 fused, within existing 256 admitted-candidate ceiling; channel request `min(100,max(20,4*limit))`; final caller limit at most 100 |
 | Fusion | RRF constant 60; unit float32 normalization, tolerance 0.001; deterministic identity tie breaks |
@@ -422,9 +484,10 @@ operator-chosen service. Classification is not secret detection. Choose and
 secure the recipient accordingly. Credentials, endpoint, source text and
 upstream error prose are excluded from diagnostics and semantic persistence.
 Vectors and IDs/filter metadata can still reveal information: protect the
-embeddings directory and backups as sensitive disposable derived state.
-The projection byte limit is per active scope generation; it is not a global
-disk or process-memory quota. Scope count, database overhead and retained
+search database, its auxiliary files, legacy embeddings directory and backups
+as sensitive disposable derived state.
+The logical projection byte limit applies per scope generation, including staging;
+it is not a global disk or process-memory quota. Scope count, database overhead and retained
 generations/cache also consume storage.
 
 ## Optional TEI sidecar
@@ -480,14 +543,16 @@ with lexical fallback instead of server-side truncation.
 
 ## Semantic lifecycle and rollback
 
-Canonical Badger and lexical Bleve remain authoritative. Startup repairs Bleve
-before serving. With embeddings enabled, host construction also opens the
-semantic database, validates every active generation and collects startup
-garbage synchronously before `Host.Start`. An open failure, corruption, active
-generation validation failure or startup garbage-collection failure is fatal:
-the host cannot serve even lexical recall. Store open uses
-`context.Background` for validation and collection; the context supplied to
-`Host.Start` does not bound this work.
+Canonical Badger is authoritative; SQLite FTS5 is the required search projection.
+The shared database opens during host construction using `context.Background`,
+before `Host.Start`. Required structural integrity/schema failure prevents
+construction and preserves operator files. Enabled open validates semantic data
+and can revoke malformed builds. Startup finishes pending canonical erases,
+prepares source privacy, metadata-reconciles denials across all persisted SQL
+scopes, then completes lexical repair before readiness. Required cleanup failure
+also prevents readiness. Disabled reopen performs that required metadata cleanup
+without ranking/decoding or validating undenied old vectors/model identity; it
+preserves those bytes and creates no new semantic tables.
 
 After the store opens successfully, optional semantic builds and repair run in
 the background. Cold models, empty/incompatible model-space state, rebuilds,
@@ -498,13 +563,38 @@ sequence and model-space fingerprint. Changes to model/revision/dimensions,
 prefixes or preprocessing/normalization invalidate old vectors and require a
 complete rebuild. Partial generations are never queried. Queue overflow
 degrades safely; a later scope change, restart or in-process repair can retry.
-Publication atomically retires obsolete generations, while startup collection
-also removes abandoned staging state. There is no new public repair CLI.
+Exact scalar SQL cosine scans the selected eligible population (at most 8,192
+chunks), applies filters before ranking, and maximizes across every passage
+chunk/query window per revision before top-k. It uses no ANN index or full
+vector-generation copy into Go during recall. Semantic limits remain logical
+admission limits, independent of lexical record grouping and physical disk use.
+
+A metadata-only negative probe uses the ordinary two-reader SQL pool and closes
+fully before authority checks/inference. Pool contention can delay it. Negative
+metadata can choose ordinary lexical fallback or strict-minimum conflict even
+if a later publication becomes ready; positive metadata is not certification.
+Provider calls hold no Store lease, connection, transaction or lock. Fresh
+post-provider authority checks, both channels in a new shared snapshot,
+postread certification and final canonical hydration still decide the result.
+
+Publication atomically retires only its exact predecessor. Generated-owner
+candidate release is distinct from precise active build/epoch invalidation.
+Runtime GC protects peer pending candidates. Global orphan repair is permitted
+only at quiescent Manager startup, with an admission barrier draining admitted
+pre-Start Repair as well as workers. A terminal owner guard attempts cleanup
+with one internal five-second cooperative budget and preserves the primary
+error; sanitized deferred-cleanup status does not claim removal. Partial revoked
+work can be collected at runtime; complete unrevoked leftovers wait for a
+successful quiescent restart. Repeated storage failures can retain multiple
+individually bounded generations. This budget is not an operator option, disk
+quota or shutdown SLA. Manager/guards drain before Store Close. There is no new
+public repair CLI or runtime global sweep.
 
 `/readyz` remains about required service/canonical readiness after successful
-host construction. Provider outages and background semantic build failures do
-not make it fail; semantic store open/validation failures prevent the host and
-its readiness endpoint from starting. When enabled,
+host construction and required startup cleanup/lexical repair. Provider outages,
+optional semantic initialization/orphan-repair and background build failures
+alone do not make it fail. Required shared storage failures prevent serving.
+When enabled,
 `X-Boyan-Semantic-State` reports
 `repairing`, `hybrid-ready`, `degraded` or `stopped`;
 `X-Boyan-Retrieval-Mode` reports `hybrid` or `degraded`, with
@@ -516,22 +606,69 @@ model-space prefix and lexical watermark. Inspect each recall's retrieval
 report for the actual effective mode. With enabled embeddings, a nonzero
 `min_scope_change_seq` fails with retryable `conflict` while hybrid compatibility
 cannot be certified; it does not silently return lexical success. Disabled
-embeddings retain existing Bleve certification. Caller cancellation and invalid
-configuration remain errors.
+embeddings retain required SQLite lexical certification. Caller cancellation and invalid
+requests/configuration, actual canonical failures and lexical storage failures
+remain errors; missing semantic availability cannot conceal those errors.
 
-To roll back this feature, stop the deployment, omit the overlay, explicitly
+To disable semantic augmentation, stop the deployment, omit the overlay, explicitly
 set `embeddings.enabled: false` (and remove any enabling environment override),
 then start the default deployment with `--remove-orphans` to remove TEI. Do not
 use `down -v`: it would remove the canonical state volume. While Boyan is
-stopped, you may delete only `<state_dir>/embeddings` inside the state volume;
-preserve `<state_dir>/badger` and `<state_dir>/bleve`. The TEI model cache is
-separate and optional to retain. This is also recovery for a corrupt or
-unopenable semantic store: stop Boyan, then disable embeddings or remove only
-the disposable embeddings directory before restarting. Re-enabling rebuilds
-semantic state from canonical data without a canonical-format migration. This feature rollback
-does not authorize downgrading a writer across the privacy/proof upgrades
-documented above. Deletion is not a forensic-erasure guarantee for backups or
-old disk blocks.
+stopped, preserve the entire state volume, including `badger/`, `search/` and
+legacy directories. The TEI model cache is separate. Disabling retains existing
+semantic rows and does not bypass required shared-database corruption or denial
+cleanup failures. Re-enabling rebuilds compatible semantic state asynchronously.
+Use the stopped recovery procedure below for damaged search storage; disabling
+is not a writer-version downgrade.
+
+## Stopped search recovery and compatible rollback
+
+Stop Boyan and every embedding host/writer through its supervisor, then verify
+the process is absent and no process has the state files open. On Linux,
+`lsof +D /absolute/state/root` can inspect remaining handles; exit 1 with no
+output means none were found, while a diagnostic is not proof of quiescence.
+Keep writers stopped for the full backup/move. A live copy of the main SQLite
+file alone omits WAL and is not a complete backup.
+
+For example, after verifying the exact paths and stopped state, use new,
+nonexistent destinations outside the live root (substitute your real paths):
+
+```bash
+set -eu
+test -d /var/lib/boyan/badger
+test -d /var/lib/boyan/search
+test ! -e /srv/boyan-backups/before-search-recovery-20261018
+cp -a -- /var/lib/boyan /srv/boyan-backups/before-search-recovery-20261018
+diff -qr -- /var/lib/boyan /srv/boyan-backups/before-search-recovery-20261018
+test ! -e /srv/boyan-backups/search-damaged-20261018
+mv -- /var/lib/boyan/search /srv/boyan-backups/search-damaged-20261018
+```
+
+The complete copy includes canonical Badger, receipts, privacy/proof capabilities,
+source/erase journals, restore fences, SQLite database and every WAL/SHM/journal,
+plus any legacy `bleve/`/`embeddings/` bytes. Confirm backup permissions/access
+and successful copy comparison before moving anything. Only the operator moves
+the named `search/` directory; Boyan never automatically renames/deletes it.
+Restart current compatible code with the same canonical root. Required lexical
+state rebuilds from current canonical records and permanent denials; semantic
+readiness additionally needs the compatible provider. Verify `/readyz` and
+expected exact-scope recall/minimum behavior. Preserve the damaged copy for
+diagnosis and the complete backup; do not delete canonical data, receipts,
+fences, capabilities, old checkpoints or legacy directories.
+
+For code rollback, first establish that the chosen writer supports every
+canonical privacy/proof schema/capability and receipt contract present. A
+compatible version can reopen/rebuild its disposable projection after stopped
+backup. The SQLite migration itself changes no canonical schema, but this does
+not establish compatibility for any older release. Never let an older writer
+open newer unsupported canonical or SQLite state, even as a compatibility test.
+If compatibility is absent or unproved, rollback requires a trustworthy complete
+pre-upgrade backup restored into a separate root, with the matching writer.
+Such restoration loses later changes and may omit later denials: retain current
+state and assess that boundary before serving. Rebuilding an old index, copying
+only `badger/`, disabling embeddings or stripping markers cannot make an
+incompatible writer safe. The existing boundary/privacy/restore upgrade
+restrictions above remain mandatory.
 
 ## Embeddings verification
 

@@ -356,11 +356,23 @@ migrate foreign data. Uniquely owned legacy payloads remain erasable. Old crash
 windows without a durable target snapshot cannot recover an unknowable earlier
 selection; recovery does not invent that snapshot.
 
-Truncated erases persist a bounded projection rebuild marker. Supported Bleve
+Truncated erases persist a bounded projection rebuild marker. Supported SQLite
 synchronization rebuilds from current canonical state, preserving later writes
 and removing stale active candidates. Portable projection adapters without
 rebuild support return a conflict and retain lag rather than certify that marker
 as applied.
+
+Canonical journal Complete and outcome persistence can precede public completion.
+Host forgetting joins denial-based SQL retirement across all retained builds and
+required lexical Sync; nil error means matching logical rows in the eight
+record/FTS/coverage/membership families are removed. It does not await semantic
+inference or promise erasure from WAL, pinned MVCC, freelist, filesystems,
+backups or untouched legacy projections. Errors/cancellation may retain the
+original durable outcome and already revoked/deleted pages. Same-operation
+retry and startup repeat retirement without changing counts/times/truncation or
+enrolling eligible later turns. A matching SourceRef journal supplies its actual
+canonical SourceID before payload resolution; callers must not guess it from
+ExportID. See [recovery](OPERATIONS.md#interrupted-erase-and-replay-compatibility).
 
 ## Recall consistency, time and ranking
 
