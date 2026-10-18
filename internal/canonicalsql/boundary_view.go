@@ -197,8 +197,17 @@ func (o *Owner) LoadCanonicalCompatibility(ctx context.Context, scope memory.Sco
 		return memory.CanonicalCompatibilityPayload{}, false, err
 	}
 
+	return o.publishCompatibility(ctx, graph, result, found)
+}
+
+func (o *Owner) publishCompatibility(ctx context.Context, graph traceGraph,
+	result memory.CanonicalCompatibilityPayload, found bool) (memory.CanonicalCompatibilityPayload, bool, error) {
 	if found {
 		if err := o.finalTracePrivacyBarrier(ctx, graph); err != nil {
+			if compatibilityIdentityAbsent(err) {
+				return memory.CanonicalCompatibilityPayload{}, false, nil
+			}
+
 			return memory.CanonicalCompatibilityPayload{}, false, err
 		}
 	}
@@ -207,25 +216,25 @@ func (o *Owner) LoadCanonicalCompatibility(ctx context.Context, scope memory.Sco
 }
 
 func captureCompatibilitySources(ctx context.Context, tx *Tx, scope memory.Scope, view traceView,
-	graph *traceGraph) error {
+	graph *traceGraph) (bool, error) {
 	for _, evidence := range view.revision.Evidence {
 		source, ok, err := readerSource(ctx, tx, scope, evidence.SourceID)
 		if err != nil {
-			return err
+			return false, err
 		}
 
 		if !ok {
-			return readerDenied()
+			return false, nil
 		}
 
 		graph.captured.sources[source.SourceID] = source
 	}
 
 	if err := validateReaderSnapshotEvidence(ctx, tx, graph.captured); err != nil {
-		return err
+		return false, err
 	}
 
-	return nil
+	return true, nil
 }
 
 func loadCompatibilitySnapshot(ctx context.Context, tx *Tx, scope memory.Scope, id string,
@@ -238,7 +247,7 @@ func loadCompatibilitySnapshot(ctx context.Context, tx *Tx, scope memory.Scope, 
 	graph.captured.state = state
 
 	view, err := loadTraceViewCore(ctx, tx, scope, id)
-	if privacyMissing(err) {
+	if compatibilityIdentityAbsent(err) {
 		return memory.CanonicalCompatibilityPayload{}, false, nil
 	}
 
@@ -249,7 +258,7 @@ func loadCompatibilitySnapshot(ctx context.Context, tx *Tx, scope memory.Scope, 
 	graph.nodes = []traceNode{{view: view}}
 
 	graph.captured.revisions[id] = view.revision
-	if err := captureCompatibilitySources(ctx, tx, scope, view, graph); err != nil {
+	if found, err := captureCompatibilitySources(ctx, tx, scope, view, graph); err != nil || !found {
 		return memory.CanonicalCompatibilityPayload{}, false, err
 	}
 
@@ -261,4 +270,14 @@ func loadCompatibilitySnapshot(ctx context.Context, tx *Tx, scope memory.Scope, 
 	result, found := canonicalCompatibilityPayload(payload, scope)
 
 	return result, found, nil
+}
+
+// Compatibility lookup uses absence to select durable canonical replay IDs.
+// Only explicit missing/denied identity outcomes have that meaning; payload
+// reads and other storage/availability errors must keep their error contract.
+func compatibilityIdentityAbsent(err error) bool {
+	code, class, ok := memory.ClassifyError(err)
+
+	return ok && class == memory.ErrorClassPermanent &&
+		(code == memory.CodeNotFound || code == memory.CodeForgotten)
 }
