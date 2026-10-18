@@ -36,6 +36,10 @@ components:
     in:
       - internal/semantic
 
+  canonical_sql:
+    in:
+      - internal/canonicalsql
+
   infrastructure:
     in:
       - internal/canonicalops
@@ -73,6 +77,11 @@ deps:
     mayDependOn:
       - public_contracts
       - semantic_core
+    anyVendorDeps: true
+
+  canonical_sql:
+    mayDependOn:
+      - public_contracts
     anyVendorDeps: true
 
   infrastructure:
