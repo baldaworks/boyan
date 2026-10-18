@@ -45,27 +45,14 @@ func (c *Connection) Migrate(ctx context.Context) error {
 		}
 
 		if applied {
-			return c.checkMetadata(ctx, tx.q)
+			if err := c.checkMetadata(ctx, tx.q); err != nil {
+				return err
+			}
+
+			return tx.CheckIntegrity(ctx)
 		}
 
-		if err := applyDDL(ctx, tx.q, ddl); err != nil {
-			return err
-		}
-
-		identity, err := newStoreUUID()
-		if err != nil {
-			return err
-		}
-
-		if _, err := tx.q.exec(ctx, "INSERT INTO "+c.table("store_meta")+
-			" (singleton,store_uuid,schema_version,privacy_protocol,mutation_clock) VALUES(1,$1,1,1,$2)",
-			identity, Uint64(0)); err != nil {
-			return databaseError(ctx, "initialize metadata", err)
-		}
-
-		_, err = tx.q.exec(ctx, "INSERT INTO "+c.table("schema_migration")+" (version,checksum) VALUES(1,$1)", checksum)
-
-		return databaseError(ctx, "record migration", err)
+		return tx.initialize(ctx, ddl, checksum)
 	})
 }
 
@@ -150,4 +137,29 @@ func newStoreUUID() ([]byte, error) {
 	identity[8] = (identity[8] & 63) | 128
 
 	return identity, nil
+}
+
+func (tx *Tx) initialize(ctx context.Context, ddl, checksum string) error {
+	if err := applyDDL(ctx, tx.q, ddl); err != nil {
+		return err
+	}
+
+	identity, err := newStoreUUID()
+	if err != nil {
+		return err
+	}
+
+	if _, err := tx.q.exec(ctx, "INSERT INTO "+tx.connection.table("store_meta")+
+		" (singleton,store_uuid,schema_version,privacy_protocol,mutation_clock) VALUES(1,$1,1,1,$2)",
+		identity, Uint64(0)); err != nil {
+		return databaseError(ctx, "initialize metadata", err)
+	}
+
+	_, err = tx.q.exec(ctx, "INSERT INTO "+tx.connection.table("schema_migration")+
+		" (version,checksum) VALUES(1,$1)", checksum)
+	if err != nil {
+		return databaseError(ctx, "record migration", err)
+	}
+
+	return tx.CheckIntegrity(ctx)
 }

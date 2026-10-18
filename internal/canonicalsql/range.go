@@ -44,6 +44,12 @@ func (tx *Tx) Scan(ctx context.Context, request Range) ([]Row, error) {
 	}
 
 	columns := def.columns()
+	if tx.connection.pg != nil {
+		where, args = pgPartitionPredicate(request, def, where, args)
+
+		return tx.pgPage(ctx, request.Family, def, where, args, columns, request.Limit)
+	}
+
 	statement := "SELECT " + strings.Join(columns, ",") + "," + valueSelection(request.Family) + " FROM " +
 		tx.connection.table(def.table) + where + " ORDER BY " + strings.Join(columns, ",") +
 		" LIMIT $" + strconv.Itoa(len(args)+1)

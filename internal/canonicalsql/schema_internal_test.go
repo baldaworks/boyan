@@ -111,9 +111,21 @@ func testFamilyRoundtrip(t *testing.T, c *Connection, f Family) {
 func familyFixtureKey(t *testing.T, f Family) Key {
 	t.Helper()
 
-	def, err := familyDefinition(f)
-	if err != nil {
-		t.Fatal(err)
+	var def familyDef
+
+	found := false
+
+	for _, shape := range expectedShapes {
+		if shape.family == f {
+			def = familyDef{table: shape.table, scoped: shape.scoped, parts: shape.parts}
+			found = true
+
+			break
+		}
+	}
+
+	if !found {
+		t.Fatalf("missing independent fixture for %s", f)
 	}
 
 	key := Key{Family: f}
@@ -121,8 +133,8 @@ func familyFixtureKey(t *testing.T, f Family) Key {
 		key.Scope = testScope()
 	}
 
-	for _, col := range def.parts {
-		part := []byte("a\x00|:b")
+	for i, col := range def.parts {
+		part := []byte("a\x00|:b" + string(rune('a'+i)))
 		if col == "sequence_u64" {
 			part = Uint64(1)
 		}

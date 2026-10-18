@@ -81,6 +81,10 @@ func classifyDriverError(operation string, err error) error {
 }
 
 func postgresError(operation, code string) error {
+	if code == "2200H" {
+		return limitError()
+	}
+
 	if code == "23505" {
 		return conflict()
 	}

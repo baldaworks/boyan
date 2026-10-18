@@ -98,6 +98,10 @@ func (tx *Tx) Get(ctx context.Context, key Key) ([]byte, error) {
 		return nil, tx.fail(err)
 	}
 
+	if tx.connection.pg != nil {
+		return tx.pgGet(ctx, key, def, values)
+	}
+
 	r, err := tx.q.query(ctx, "SELECT "+valueSelection(key.Family)+" FROM "+tx.connection.table(def.table)+
 		" WHERE "+equality(def.columns(), 1), arguments(values)...)
 	if err != nil {
@@ -154,6 +158,10 @@ func (tx *Tx) Put(ctx context.Context, key Key, encoded []byte) error {
 		return tx.fail(err)
 	}
 
+	if tx.connection.pg != nil {
+		return tx.pgPut(ctx, key, def, values, encoded, extra, nil, false)
+	}
+
 	columns := append(def.columns(), "envelope")
 	columns = append(columns, extraColumns(key.Family)...)
 	args := append(arguments(values), encoded)
@@ -183,6 +191,10 @@ func (tx *Tx) Delete(ctx context.Context, key Key) error {
 	def, values, err := key.values()
 	if err != nil {
 		return tx.fail(err)
+	}
+
+	if tx.connection.pg != nil {
+		return tx.pgDelete(ctx, key, def, values)
 	}
 
 	statement := "DELETE FROM " + tx.connection.table(def.table) + " WHERE " + equality(def.columns(), 1)
@@ -218,6 +230,10 @@ func (tx *Tx) CompareAndSwapScope(ctx context.Context, expected *uint64, state m
 	extra, err := columnValues(key, encoded)
 	if err != nil {
 		return tx.fail(err)
+	}
+
+	if tx.connection.pg != nil {
+		return tx.pgPut(ctx, key, def, values, encoded, extra, expected, true)
 	}
 
 	if err := tx.validateScopeCAS(ctx, key, expected); err != nil {

@@ -196,16 +196,22 @@ func TestScopeCASAndEnvelopeColumnValidation(t *testing.T) {
 		assertCode(t, err, memory.CodeConflict)
 		assertClock(t, c, 2, 1)
 		rawExec(t, c, "UPDATE "+c.table("scope_state")+" SET version_u64=$1", Uint64(7))
+
+		storedCode := memory.CodeInvalidDerived
+		if db.Postgres != nil {
+			storedCode = memory.CodeStoreFailure
+		}
+
 		err = c.View(t.Context(), func(tx *Tx) error {
 			_, err := tx.Get(t.Context(), Key{Family: ScopeState, Scope: state.Scope})
 
 			return err
 		})
-		assertCode(t, err, memory.CodeInvalidDerived)
+		assertCode(t, err, storedCode)
 
 		expected = 7
 		err = c.Update(t.Context(), func(tx *Tx) error { return tx.CompareAndSwapScope(t.Context(), &expected, state) })
-		assertCode(t, err, memory.CodeInvalidDerived)
+		assertCode(t, err, storedCode)
 		assertClock(t, c, 2, 1)
 
 		if _, err := c.q.exec(t.Context(), "UPDATE "+c.table("scope_state")+" SET change_seq_u64=$1", []byte{1}); err == nil {
