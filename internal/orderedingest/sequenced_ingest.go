@@ -17,7 +17,7 @@ type SequencedIngestConfig struct {
 // ingestion with durable replay and projection-lag separation.
 type SequencedIngestRuntime struct {
 	sequences memory.IngestSequenceStore
-	canonical memory.CanonicalStore
+	canonical CanonicalStateReader
 	lanes     *scopelanes.Executor
 
 	turn struct {

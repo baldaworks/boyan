@@ -26,7 +26,7 @@ func TestTurnReceiptReplayRequiresAuthoritativeIdentityCapability(t *testing.T) 
 }
 
 type boundaryProofCanonical struct {
-	memory.CanonicalStore
+	CanonicalStateReader
 
 	deny bool
 }
@@ -43,7 +43,7 @@ func (s *boundaryProofCanonical) VerifyCanonicalBoundary(context.Context,
 func TestBoundaryProofRunsBeforeReceiptReplay(t *testing.T) {
 	request := testSequencedBoundary(t, 1, "supplied-fingerprint")
 	runtime := newBoundaryReplayTestRuntime(t, request.Boundary.Scope, newMemoryIngestSequenceStore())
-	proof := &boundaryProofCanonical{CanonicalStore: runtime.canonical}
+	proof := &boundaryProofCanonical{CanonicalStateReader: runtime.canonical}
 	runtime.canonical = proof
 	requireNoError(t, runtime.Start(context.Background()), "start: %v")
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
@@ -78,7 +78,7 @@ func TestBoundaryProofRechecksAfterReceiptRead(t *testing.T) {
 	request := testSequencedBoundary(t, 1, "supplied-fingerprint")
 	sequences := newMemoryIngestSequenceStore()
 	runtime := newBoundaryReplayTestRuntime(t, request.Boundary.Scope, sequences)
-	proof := &boundaryProofCanonical{CanonicalStore: runtime.canonical}
+	proof := &boundaryProofCanonical{CanonicalStateReader: runtime.canonical}
 	runtime.canonical = proof
 	requireNoError(t, runtime.Start(context.Background()), "start: %v")
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
@@ -97,7 +97,7 @@ func TestBoundaryProofRechecksAfterReceiptRead(t *testing.T) {
 func TestBoundaryReceiptRequiresCertifiedProofForCapableStore(t *testing.T) {
 	request := testSequencedBoundary(t, 1, "supplied-fingerprint")
 	runtime := newBoundaryReplayTestRuntime(t, request.Boundary.Scope, newMemoryIngestSequenceStore())
-	runtime.canonical = &boundaryProofCanonical{CanonicalStore: runtime.canonical}
+	runtime.canonical = &boundaryProofCanonical{CanonicalStateReader: runtime.canonical}
 	requireNoError(t, runtime.Start(context.Background()), "start: %v")
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
 

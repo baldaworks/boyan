@@ -4,12 +4,11 @@ import (
 	"context"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
-	"github.com/baldaworks/boyan/store/badger"
 )
 
 func loadCanonicalRevisionsByID(
 	ctx context.Context,
-	store *badger.CanonicalStore,
+	store BoundaryCanonicalStore,
 	scope memory.Scope,
 	needed map[string]memory.RevisionRef,
 ) (map[string]memory.MemoryRevision, error) {

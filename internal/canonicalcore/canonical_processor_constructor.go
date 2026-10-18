@@ -4,7 +4,7 @@ import . "github.com/baldaworks/boyan/pkg/memory"
 
 // NewCanonicalTurnProcessor validates the mandatory cutover dependencies.
 func NewCanonicalTurnProcessor(
-	store CanonicalStore,
+	store TurnStore,
 	extractor CanonicalSemanticExtractor,
 	policy PolicyRegistry,
 ) (

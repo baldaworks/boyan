@@ -6,7 +6,7 @@ import . "github.com/baldaworks/boyan/pkg/memory"
 // implementation is split so orchestration and mutation assembly remain easy
 // to read independently.
 type CanonicalTurnProcessor struct {
-	store     CanonicalStore
+	store     TurnStore
 	extractor CanonicalSemanticExtractor
 	policy    PolicyRegistry
 }

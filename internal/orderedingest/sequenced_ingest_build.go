@@ -10,7 +10,7 @@ import (
 // store.
 func NewSequencedIngestRuntime(
 	sequences memory.IngestSequenceStore,
-	canonical memory.CanonicalStore,
+	canonical CanonicalStateReader,
 	turnProcessor TurnProcessor,
 	derivation memory.DerivationRef,
 	turnProjection ProjectionSyncer,
@@ -32,7 +32,7 @@ func NewSequencedIngestRuntime(
 
 func newSequencedIngestRuntimeWithParts(
 	sequences memory.IngestSequenceStore,
-	canonical memory.CanonicalStore,
+	canonical CanonicalStateReader,
 	turnProcessor TurnProcessor,
 	derivation memory.DerivationRef,
 	turnProjection ProjectionSyncer,

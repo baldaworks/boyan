@@ -38,6 +38,11 @@ func (r *SequencedIngestRuntime) loadReplayRecord(
 		if err := validateReplayCursor(cursor, producerID, scope); err != nil {
 			return memory.IngestSequenceRecord{}, true, err
 		}
+		// An exhausted cursor has no next sequence. Every valid uint64 request
+		// is a historical replay; adding one would wrap and reject that replay.
+		if cursor.Latest == ^uint64(0) {
+			return r.loadStoredReplayRecord(ctx, producerID, scope, sequence)
+		}
 	}
 
 	next := uint64(1)

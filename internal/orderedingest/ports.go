@@ -40,6 +40,12 @@ type BoundaryProcessor interface {
 
 type ProjectionSyncer = projection.Syncer
 
+// CanonicalStateReader supplies the committed boundary watermark. Additional
+// identity capabilities are asserted on this same canonical store value.
+type CanonicalStateReader interface {
+	LoadScopeState(ctx context.Context, scope memory.Scope) (memory.ScopeState, error)
+}
+
 // Lifecycle starts and closes process-boundary ordered-ingest workers.
 type Lifecycle interface {
 	Start(ctx context.Context) error

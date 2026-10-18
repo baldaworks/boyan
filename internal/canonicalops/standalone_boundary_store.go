@@ -4,17 +4,35 @@ import (
 	"context"
 	"fmt"
 	memory "github.com/baldaworks/boyan/pkg/memory"
-	"github.com/baldaworks/boyan/store/badger"
 )
 
 type CanonicalBoundaryStore struct {
-	store  *badger.CanonicalStore
-	reader *badger.CanonicalReader
+	store  BoundaryCanonicalStore
+	reader BoundaryCanonicalReader
+}
+
+// BoundaryCanonicalStore contains the existing ports consumed by the boundary
+// adapter, without requiring unrelated delivery or maintenance capabilities.
+type BoundaryCanonicalStore interface {
+	memory.CanonicalOperationReader
+	memory.CanonicalOperationCommitter
+	memory.CanonicalBoundaryIdentityStore
+	ApplyCanonicalMutation(ctx context.Context, mutation memory.CanonicalMutation) (memory.CanonicalMutationOutcome, error)
+	LoadCanonicalRevisions(ctx context.Context,
+		request memory.CanonicalRevisionReadRequest) ([]memory.MemoryRevision, error)
+}
+
+// BoundaryCanonicalReader supplies snapshot and historical replay presentation
+// from the reader bound to the same canonical authority.
+type BoundaryCanonicalReader interface {
+	memory.CanonicalBoundaryViewReader
+	LoadCanonicalCompatibility(ctx context.Context, scope memory.Scope,
+		revisionID string) (memory.CanonicalCompatibilityPayload, bool, error)
 }
 
 func NewCanonicalBoundaryStore(
-	store *badger.CanonicalStore,
-	reader *badger.CanonicalReader,
+	store BoundaryCanonicalStore,
+	reader BoundaryCanonicalReader,
 ) (
 	*CanonicalBoundaryStore,
 	error,
