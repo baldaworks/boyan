@@ -14,6 +14,7 @@ type mutationProbe struct {
 	connection *canonicalsql.Connection
 	exec       func(string, ...any) error
 	table      func(string) string
+	clock      func() ([]byte, error)
 }
 
 func newMutationProbe(t *testing.T, fixture *storefixture.Fixture) mutationProbe {
@@ -26,7 +27,13 @@ func newMutationProbe(t *testing.T, fixture *storefixture.Fixture) mutationProbe
 			_, err := conn.Exec(t.Context(), statement, args...)
 
 			return err
-		}, table: func(name string) string { return "boyan_canonical." + name }}
+		}, table: func(name string) string { return "boyan_canonical." + name }, clock: func() ([]byte, error) {
+			var clock []byte
+
+			err := conn.QueryRow(t.Context(), "SELECT mutation_clock FROM boyan_canonical.store_meta").Scan(&clock)
+
+			return clock, err
+		}}
 	}
 
 	db, err := sql.Open("sqlite", fixture.Database.DSN)
@@ -47,7 +54,13 @@ func newMutationProbe(t *testing.T, fixture *storefixture.Fixture) mutationProbe
 		_, err := conn.ExecContext(t.Context(), statement, args...)
 
 		return err
-	}, table: func(name string) string { return name }}
+	}, table: func(name string) string { return name }, clock: func() ([]byte, error) {
+		var clock []byte
+
+		err := conn.QueryRowContext(t.Context(), "SELECT mutation_clock FROM store_meta").Scan(&clock)
+
+		return clock, err
+	}}
 }
 
 func (p mutationProbe) read(t *testing.T, scope memory.Scope, family canonicalsql.Family, id string, target any) {

@@ -28,12 +28,13 @@ func NewPostgres(conn *pgx.Conn) *Connection { return &Connection{q: pgQuery{con
 // Tx is a bounded query handle valid only during its transaction callback.
 // Every write goes through Put/Delete/CAS so stamps cannot be omitted.
 type Tx struct {
-	connection *Connection
-	q          query
-	writable   bool
-	active     bool
-	failed     error
-	sequence   []byte
+	connection  *Connection
+	q           query
+	writable    bool
+	active      bool
+	failed      error
+	sequence    []byte
+	scopeStamps map[string]struct{}
 }
 
 // Update commits a callback and its row stamps atomically. Any failed primitive
@@ -252,6 +253,11 @@ func (tx *Tx) stamp(ctx context.Context, key Key, values [][]byte, deleted bool)
 		" (family,binary_key,last_seq,deleted) VALUES ($1,$2,$3,$4) ON CONFLICT(family,binary_key) "+
 		"DO UPDATE SET last_seq=excluded.last_seq,deleted=excluded.deleted",
 		[]byte(key.Family), stampKey(values), seq, deleted)
+	if err != nil {
+		return tx.fail(databaseError(ctx, "stamp row", err))
+	}
 
-	return tx.fail(databaseError(ctx, "stamp row", err))
+	tx.recordScopeStamp(key.Family, stampKey(values))
+
+	return nil
 }

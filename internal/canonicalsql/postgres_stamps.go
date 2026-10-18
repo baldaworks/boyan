@@ -71,5 +71,7 @@ func (tx *Tx) pgStamp(ctx context.Context, family Family, key []byte, deleted bo
 		return tx.fail(corruptRow())
 	}
 
+	tx.recordScopeStamp(family, key)
+
 	return nil
 }
