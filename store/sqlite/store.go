@@ -53,8 +53,7 @@ func (s *Store) canonicalOwner() *canonicalsql.Owner {
 	return s.owner
 }
 
-// Reader shares its store's exact authority and lifecycle. No memory reader
-// port is claimed until the corresponding domain operations are implemented.
+// Reader shares its store's exact authority and lifecycle for canonical reads.
 type Reader struct{ store *Store }
 
 // NewCanonicalReader creates a reader bound to the same canonical owner.
