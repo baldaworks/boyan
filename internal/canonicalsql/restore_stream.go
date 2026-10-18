@@ -152,8 +152,10 @@ func stageRestore(
 			}
 
 			var extra [1]byte
-			if n, err := io.ReadFull(r, extra[:]); n != 0 || !errors.Is(err, io.EOF) {
+			if n, err := io.ReadFull(r, extra[:]); n != 0 {
 				return file, header, "", invalid("trailing canonical archive data")
+			} else if !errors.Is(err, io.EOF) {
+				return file, header, "", err
 			}
 
 			if _, err := file.Seek(0, io.SeekStart); err != nil {

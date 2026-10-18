@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"math"
 	"path/filepath"
 	"strings"
@@ -206,7 +207,7 @@ func TestSQLRestoreFullTwoDeltasExactKeysAndLocalCursor(t *testing.T) {
 	})
 }
 
-//nolint:cyclop,gocognit,funlen // Every independent invalid artifact needs a reopened valid retry.
+//nolint:cyclop,gocognit,gocyclo,funlen // Every independent invalid artifact needs a reopened valid retry.
 func TestSQLRestoreRejectsUntrustedFramingAndAllowsRetry(t *testing.T) {
 	storefixture.ForEach(t, func(t *testing.T, source *storefixture.Fixture) {
 		p := newArchiveProbe(t, source)
@@ -223,7 +224,7 @@ func TestSQLRestoreRejectsUntrustedFramingAndAllowsRetry(t *testing.T) {
 		_, _, good := backupFrames(t, source.Store.(backupStore), 0)
 		for _, kind := range []string{"checksum", "count", "truncated", "trailing", "oversize-frame", "foreign-backend",
 			"schema", "base", "order", "duplicate", "duplicate-json", "unknown-field", "oversize-value", "oversize-key",
-			"arity", "orphan-proof", "format"} {
+			"arity", "orphan-proof", "format", "footer-reader-error"} {
 			t.Run(kind, func(t *testing.T) {
 				d := restoreDestination(t, source.Backend)
 				ds := d.Store.(restoreStore)
@@ -311,16 +312,32 @@ func TestSQLRestoreRejectsUntrustedFramingAndAllowsRetry(t *testing.T) {
 					bad = append(append(bad[:4], data...), bad[4+first:]...)
 				}
 
+				var reader io.Reader = bytes.NewReader(bad)
+				if kind == "footer-reader-error" {
+					reader = io.MultiReader(reader, logicalFooterErrorReader{})
+				}
+
 				if err := ds.RestoreCanonicalBackup(
 					t.Context(),
-					bytes.NewReader(bad),
+					reader,
 					1,
 				); err == nil {
 					t.Fatal("invalid artifact accepted")
+				} else if kind == "footer-reader-error" {
+					code, class, ok := memory.ClassifyError(err)
+					if !ok || code != memory.CodeStoreFailure || class != memory.ErrorClassRetryable ||
+						strings.Contains(err.Error(), "PRIVATE") {
+						t.Errorf("footer reader failure lost redacted retry classification: %v", err)
+					}
 				}
 
 				if ds.PrepareSourcePrivacy(t.Context()) == nil {
 					t.Fatal("failed loading prepared")
+				}
+
+				if _, _, err := d.Store.(memory.CanonicalScopeStatePager).
+					ListCanonicalScopeStates(t.Context(), nil, 1); err == nil {
+					t.Fatal("ordinary read allowed during loading")
 				}
 
 				if err := d.Store.Close(); err != nil {
@@ -335,6 +352,16 @@ func TestSQLRestoreRejectsUntrustedFramingAndAllowsRetry(t *testing.T) {
 				}
 
 				ds = d.Store.(restoreStore)
+				if ds.PrepareSourcePrivacy(t.Context()) == nil ||
+					ds.ResumeRestoreBeforeEraseRecovery(t.Context()) == nil {
+					t.Fatal("loading restore trusted across reopen")
+				}
+
+				if _, _, err := d.Store.(memory.CanonicalScopeStatePager).
+					ListCanonicalScopeStates(t.Context(), nil, 1); err == nil {
+					t.Fatal("ordinary read allowed during loading after reopen")
+				}
+
 				if err := ds.RestoreCanonicalBackup(
 					t.Context(),
 					bytes.NewReader(good),
