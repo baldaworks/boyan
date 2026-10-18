@@ -206,7 +206,8 @@ func TestPostgresOwnerConnectFailureRedactionAndTimeout(t *testing.T) {
 	config := PostgresConfig{DSN: u.String(), AllowLocalInsecure: true}
 
 	owner, err := OpenPostgresOwner(t.Context(), config)
-	if owner != nil || err == nil || strings.Contains(err.Error(), secret) || errors.Unwrap(err) != nil {
+	if owner != nil || err == nil || memory.IsRetryable(err) ||
+		strings.Contains(err.Error(), secret) || errors.Unwrap(err) != nil {
 		t.Fatal("native connection failure was acknowledged or leaked private diagnostics")
 	}
 

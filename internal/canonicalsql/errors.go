@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"net"
 	"strings"
+	"syscall"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
 	"github.com/jackc/pgx/v5"
@@ -67,6 +69,10 @@ func classifyDriverError(operation string, err error) error {
 		return postgresError(operation, pg.Code)
 	}
 
+	if transientTransportError(err) {
+		return memory.RetryableError(memory.CodeUnavailable, "canonical SQL connection unavailable", nil)
+	}
+
 	var sqlite interface{ Code() int }
 	if errors.As(err, &sqlite) {
 		switch sqlite.Code() & sqlitePrimaryCodeMask {
@@ -78,6 +84,27 @@ func classifyDriverError(operation string, err error) error {
 	}
 
 	return memory.PermanentError(memory.CodeStoreFailure, "canonical SQL "+operation+" failed", nil)
+}
+
+// pgx wraps native dial/read/write errors. Classify only known transport
+// failures, not every ConnectError or net.OpError: TLS, authentication and
+// configuration failures must retain their permanent classification.
+func transientTransportError(err error) bool {
+	var op *net.OpError
+	if !errors.As(err, &op) {
+		return false
+	}
+
+	for _, cause := range []error{
+		syscall.ECONNREFUSED, syscall.ECONNRESET, syscall.ECONNABORTED, syscall.EPIPE,
+		syscall.ETIMEDOUT, syscall.ENETDOWN, syscall.ENETUNREACH, syscall.EHOSTUNREACH,
+	} {
+		if errors.Is(op.Err, cause) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func postgresError(operation, code string) error {
