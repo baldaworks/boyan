@@ -2,16 +2,22 @@
 
 `internal/canonicalsqltest` supplies real raw connections. Its `storefixture`
 subpackage registers the public SQLite and PostgreSQL owners without introducing
-an import cycle in primitive tests. The owner fixture currently tests lifecycle
-only. Later tasks must run their canonical
-cases against both engines before retiring the corresponding Badger tests.
+an import cycle in primitive tests. The owner fixture tests lifecycle and the
+implemented privacy/preparation, denial-read and payload contracts. Shared
+privacy cases use actual owners with bounded structural history fixtures.
+Later tasks must run mutation, reader, erase and archive cases against both
+engines before retiring the corresponding Badger tests.
 
 The SQLite owner opens a separate canonical file through `store/sqlite.Open`.
 It holds an OS exclusive lock on the database file itself (including aliases),
 uses a single pinned connection configured with WAL/FULL and constraints, and
 drains canceled transactions before close/checkpoint/unlock. Opening is distinct
 from readiness: `RestorePreflight` on both store and reader rejects persisted
-restore control. No domain port or restore-clearing method is provided yet.
+restore control. Both Store pointers expose PrepareSourcePrivacy,
+SourcePrivacyReady, PutPayload/LoadPayload/DeletePayload and source/revision
+denial reads. Preparation retains exclusive admission across bounded pages,
+validates retained completed captures, preserves incomplete/sticky state and
+publishes the stamped ready marker last. No restore-clearing method is exposed.
 
 `store/postgres.Open` acquires a fixed session advisory lock before migration
 on one direct pgx connection. Every transaction uses context-aware serialized
@@ -19,7 +25,7 @@ admission and checks ownership on that connection. Disconnect, protocol failure
 or missing ownership permanently fences that owner until full close/reopen;
 there is no automatic reconnect or ambiguous-commit retry. Preflight checks
 stored integrity as well as the loading fence. Both owners expose the same
-small lifecycle test factory, without claiming the unfinished domain ports.
+small lifecycle test factory, without claiming the unfinished CanonicalStore port.
 
 PostgreSQL configuration accepts a resolved private DSN, a bounded connect
 timeout (default 5s, maximum 30s), and `AllowLocalInsecure`. Remote DSNs require
