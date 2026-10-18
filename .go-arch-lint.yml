@@ -48,7 +48,9 @@ components:
       - internal/embedding
       - internal/semanticprojection
       - internal/canonicalsqltest
+      - internal/canonicalsqltest/storefixture
       - store/badger
+      - store/sqlite
       - index/sqlite
 
   standalone_shell:
@@ -87,6 +89,7 @@ deps:
   infrastructure:
     mayDependOn:
       - public_contracts
+      - canonical_sql
       - memory_engine
       - semantic_core
       - infrastructure

@@ -1,5 +1,5 @@
 // Package canonicalsqltest supplies isolated real SQL connections for canonical
-// storage tests. It does not register or implement canonical stores.
+// storage tests. Public owner factories live in its storefixture subpackage.
 package canonicalsqltest
 
 import (

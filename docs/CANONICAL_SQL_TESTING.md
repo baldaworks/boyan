@@ -1,9 +1,17 @@
 # Canonical SQL preservation tests
 
-`internal/canonicalsqltest` supplies real raw connections, not canonical store
-implementations. TASK-003/004 will register the public canonical constructors;
-later tasks must run their canonical cases against both engines before retiring
-the corresponding Badger tests.
+`internal/canonicalsqltest` supplies real raw connections. Its `storefixture`
+subpackage registers the public SQLite owner constructor without introducing
+an import cycle in primitive tests. The owner fixture currently tests lifecycle
+only; TASK-004 adds the PostgreSQL owner. Later tasks must run their canonical
+cases against both engines before retiring the corresponding Badger tests.
+
+The SQLite owner opens a separate canonical file through `store/sqlite.Open`.
+It holds an OS exclusive lock on the database file itself (including aliases),
+uses a single pinned connection configured with WAL/FULL and constraints, and
+drains canceled transactions before close/checkpoint/unlock. Opening is distinct
+from readiness: `RestorePreflight` on both store and reader rejects persisted
+restore control. No domain port or restore-clearing method is provided yet.
 
 ## Real databases
 
