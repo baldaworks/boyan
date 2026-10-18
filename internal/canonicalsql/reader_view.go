@@ -184,30 +184,35 @@ func readerSourceAuthorized(ctx context.Context, tx *Tx, source memory.Canonical
 		return false, err
 	}
 
-	if err := validateReaderCertificate(ctx, tx, source); err != nil {
+	certified, err := validateReaderCertificate(ctx, tx, source)
+	if err != nil {
 		return false, err
 	}
 
-	return true, nil
+	if record.MessageMembershipComplete || certified {
+		return true, nil
+	}
+
+	return readerEmbeddedMembership(ctx, tx, source)
 }
 
-func validateReaderCertificate(ctx context.Context, tx *Tx, source memory.CanonicalSourceRecord) error {
+func validateReaderCertificate(ctx context.Context, tx *Tx, source memory.CanonicalSourceRecord) (bool, error) {
 	certificate, found, err := loadTurnCertificate(ctx, tx, source.Scope, source.SourceID)
 	if err != nil || !found {
-		return err
+		return false, err
 	}
 
 	if err := validatePrivacyCertificateSource(ctx, tx, source, certificate); err != nil {
-		return err
+		return false, err
 	}
 
 	for _, id := range certificate.MessageIDs {
 		if err := validatePrivacyMemberBinding(ctx, tx, source, id); err != nil {
-			return err
+			return false, err
 		}
 	}
 
-	return nil
+	return true, nil
 }
 
 func readerPayload(ctx context.Context, tx *Tx, ref memory.PayloadRef) ([]byte, error) {

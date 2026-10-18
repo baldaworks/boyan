@@ -159,6 +159,14 @@ func loadReaderRecords(ctx context.Context, tx *Tx, scope memory.Scope, ids []st
 	captured.sources = resolver.sources
 	captured.records = records
 
+	if err := recheckReaderSources(ctx, tx, *captured); err != nil {
+		return nil, err
+	}
+
+	if err := validateReaderSnapshotEvidence(ctx, tx, *captured); err != nil {
+		return nil, err
+	}
+
 	return records, nil
 }
 

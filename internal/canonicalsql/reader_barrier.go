@@ -44,7 +44,7 @@ func (o *Owner) finalReaderBarrier(ctx context.Context, captured readerSnapshot)
 			return err
 		}
 
-		return ctx.Err()
+		return validateReaderSnapshotEvidence(ctx, tx, captured)
 	})
 }
 
