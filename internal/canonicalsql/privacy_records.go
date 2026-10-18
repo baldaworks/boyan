@@ -84,6 +84,14 @@ func getPrivacyRecord(ctx context.Context, tx *Tx, key Key, family Family, targe
 		return err
 	}
 
+	if isCanonicalProofRecord(string(family)) {
+		if err := validateCanonicalProofRecord(privacyComponents(key),
+			memory.RecordEnvelope{RecordType: string(family),
+				Payload: payload}); err != nil {
+			return err
+		}
+	}
+
 	decode := json.Unmarshal
 	if isCanonicalPrivacyRecord(string(family)) {
 		decode = decodeCanonicalProofJSON
