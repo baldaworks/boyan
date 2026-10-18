@@ -43,6 +43,7 @@ components:
       - internal/derivation
       - internal/embedding
       - internal/semanticprojection
+      - internal/canonicalsqltest
       - store/badger
       - index/sqlite
 
