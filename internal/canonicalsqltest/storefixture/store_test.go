@@ -9,8 +9,8 @@ import (
 
 func TestRegisteredOwnerFactory(t *testing.T) {
 	storefixture.ForEach(t, func(t *testing.T, fixture *storefixture.Fixture) {
-		if fixture.Backend != canonicalsqltest.SQLite {
-			t.Fatal("this task only registers the implemented SQLite owner")
+		if fixture.Backend != canonicalsqltest.SQLite && fixture.Backend != canonicalsqltest.Postgres {
+			t.Fatal("unknown owner factory backend")
 		}
 
 		if err := fixture.Store.RestorePreflight(t.Context()); err != nil {

@@ -17,6 +17,7 @@ type Owner struct {
 	closed       chan struct{}
 	mu           sync.Mutex
 	closing      bool
+	poisoned     bool
 	activeCancel context.CancelFunc
 	closeOnce    sync.Once
 	closeErr     error
@@ -52,7 +53,7 @@ func (o *Owner) View(ctx context.Context, fn func(context.Context, *Tx) error) e
 // RestorePreflight checks durable control before application startup. Opening
 // a fenced store remains possible for the controlled recovery added later.
 func (o *Owner) RestorePreflight(ctx context.Context) error {
-	return o.View(ctx, func(context.Context, *Tx) error { return nil })
+	return o.View(ctx, func(admitted context.Context, tx *Tx) error { return tx.CheckIntegrity(admitted) })
 }
 
 // Close rejects waiting/new work, cancels active work, and waits for rollback
@@ -93,6 +94,12 @@ func (o *Owner) run(ctx context.Context, write bool, fn func(context.Context, *T
 	}
 	defer release()
 
+	if err := o.checkPostgresOwnership(admitted); err != nil {
+		return err
+	}
+
+	defer o.fenceBrokenPostgres()
+
 	callback := func(tx *Tx) error { return fn(admitted, tx) }
 	if write {
 		return o.connection.Update(admitted, callback)
@@ -123,7 +130,7 @@ func (o *Owner) admit(ctx context.Context) (context.Context, func(), error) {
 	}
 
 	o.mu.Lock()
-	if o.closing {
+	if o.closing || o.poisoned {
 		o.mu.Unlock()
 
 		o.gate <- struct{}{}

@@ -4,10 +4,10 @@ package storefixture
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	"github.com/baldaworks/boyan/internal/canonicalsqltest"
+	"github.com/baldaworks/boyan/store/postgres"
 	"github.com/baldaworks/boyan/store/sqlite"
 )
 
@@ -25,15 +25,29 @@ type Fixture struct {
 	Open    func(context.Context) (Store, error)
 }
 
-// ForEach runs available public owner factories. Only SQLite is implemented
-// here; TASK-004 must add PostgreSQL before any owner parity claim is possible.
+// ForEach runs both public owner factories with real isolated databases and
+// required PostgreSQL configuration validation inherited from the raw helper.
 func ForEach(t *testing.T, run func(*testing.T, *Fixture)) {
 	t.Helper()
 
-	t.Run(string(canonicalsqltest.SQLite), func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "canonical.sqlite")
+	canonicalsqltest.ForEach(t, func(t *testing.T, db *canonicalsqltest.Database) {
+		if db.SQLite != nil {
+			if err := db.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}
+
 		open := func(ctx context.Context) (Store, error) {
-			store, err := sqlite.Open(ctx, sqlite.Config{Path: path})
+			var (
+				store Store
+				err   error
+			)
+			if db.Backend == canonicalsqltest.SQLite {
+				store, err = sqlite.Open(ctx, sqlite.Config{Path: db.DSN})
+			} else {
+				store, err = postgres.Open(ctx, postgres.Config{DSN: db.DSN, AllowLocalInsecure: true})
+			}
+
 			if err != nil {
 				return nil, err
 			}
@@ -51,6 +65,6 @@ func ForEach(t *testing.T, run func(*testing.T, *Fixture)) {
 				t.Error(err)
 			}
 		})
-		run(t, &Fixture{Backend: canonicalsqltest.SQLite, Store: store, Open: open})
+		run(t, &Fixture{Backend: db.Backend, Store: store, Open: open})
 	})
 }

@@ -51,6 +51,7 @@ components:
       - internal/canonicalsqltest/storefixture
       - store/badger
       - store/sqlite
+      - store/postgres
       - index/sqlite
 
   standalone_shell:

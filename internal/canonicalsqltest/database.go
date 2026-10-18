@@ -69,6 +69,34 @@ func configuredPostgres() (string, error) {
 	return dsn, nil
 }
 
+// PostgresDatabase creates a required-mode-aware fixture for PostgreSQL-only
+// physical/session tests without manufacturing a no-op SQLite test case.
+func PostgresDatabase(t *testing.T) *Database {
+	t.Helper()
+
+	dsn, err := configuredPostgres()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if dsn == "" {
+		t.Skip("set BOYAN_TEST_POSTGRES_DSN; CI requires BOYAN_REQUIRE_POSTGRES=1")
+	}
+
+	db, err := OpenPostgres(t.Context(), dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+
+	return db
+}
+
 // ForEach runs a raw SQL case with independent SQLite and PostgreSQL fixtures.
 // Local PostgreSQL absence skips that subtest only; required mode fails closed.
 // A configured but unreachable server always fails, even in optional mode.

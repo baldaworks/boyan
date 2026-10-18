@@ -1,9 +1,9 @@
 # Canonical SQL preservation tests
 
 `internal/canonicalsqltest` supplies real raw connections. Its `storefixture`
-subpackage registers the public SQLite owner constructor without introducing
+subpackage registers the public SQLite and PostgreSQL owners without introducing
 an import cycle in primitive tests. The owner fixture currently tests lifecycle
-only; TASK-004 adds the PostgreSQL owner. Later tasks must run their canonical
+only. Later tasks must run their canonical
 cases against both engines before retiring the corresponding Badger tests.
 
 The SQLite owner opens a separate canonical file through `store/sqlite.Open`.
@@ -12,6 +12,21 @@ uses a single pinned connection configured with WAL/FULL and constraints, and
 drains canceled transactions before close/checkpoint/unlock. Opening is distinct
 from readiness: `RestorePreflight` on both store and reader rejects persisted
 restore control. No domain port or restore-clearing method is provided yet.
+
+`store/postgres.Open` acquires a fixed session advisory lock before migration
+on one direct pgx connection. Every transaction uses context-aware serialized
+admission and checks ownership on that connection. Disconnect, protocol failure
+or missing ownership permanently fences that owner until full close/reopen;
+there is no automatic reconnect or ambiguous-commit retry. Preflight checks
+stored integrity as well as the loading fence. Both owners expose the same
+small lifecycle test factory, without claiming the unfinished domain ports.
+
+PostgreSQL configuration accepts a resolved private DSN, a bounded connect
+timeout (default 5s, maximum 30s), and `AllowLocalInsecure`. Remote DSNs require
+`sslmode=verify-full`; local Unix/loopback `sslmode=disable` also requires the
+explicit local opt-in. Multiple-host and TLS downgrade fallbacks are rejected.
+The session uses a trusted catalog search path and fully qualified canonical
+tables. Configuration formatting and driver errors redact connection details.
 
 ## Real databases
 
