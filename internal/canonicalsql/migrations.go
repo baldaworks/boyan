@@ -15,10 +15,22 @@ var sqliteDDL string
 //go:embed 001_postgres.sql
 var postgresDDL string
 
+//go:embed 002_sqlite.sql
+var sqliteRestoreDDL string
+
+//go:embed 002_postgres.sql
+var postgresRestoreDDL string
+
 const storeIdentityBytes = 16
+
+// Migration revision 2 adds private recovery bookkeeping. It does not change
+// the canonical record representation or store_meta's archive schema version 1.
+const restoreMigrationVersion = 2
 
 // Migrate applies the embedded initial additive schema transactionally. The
 // owner must hold exclusive store ownership. Unknown history is never repaired.
+//
+//nolint:cyclop // Both known additive migrations share the atomic ownership transaction.
 func (c *Connection) Migrate(ctx context.Context) error {
 	return c.run(ctx, true, false, func(tx *Tx) error {
 		ddl := sqliteDDL
@@ -39,31 +51,53 @@ func (c *Connection) Migrate(ctx context.Context) error {
 		digest := sha256.Sum256([]byte(ddl))
 		checksum := hex.EncodeToString(digest[:])
 
-		applied, err := c.checkMigration(ctx, tx.q, checksum)
+		restoreDDL := sqliteRestoreDDL
+		if c.pg != nil {
+			restoreDDL = postgresRestoreDDL
+		}
+
+		restoreDigest := sha256.Sum256([]byte(restoreDDL))
+		restoreChecksum := hex.EncodeToString(restoreDigest[:])
+
+		applied, err := c.checkMigration(ctx, tx.q, []string{checksum, restoreChecksum})
 		if err != nil {
 			return err
 		}
 
-		if applied {
+		if applied > 0 {
 			if err := c.checkMetadata(ctx, tx.q); err != nil {
 				return err
 			}
-
-			return tx.CheckIntegrity(ctx)
+		} else if err := tx.initialize(ctx, ddl, checksum); err != nil {
+			return err
 		}
 
-		return tx.initialize(ctx, ddl, checksum)
+		if applied < restoreMigrationVersion {
+			if err := applyDDL(ctx, tx.q, restoreDDL); err != nil {
+				return err
+			}
+
+			if _, err := tx.q.exec(ctx, "INSERT INTO "+c.table("schema_migration")+
+				" (version,checksum) VALUES(2,$1)", restoreChecksum); err != nil {
+				return databaseError(ctx, "record restore migration", err)
+			}
+		}
+
+		return tx.CheckIntegrity(ctx)
 	})
 }
 
-func (c *Connection) checkMigration(ctx context.Context, q query, checksum string) (bool, error) {
-	r, err := q.query(ctx, "SELECT version,checksum FROM "+c.table("schema_migration")+" ORDER BY version")
+func (c *Connection) checkMigration(ctx context.Context, q query, checksums []string) (int, error) {
+	r, err := q.query(
+		ctx,
+		"SELECT version,checksum FROM "+c.table("schema_migration")+" ORDER BY version",
+	)
 	if err != nil {
-		return false, databaseError(ctx, "read migration", err)
+		return 0, databaseError(ctx, "read migration", err)
 	}
 	defer r.Close()
 
-	applied := false
+	applied := 0
 
 	for r.Next() {
 		var (
@@ -71,22 +105,22 @@ func (c *Connection) checkMigration(ctx context.Context, q query, checksum strin
 			stored  string
 		)
 		if err := r.Scan(&version, &stored); err != nil {
-			return false, databaseError(ctx, "read migration", err)
+			return 0, databaseError(ctx, "read migration", err)
 		}
 
-		if version != 1 || stored != checksum || applied {
-			return false, invalid("unsupported canonical SQL schema history")
+		if version != applied+1 || version > len(checksums) || stored != checksums[version-1] {
+			return 0, invalid("unsupported canonical SQL schema history")
 		}
 
-		applied = true
+		applied++
 	}
 
 	if err := r.Err(); err != nil {
-		return false, databaseError(ctx, "read migration", err)
+		return 0, databaseError(ctx, "read migration", err)
 	}
 
 	if err := r.Close(); err != nil {
-		return false, databaseError(ctx, "close migration rows", err)
+		return 0, databaseError(ctx, "close migration rows", err)
 	}
 
 	return applied, nil
@@ -105,7 +139,8 @@ func (c *Connection) checkMetadata(ctx context.Context, q query) error {
 		return databaseError(ctx, "read metadata", err)
 	}
 
-	if len(identity) != storeIdentityBytes || len(clock) != unsignedBytes || schema != 1 || privacy != 1 {
+	if len(identity) != storeIdentityBytes || len(clock) != unsignedBytes || schema != 1 ||
+		privacy != 1 {
 		return invalid("invalid canonical SQL metadata")
 	}
 

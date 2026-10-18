@@ -34,7 +34,7 @@ func TestUnsupportedScaffoldAndFuturePreserveRestoreFence(t *testing.T) {
 					[]byte("unfinished restore"))
 
 				if future {
-					rawExec(t, c, "INSERT INTO "+c.table("schema_migration")+"(version,checksum) VALUES(2,'future')")
+					rawExec(t, c, "INSERT INTO "+c.table("schema_migration")+"(version,checksum) VALUES(3,'future')")
 				} else {
 					rawExec(t, c, "UPDATE "+c.table("schema_migration")+" SET checksum=$1",
 						"d2c06b7a96a650818c8829158f519be2cfe4480a73af8ed836d658f1d09ba519")
