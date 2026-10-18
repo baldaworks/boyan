@@ -9,7 +9,6 @@ import (
 
 	index "github.com/baldaworks/boyan/index/sqlite"
 	"github.com/baldaworks/boyan/pkg/memory"
-	"github.com/baldaworks/boyan/store/badger"
 )
 
 type projectionSQLApplier struct {
@@ -19,8 +18,15 @@ type projectionSQLApplier struct {
 	db    *sql.DB
 }
 
-func openProjectionSQLite(t *testing.T, root string, canonical *badger.CanonicalStore,
-	reader *badger.CanonicalReader) *projectionSQLApplier {
+type projectionCanonicalAuthority interface {
+	IsSourceDenied(ctx context.Context, scope memory.Scope, id string) (bool, error)
+	IsRevisionDenied(ctx context.Context, scope memory.Scope, id string) (bool, error)
+	LoadCanonicalRevisions(ctx context.Context,
+		request memory.CanonicalRevisionReadRequest) ([]memory.MemoryRevision, error)
+}
+
+func openProjectionSQLite(t *testing.T, root string, canonical projectionCanonicalAuthority,
+	reader memory.RecallCanonicalReader) *projectionSQLApplier {
 	t.Helper()
 
 	dir := filepath.Join(root, "index")
