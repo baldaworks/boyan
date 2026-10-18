@@ -89,7 +89,7 @@ func encodeLogicalFrames(t *testing.T, frames []map[string]any) []byte {
 // A malformed header or individual record must fail both free scanners and
 // actual import, leaving an unavailable store that accepts a full good retry.
 //
-//nolint:cyclop,gocognit,gocyclo,funlen // Each malformed stream needs rejection, reopen and good retry.
+//nolint:cyclop,gocognit,gocyclo,funlen,maintidx // Rejection, reopen and clean retry per malformed stream.
 func TestSQLLogicalMalformedStreamRetry(t *testing.T) {
 	storefixture.ForEach(t, func(t *testing.T, f *storefixture.Fixture) {
 		s := f.Store.(logicalStore)
@@ -108,6 +108,7 @@ func TestSQLLogicalMalformedStreamRetry(t *testing.T) {
 			"format", "backend", "schema", "privacy", "proof", "uuid", "base", "mode", "end", "unknown", "family",
 			"arity", "key", "suffix", "duplicate", "order", "checksum", "count", "truncated", "trailing",
 			"duplicate-json", "line-limit", "value-limit", "bad-envelope",
+			"footer-reader-error",
 		} {
 			t.Run(fault, func(t *testing.T) {
 				frames := logicalFrames(t, good)
@@ -175,21 +176,46 @@ func TestSQLLogicalMalformedStreamRetry(t *testing.T) {
 				) (archive.CanonicalLogicalExportSummary, error){
 					sqlite.ScanCanonicalLogicalExport, postgres.ScanCanonicalLogicalExport,
 				} {
-					if _, err := scan(
-						t.Context(),
-						bytes.NewReader(bad),
-						1,
-						nil,
-					); err == nil ||
-						strings.Contains(err.Error(), "PRIVATE") {
+					var reader io.Reader = bytes.NewReader(bad)
+					if fault == "footer-reader-error" {
+						reader = io.MultiReader(reader, logicalFooterErrorReader{})
+					}
+
+					summary, err := scan(t.Context(), reader, 1, nil)
+					if err == nil || strings.Contains(err.Error(), "PRIVATE") {
 						t.Fatalf("scanner accepted/leaked malformed %s: %v", fault, err)
+					}
+
+					if fault == "footer-reader-error" {
+						code, class, ok := memory.ClassifyError(err)
+						if !ok || code != memory.CodeStoreFailure || class != memory.ErrorClassRetryable {
+							t.Errorf("footer reader failure lost retry classification: %v", err)
+						}
+
+						if summary.RecordCount != 0 || summary.SHA256 != "" || len(summary.Scopes) != 0 {
+							t.Errorf("failed footer check returned summary: %+v", summary)
+						}
 					}
 				}
 
 				d := restoreDestination(t, f.Backend)
 
 				ds := d.Store.(logicalStore)
-				if err := ds.ImportCanonicalLogical(t.Context(), bytes.NewReader(bad)); err == nil {
+				if fault == "footer-reader-error" {
+					summary, err := ds.ImportCanonicalLogicalWithOptions(t.Context(),
+						io.MultiReader(bytes.NewReader(bad), logicalFooterErrorReader{}),
+						archive.CanonicalLogicalImportOptions{BatchSize: 1})
+
+					code, class, ok := memory.ClassifyError(err)
+					if !ok || code != memory.CodeStoreFailure || class != memory.ErrorClassRetryable ||
+						strings.Contains(err.Error(), "PRIVATE") {
+						t.Errorf("import footer failure lost redacted retry classification: %v", err)
+					}
+
+					if summary.RecordCount != 0 || summary.SHA256 != "" || len(summary.Scopes) != 0 {
+						t.Errorf("failed import returned summary: %+v", summary)
+					}
+				} else if err := ds.ImportCanonicalLogical(t.Context(), bytes.NewReader(bad)); err == nil {
 					t.Fatal("invalid import accepted")
 				}
 
@@ -219,6 +245,12 @@ func TestSQLLogicalMalformedStreamRetry(t *testing.T) {
 			})
 		}
 	})
+}
+
+type logicalFooterErrorReader struct{}
+
+func (logicalFooterErrorReader) Read([]byte) (int, error) {
+	return 0, errors.New("PRIVATE footer reader failure")
 }
 
 func TestSQLLogicalBoundsAndExactKeys(t *testing.T) {

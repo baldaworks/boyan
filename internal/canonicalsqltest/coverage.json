@@ -1958,6 +1958,7 @@
 {"kind":"fixture","file":"store/archive/logical_routes_test.go","symbol":"logicalFailWriter.Write","owner":"TASK-019"},
 {"kind":"fixture","file":"store/archive/logical_test.go","symbol":"encodeLogicalFrames","owner":"TASK-019"},
 {"kind":"fixture","file":"store/archive/logical_test.go","symbol":"logicalBytes","owner":"TASK-019"},
+{"kind":"fixture","file":"store/archive/logical_test.go","symbol":"logicalFooterErrorReader.Read","owner":"TASK-019"},
 {"kind":"fixture","file":"store/archive/logical_test.go","symbol":"logicalFrames","owner":"TASK-019"},
 {"kind":"fixture","file":"store/archive/restore_cases_test.go","symbol":"encodeRestoreFrames","owner":"TASK-019"},
 {"kind":"fixture","file":"store/archive/restore_cases_test.go","symbol":"restoreDestination","owner":"TASK-019"},

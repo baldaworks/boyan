@@ -167,8 +167,10 @@ func scanLogical(ctx context.Context, source io.Reader, batch int,
 				return header, summary, invalid("invalid canonical logical checksum or count")
 			}
 
-			if _, err := reader.ReadByte(); !errors.Is(err, io.EOF) {
+			if _, err := reader.ReadByte(); err == nil {
 				return header, summary, invalid("trailing canonical logical data")
+			} else if !errors.Is(err, io.EOF) {
+				return header, summary, err
 			}
 
 			if err := flush(); err != nil {
