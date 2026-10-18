@@ -223,13 +223,15 @@ func TestSQLRestoreRejectsUntrustedFramingAndAllowsRetry(t *testing.T) {
 		_, _, good := backupFrames(t, source.Store.(backupStore), 0)
 		for _, kind := range []string{"checksum", "count", "truncated", "trailing", "oversize-frame", "foreign-backend",
 			"schema", "base", "order", "duplicate", "duplicate-json", "unknown-field", "oversize-value", "oversize-key",
-			"arity", "orphan-proof"} {
+			"arity", "orphan-proof", "format"} {
 			t.Run(kind, func(t *testing.T) {
 				d := restoreDestination(t, source.Backend)
 				ds := d.Store.(restoreStore)
 				frames := decodeArchive(t, good)
 
 				switch kind {
+				case "format":
+					frames[0]["format"] = "boyan-sql-logical/v1"
 				case "foreign-backend":
 					frames[0]["backend"] = "foreign"
 				case "schema":

@@ -61,7 +61,7 @@ func readRestoreFrame(ctx context.Context, r io.Reader) ([]byte, error) {
 	return data, ctx.Err()
 }
 
-//nolint:cyclop,gocognit,funlen // Stream checks and unlinked resources share one error scope.
+//nolint:cyclop,gocognit,gocyclo,funlen // Stream checks and unlinked resources share one error scope.
 func stageRestore(
 	ctx context.Context,
 	r io.Reader,
@@ -93,6 +93,10 @@ func stageRestore(
 
 	if err := decodeRestoreJSON(data, &header); err != nil {
 		return file, header, "", invalid("invalid canonical archive header")
+	}
+
+	if header.Format != archive.SQLBackupFormat {
+		return file, header, "", invalid("unsupported canonical opaque archive format")
 	}
 
 	if err := validateRestoreHeader(header, postgres); err != nil {
@@ -206,12 +210,17 @@ func validateRestoreHeader(h archive.BackupHeader, postgres bool) error {
 	}
 
 	id, err := hex.DecodeString(h.SourceStoreUUID)
-	if err != nil || len(id) != storeIdentityBytes || h.Kind != "header" || h.Format != archive.SQLBackupFormat ||
+	if err != nil || len(id) != storeIdentityBytes || h.Kind != "header" ||
+		(h.Format != archive.SQLBackupFormat && h.Format != archive.SQLLogicalFormat) ||
 		h.Backend != backend || h.SchemaVersion != 1 || h.PrivacyProtocol != 1 || h.ProofProtocol != 1 ||
 		h.End < h.Base || (h.Mode != "full" && h.Mode != "incremental") ||
 		(h.Mode == "full" && h.Base != 0) ||
 		(h.Mode == "incremental" && h.Base == 0) {
 		return invalid("unsupported canonical archive identity or version")
+	}
+
+	if h.Format == archive.SQLLogicalFormat && (h.Mode != "full" || h.Base != 0) {
+		return invalid("logical canonical archive requires complete snapshot")
 	}
 
 	return nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
 	"github.com/baldaworks/boyan/store/archive"
@@ -13,12 +14,26 @@ const maxRestoreBatch = 4096
 
 // RestoreCanonicalBackup validates and replays a complete opaque artifact
 // behind a durable fence. Failure retains control across owner reopening.
-//
-//nolint:cyclop,gocognit,funlen // Ordered durable transitions and resource cleanup remain explicit.
 func (o *Owner) RestoreCanonicalBackup(
 	ctx context.Context,
 	source io.Reader,
 	pending int,
+) (result error) {
+	return o.restoreCanonical(ctx, source, pending, stageRestore, nil)
+}
+
+type restoreStager func(context.Context, io.Reader, bool) (*os.File, archive.BackupHeader, string, error)
+
+// restoreCanonical is the single loading/validation/merge/privacy authority for
+// both supported SQL formats. A logical stager produces the same private spool.
+//
+//nolint:cyclop,gocognit,funlen // Ordered durable transitions and resource cleanup remain explicit.
+func (o *Owner) restoreCanonical(
+	ctx context.Context,
+	source io.Reader,
+	pending int,
+	stage restoreStager,
+	progress func(archive.CanonicalLogicalImportProgress) error,
 ) (result error) {
 	if err := checkArchiveContext(ctx); err != nil {
 		return err
@@ -96,7 +111,7 @@ func (o *Owner) RestoreCanonicalBackup(
 		return err
 	}
 
-	spool, header, digest, err := stageRestore(admitted, source, o.connection.pg != nil)
+	spool, header, digest, err := stage(admitted, source, o.connection.pg != nil)
 	if err != nil {
 		return err
 	}
@@ -119,7 +134,7 @@ func (o *Owner) RestoreCanonicalBackup(
 		return err
 	}
 
-	if err := o.replayRestore(admitted, spool, pending); err != nil {
+	if err := o.replayRestoreProgress(admitted, spool, pending, progress); err != nil {
 		return err
 	}
 
@@ -186,9 +201,16 @@ func validateRestoreChain(
 	return nil
 }
 
-func (o *Owner) replayRestore(ctx context.Context, source io.Reader, pending int) error {
+//nolint:cyclop // Durable progress runs only after each successful bounded transaction.
+func (o *Owner) replayRestoreProgress(ctx context.Context, source io.Reader, pending int,
+	progress func(archive.CanonicalLogicalImportProgress) error,
+) error {
+	var imported uint64
+
 	for {
 		finished := false
+
+		var batch uint64
 
 		err := o.restoreTransaction(ctx, true, func(ctx context.Context, tx *Tx) error {
 			for range pending {
@@ -211,12 +233,25 @@ func (o *Owner) replayRestore(ctx context.Context, source io.Reader, pending int
 				if err := tx.mergeRestoreRecord(ctx, key, record); err != nil {
 					return err
 				}
+
+				batch++
 			}
 
 			return nil
 		})
-		if err != nil || finished {
+		if err != nil {
 			return err
+		}
+
+		imported += batch
+		if batch != 0 && progress != nil {
+			if err := progress(archive.CanonicalLogicalImportProgress{ImportedRecords: imported}); err != nil {
+				return err
+			}
+		}
+
+		if finished {
+			return nil
 		}
 	}
 }

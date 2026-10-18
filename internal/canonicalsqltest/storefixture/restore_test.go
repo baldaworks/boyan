@@ -82,8 +82,48 @@ func publicRestoreBytes(
 	return out.Bytes(), end
 }
 
-//nolint:cyclop,gocognit,funlen // Stricter destinations need restore, privacy reads and actual replay.
 func TestPublicRestoreCertifiedMutationReplayAndRestrictions(t *testing.T) {
+	forEachMutation(t, func(t *testing.T, f *storefixture.Fixture, s mutationStore, sourceProbe mutationProbe) {
+		m := nativeMutation(t)
+		certifyMutation(t, &m)
+
+		outcome, err := s.ApplyCanonicalMutation(t.Context(), m)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		full, base := publicRestoreBytes(t, f.Store.(archive.CanonicalBackupWriter), 0)
+		if err := sourceProbe.connection.Update(t.Context(), func(tx *canonicalsql.Tx) error {
+			for _, family := range []canonicalsql.Family{
+				canonicalsql.SourcePrivacy, canonicalsql.SourcePrivacyScope, canonicalsql.TurnCertificate,
+			} {
+				id := m.Sources[0].SourceID
+				if family == canonicalsql.SourcePrivacyScope {
+					id = "coverage"
+				}
+
+				if err := tx.Delete(t.Context(), canonicalsql.Key{
+					Family: family, Scope: m.Scope, Parts: [][]byte{[]byte(id)},
+				}); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		delta, _ := publicRestoreBytes(t, f.Store.(archive.CanonicalBackupWriter), base)
+		assertPublicRestoreRestrictions(t, f, m, outcome, full, delta, false)
+	})
+}
+
+func TestPublicLogicalCertifiedMutationReplayAndRestrictions(t *testing.T) {
+	runPublicRestoreCertifiedMutation(t, true)
+}
+
+func runPublicRestoreCertifiedMutation(t *testing.T, logical bool) {
 	forEachMutation(
 		t,
 		func(t *testing.T, f *storefixture.Fixture, s mutationStore, sourceProbe mutationProbe) {
@@ -95,7 +135,7 @@ func TestPublicRestoreCertifiedMutationReplayAndRestrictions(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			full, base := publicRestoreBytes(t, f.Store.(archive.CanonicalBackupWriter), 0)
+			full, base := publicRestoreArtifact(t, f.Store, 0, logical)
 			if err := sourceProbe.connection.Update(t.Context(), func(tx *canonicalsql.Tx) error {
 				for _, family := range []canonicalsql.Family{canonicalsql.SourcePrivacy,
 					canonicalsql.SourcePrivacyScope, canonicalsql.TurnCertificate} {
@@ -121,125 +161,128 @@ func TestPublicRestoreCertifiedMutationReplayAndRestrictions(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			delta, _ := publicRestoreBytes(t, f.Store.(archive.CanonicalBackupWriter), base)
-			for _, restriction := range []string{"standard", "sensitive", "unknown", "incomplete", "denied"} {
-				t.Run(restriction, func(t *testing.T) {
-					d := publicRestoreDestination(t, f.Backend)
-
-					ds := d.Store.(restoredStore)
-					if err := ds.RestoreCanonicalBackup(
-						t.Context(),
-						bytes.NewReader(full),
-						1,
-					); err != nil {
-						t.Fatal(err)
-					}
-
-					probe := newMutationProbe(t, d)
-
-					if restriction == "denied" {
-						request := memory.ScopeEraseRequest{
-							Scope:                m.Scope,
-							OperationID:          "restore-forget",
-							Fingerprint:          "restore-forget",
-							ExpectedScopeVersion: 1,
-							ForgottenAt:          m.Operation.CommittedAt.Add(time.Hour),
-						}
-						if _, err := d.Store.(memory.ScopeEraseStore).RunScopeErase(
-							t.Context(),
-							request,
-						); err != nil {
-							t.Fatal(err)
-						}
-					} else if restriction != "standard" {
-						var privacy map[string]any
-						probe.read(
-							t,
-							m.Scope,
-							canonicalsql.SourcePrivacy,
-							m.Sources[0].SourceID,
-							&privacy,
-						)
-
-						if restriction == "incomplete" {
-							probe.write(
-								t,
-								canonicalsql.Key{
-									Family: canonicalsql.SourcePrivacyScope,
-									Scope:  m.Scope,
-									Parts:  [][]byte{[]byte("coverage")},
-								},
-								map[string]any{"version": 1, "scope": m.Scope, "incomplete": true},
-							)
-						} else {
-							privacy["state"] = restriction
-							probe.write(
-								t,
-								canonicalsql.Key{
-									Family: canonicalsql.SourcePrivacy,
-									Scope:  m.Scope,
-									Parts:  [][]byte{[]byte(m.Sources[0].SourceID)},
-								},
-								privacy,
-							)
-						}
-					}
-
-					if err := ds.RestoreCanonicalBackup(
-						t.Context(),
-						bytes.NewReader(full),
-						1,
-					); err != nil {
-						t.Fatalf("stricter %s restore: %v", restriction, err)
-					}
-
-					if err := ds.RestoreCanonicalBackup(
-						t.Context(),
-						bytes.NewReader(delta),
-						1,
-					); err != nil {
-						t.Fatal("restrictive tombstone merge: ", err)
-					}
-
-					if restriction == "denied" {
-						assertPublicErasePayloads(t, d.Store.(forgetStore), m)
-
-						state, err := ds.LoadScopeState(t.Context(), m.Scope)
-						if err != nil || state.Version != 2 || state.ChangeSeq != 2 {
-							t.Fatalf("destination erase baseline regressed: %+v %v", state, err)
-						}
-					} else {
-						want := restriction
-						if restriction == "incomplete" {
-							want = "unknown"
-						}
-
-						if got := privacyState(
-							t,
-							probe,
-							m.Scope,
-							m.Sources[0].SourceID,
-						); got != want {
-							t.Fatalf("privacy=%s want %s", got, want)
-						}
-					}
-
-					got, err := ds.ApplyCanonicalMutation(t.Context(), m)
-					if err != nil || !reflect.DeepEqual(got, outcome) {
-						t.Fatalf("restored replay=%+v %v", got, err)
-					}
-
-					if restriction == "denied" {
-						assertPublicErasePayloads(t, d.Store.(forgetStore), m)
-					}
-				})
-			}
+			delta, _ := publicRestoreArtifact(t, f.Store, base, logical)
+			assertPublicRestoreRestrictions(t, f, m, outcome, full, delta, logical)
 		},
 	)
 }
 
-//nolint:cyclop,funlen // Preserve pending journal identity through loading, retry and actual recovery.
+//nolint:cyclop,gocognit,funlen // Both routes retain identical restriction and replay assertions.
+func assertPublicRestoreRestrictions(t *testing.T, f *storefixture.Fixture, m memory.CanonicalMutation,
+	outcome memory.CanonicalMutationOutcome, full, delta []byte, logical bool,
+) {
+	for _, restriction := range []string{"standard", "sensitive", "unknown", "incomplete", "denied"} {
+		t.Run(restriction, func(t *testing.T) {
+			d := publicRestoreDestination(t, f.Backend)
+
+			ds := d.Store.(restoredStore)
+			if err := restorePublicArtifact(t.Context(), ds, full, logical); err != nil {
+				t.Fatal(err)
+			}
+
+			probe := newMutationProbe(t, d)
+
+			if restriction == "denied" {
+				request := memory.ScopeEraseRequest{
+					Scope:                m.Scope,
+					OperationID:          "restore-forget",
+					Fingerprint:          "restore-forget",
+					ExpectedScopeVersion: 1,
+					ForgottenAt:          m.Operation.CommittedAt.Add(time.Hour),
+				}
+				if _, err := d.Store.(memory.ScopeEraseStore).RunScopeErase(
+					t.Context(),
+					request,
+				); err != nil {
+					t.Fatal(err)
+				}
+			} else if restriction != "standard" {
+				var privacy map[string]any
+				probe.read(
+					t,
+					m.Scope,
+					canonicalsql.SourcePrivacy,
+					m.Sources[0].SourceID,
+					&privacy,
+				)
+
+				if restriction == "incomplete" {
+					probe.write(
+						t,
+						canonicalsql.Key{
+							Family: canonicalsql.SourcePrivacyScope,
+							Scope:  m.Scope,
+							Parts:  [][]byte{[]byte("coverage")},
+						},
+						map[string]any{"version": 1, "scope": m.Scope, "incomplete": true},
+					)
+				} else {
+					privacy["state"] = restriction
+					probe.write(
+						t,
+						canonicalsql.Key{
+							Family: canonicalsql.SourcePrivacy,
+							Scope:  m.Scope,
+							Parts:  [][]byte{[]byte(m.Sources[0].SourceID)},
+						},
+						privacy,
+					)
+				}
+			}
+
+			if err := restorePublicArtifact(t.Context(), ds, full, logical); err != nil {
+				t.Fatalf("stricter %s restore: %v", restriction, err)
+			}
+
+			if err := restorePublicArtifact(t.Context(), ds, delta, logical); err != nil {
+				t.Fatal("restrictive tombstone merge: ", err)
+			}
+
+			if restriction == "denied" {
+				assertPublicErasePayloads(t, d.Store.(forgetStore), m)
+
+				state, err := ds.LoadScopeState(t.Context(), m.Scope)
+				if err != nil || state.Version != 2 || state.ChangeSeq != 2 {
+					t.Fatalf("destination erase baseline regressed: %+v %v", state, err)
+				}
+			} else {
+				want := restriction
+				if restriction == "incomplete" {
+					want = "unknown"
+				}
+
+				if got := privacyState(
+					t,
+					probe,
+					m.Scope,
+					m.Sources[0].SourceID,
+				); got != want {
+					t.Fatalf("privacy=%s want %s", got, want)
+				}
+			}
+
+			got, err := ds.ApplyCanonicalMutation(t.Context(), m)
+			if err != nil || !reflect.DeepEqual(got, outcome) {
+				t.Fatalf("restored replay=%+v %v", got, err)
+			}
+
+			if restriction == "denied" {
+				assertPublicErasePayloads(t, d.Store.(forgetStore), m)
+			}
+		})
+	}
+}
+
 func TestPublicRestorePendingEraseUnchangedUntilRecovery(t *testing.T) {
+	runPublicRestorePendingErase(t, false)
+}
+
+func TestPublicLogicalPendingEraseUnchangedUntilRecovery(t *testing.T) {
+	runPublicRestorePendingErase(t, true)
+}
+
+//nolint:cyclop,funlen // Both real formats retain pending journal authority until explicit recovery.
+func runPublicRestorePendingErase(t *testing.T, logical bool) {
 	forEachMutation(
 		t,
 		func(t *testing.T, f *storefixture.Fixture, s mutationStore, _ mutationProbe) {
@@ -263,15 +306,11 @@ func TestPublicRestorePendingEraseUnchangedUntilRecovery(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			full, _ := publicRestoreBytes(t, f.Store.(archive.CanonicalBackupWriter), 0)
+			full, _ := publicRestoreArtifact(t, f.Store, 0, logical)
 			d := publicRestoreDestination(t, f.Backend)
 
 			ds := d.Store.(restoredStore)
-			if err := ds.RestoreCanonicalBackup(
-				t.Context(),
-				bytes.NewReader(full[:len(full)-1]),
-				1,
-			); err == nil {
+			if err := restorePublicArtifact(t.Context(), ds, full[:len(full)-1], logical); err == nil {
 				t.Fatal("truncation accepted")
 			}
 
@@ -300,7 +339,7 @@ func TestPublicRestorePendingEraseUnchangedUntilRecovery(t *testing.T) {
 			probe := newMutationProbe(t, d)
 
 			remove := probe.failInserts(t, "source_privacy_ready")
-			if err := ds.RestoreCanonicalBackup(t.Context(), bytes.NewReader(full), 1); err == nil {
+			if err := restorePublicArtifact(t.Context(), ds, full, logical); err == nil {
 				t.Fatal("validated preparation fault ignored")
 			}
 
@@ -346,6 +385,35 @@ func TestPublicRestorePendingEraseUnchangedUntilRecovery(t *testing.T) {
 	)
 }
 
+func publicRestoreArtifact(t *testing.T, s storefixture.Store, since uint64, logical bool) ([]byte, uint64) {
+	t.Helper()
+
+	if !logical {
+		return publicRestoreBytes(t, s.(archive.CanonicalBackupWriter), since)
+	}
+
+	var output bytes.Buffer
+	if err := s.(archive.CanonicalLogicalExporter).ExportCanonicalLogical(t.Context(), &output); err != nil {
+		t.Fatal(err)
+	}
+
+	return output.Bytes(), 0
+}
+
+func restorePublicArtifact(ctx context.Context, s archive.CanonicalBackupReader, data []byte, logical bool) error {
+	if logical {
+		_, err := s.(archive.CanonicalLogicalImporter).ImportCanonicalLogicalWithOptions(
+			ctx,
+			bytes.NewReader(data),
+			archive.CanonicalLogicalImportOptions{BatchSize: 1},
+		)
+
+		return err
+	}
+
+	return s.RestoreCanonicalBackup(ctx, bytes.NewReader(data), 1)
+}
+
 func TestPublicRestorePendingEraseCompletionDelta(t *testing.T) {
 	for _, unrelated := range []bool{false, true} {
 		name := "source-only"
@@ -357,9 +425,24 @@ func TestPublicRestorePendingEraseCompletionDelta(t *testing.T) {
 			forEachMutation(
 				t,
 				func(t *testing.T, f *storefixture.Fixture, s mutationStore, _ mutationProbe) {
-					runRestoreCompletionDelta(t, f, s, unrelated)
+					runRestoreCompletionDelta(t, f, s, unrelated, false)
 				},
 			)
+		})
+	}
+}
+
+func TestPublicLogicalPendingEraseCompletion(t *testing.T) {
+	for _, unrelated := range []bool{false, true} {
+		name := "source-only"
+		if unrelated {
+			name = "unrelated-pending"
+		}
+
+		t.Run(name, func(t *testing.T) {
+			forEachMutation(t, func(t *testing.T, f *storefixture.Fixture, s mutationStore, _ mutationProbe) {
+				runRestoreCompletionDelta(t, f, s, unrelated, true)
+			})
 		})
 	}
 }
@@ -370,6 +453,7 @@ func runRestoreCompletionDelta(
 	f *storefixture.Fixture,
 	s mutationStore,
 	unrelated bool,
+	logical bool,
 ) {
 	t.Helper()
 	m := nativeMutation(t)
@@ -403,7 +487,7 @@ func runRestoreCompletionDelta(
 		t.Fatal("source did not reach locked pending state")
 	}
 
-	full, base := publicRestoreBytes(t, f.Store.(archive.CanonicalBackupWriter), 0)
+	full, base := publicRestoreArtifact(t, f.Store, 0, logical)
 
 	d := publicRestoreDestination(t, f.Backend)
 	localRequest := memory.ScopeEraseRequest{
@@ -430,9 +514,7 @@ func runRestoreCompletionDelta(
 		}
 	}
 
-	if err := d.Store.(restoredStore).RestoreCanonicalBackup(
-		t.Context(), bytes.NewReader(full), 1,
-	); err != nil {
+	if err := restorePublicArtifact(t.Context(), d.Store.(restoredStore), full, logical); err != nil {
 		t.Fatal(err)
 	}
 
@@ -441,12 +523,8 @@ func runRestoreCompletionDelta(
 		t.Fatalf("source completion: %+v %v", completed, err)
 	}
 
-	delta, _ := publicRestoreBytes(t, f.Store.(archive.CanonicalBackupWriter), base)
-	if err := d.Store.(restoredStore).RestoreCanonicalBackup(
-		t.Context(),
-		bytes.NewReader(delta),
-		1,
-	); err != nil {
+	delta, _ := publicRestoreArtifact(t, f.Store, base, logical)
+	if err := restorePublicArtifact(t.Context(), d.Store.(restoredStore), delta, logical); err != nil {
 		t.Fatalf("completion delta restore: %v", err)
 	}
 

@@ -12,8 +12,16 @@ import (
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
-//nolint:cyclop,funlen,gocognit // Valid checksums cannot mask journal baseline or receipt mismatches.
 func TestSQLRestoreRejectsMismatchedEraseOutcome(t *testing.T) {
+	runSQLRestoreJournalBindings(t, false)
+}
+
+func TestSQLLogicalJournalBindings(t *testing.T) {
+	runSQLRestoreJournalBindings(t, true)
+}
+
+//nolint:cyclop,funlen,gocognit // Both stream routes must reject exact receipt and stage-baseline mismatches.
+func runSQLRestoreJournalBindings(t *testing.T, logical bool) {
 	for _, pending := range []bool{false, true} {
 		name := "receipt"
 		if pending {
@@ -58,6 +66,10 @@ func TestSQLRestoreRejectsMismatchedEraseOutcome(t *testing.T) {
 				}
 
 				_, frames, full := backupFrames(t, f.Store.(backupStore), 0)
+				if logical {
+					full = logicalBytes(t, f.Store.(logicalStore))
+					frames = logicalFrames(t, full)
+				}
 
 				if pending {
 					journal.BaselineVersion++
@@ -73,7 +85,8 @@ func TestSQLRestoreRejectsMismatchedEraseOutcome(t *testing.T) {
 				changed := false
 
 				for _, frame := range frames {
-					if frame["family"] == string(canonicalsql.EraseJournal) {
+					if frame["family"] == string(canonicalsql.EraseJournal) ||
+						frame["record_type"] == string(canonicalsql.EraseJournal) {
 						value, err := canonicalsql.Encode(canonicalsql.EraseJournal, journal)
 						if err != nil {
 							t.Fatal(err)
@@ -91,11 +104,15 @@ func TestSQLRestoreRejectsMismatchedEraseOutcome(t *testing.T) {
 				d := restoreDestination(t, f.Backend)
 
 				ds := d.Store.(restoreStore)
-				if err := ds.RestoreCanonicalBackup(
-					t.Context(),
-					bytes.NewReader(encodeRestoreFrames(t, frames)),
-					1,
-				); err == nil {
+
+				var bad []byte
+				if logical {
+					bad = encodeLogicalFrames(t, frames)
+				} else {
+					bad = encodeRestoreFrames(t, frames)
+				}
+
+				if err := restoreJournalArtifact(t, ds, bad, logical); err == nil {
 					t.Fatal("erase journal binding diverged without rejection")
 				}
 
@@ -114,11 +131,7 @@ func TestSQLRestoreRejectsMismatchedEraseOutcome(t *testing.T) {
 				}
 
 				ds = d.Store.(restoreStore)
-				if err := ds.RestoreCanonicalBackup(
-					t.Context(),
-					bytes.NewReader(full),
-					1,
-				); err != nil {
+				if err := restoreJournalArtifact(t, ds, full, logical); err != nil {
 					t.Fatal("valid whole retry after mismatch: ", err)
 				}
 
@@ -138,6 +151,16 @@ func TestSQLRestoreRejectsMismatchedEraseOutcome(t *testing.T) {
 			})
 		})
 	}
+}
+
+func restoreJournalArtifact(t *testing.T, s restoreStore, data []byte, logical bool) error {
+	t.Helper()
+
+	if logical {
+		return s.(logicalStore).ImportCanonicalLogical(t.Context(), bytes.NewReader(data))
+	}
+
+	return s.RestoreCanonicalBackup(t.Context(), bytes.NewReader(data), 1)
 }
 
 //nolint:cyclop,gocognit,funlen // One full/delta chain checks all retained authority tombstones together.
