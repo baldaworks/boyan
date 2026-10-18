@@ -98,7 +98,15 @@ func loadProofScopeState(ctx context.Context, tx *Tx, scope memory.Scope, key Ke
 
 	err := getPrivacyRecord(ctx, tx, key, ScopeState, &state)
 	if err != nil && !privacyMissing(err) {
+		if code, _, ok := memory.ClassifyError(err); ok && code == memory.CodeInvalidDerived {
+			return memory.ScopeState{}, tx.fail(proofStoreFailure("invalid stored canonical scope", err))
+		}
+
 		return memory.ScopeState{}, err
+	}
+
+	if stampErr := validateScopeStateStamp(ctx, tx, key, err == nil); stampErr != nil {
+		return memory.ScopeState{}, stampErr
 	}
 
 	if err := state.Validate(); err != nil || state.Scope != scope {

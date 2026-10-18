@@ -21,8 +21,10 @@ type Store interface {
 // Fixture supplies the real owner and its constructor for reopen/lock cases.
 type Fixture struct {
 	Backend canonicalsqltest.Backend
-	Store   Store
-	Open    func(context.Context) (Store, error)
+	// Database is the fixture-owned raw connection for corruption/fault checks.
+	Database *canonicalsqltest.Database
+	Store    Store
+	Open     func(context.Context) (Store, error)
 }
 
 // ForEach runs both public owner factories with real isolated databases and
@@ -65,6 +67,6 @@ func ForEach(t *testing.T, run func(*testing.T, *Fixture)) {
 				t.Error(err)
 			}
 		})
-		run(t, &Fixture{Backend: db.Backend, Store: store, Open: open})
+		run(t, &Fixture{Backend: db.Backend, Database: db, Store: store, Open: open})
 	})
 }
