@@ -1,6 +1,6 @@
 package badger
 
-import memory "github.com/baldaworks/boyan/pkg/memory"
+import "github.com/baldaworks/boyan/store/archive"
 
 const (
 	canonicalLogicalExportSchema = "boyan-logical-export/v1"
@@ -11,50 +11,20 @@ const (
 	defaultCanonicalImportBatch  = 256
 )
 
-// CanonicalLogicalExportHeader identifies the application-owned JSONL format.
-// Backend-native Badger keys, versions, and projection files are not exposed.
-type CanonicalLogicalExportHeader struct {
-	SchemaVersion string `json:"schema_version"`
-	Kind          string `json:"kind"`
-}
+// CanonicalLogicalExportHeader is retained until the Badger package retirement (TASK-020).
+type CanonicalLogicalExportHeader = archive.CanonicalLogicalExportHeader
 
-// CanonicalLogicalExportRecord is one portable tuple-key record. Envelope is
-// retained as opaque validated bytes so storage encoding stays independent of
-// the logical payload representation during export/import.
-type CanonicalLogicalExportRecord struct {
-	Kind       string   `json:"kind"`
-	RecordType string   `json:"record_type"`
-	Components []string `json:"components"`
-	Suffix     []byte   `json:"suffix,omitempty"`
-	Envelope   []byte   `json:"envelope"`
-}
+// CanonicalLogicalExportRecord is retained until the Badger package retirement (TASK-020).
+type CanonicalLogicalExportRecord = archive.CanonicalLogicalExportRecord
 
-// CanonicalLogicalExportFooter authenticates the record stream and makes
-// truncation detectable before import writes anything.
-type CanonicalLogicalExportFooter struct {
-	SchemaVersion string `json:"schema_version"`
-	Kind          string `json:"kind"`
-	RecordCount   uint64 `json:"record_count"`
-	SHA256        string `json:"sha256"`
-}
+// CanonicalLogicalExportFooter is retained until the Badger package retirement (TASK-020).
+type CanonicalLogicalExportFooter = archive.CanonicalLogicalExportFooter
 
-// CanonicalLogicalExportSummary reports validated stream metadata without
-// exposing backend-native record layout. Scopes come only from canonical scope
-// state records, so internal payload storage is excluded from rebuild inputs.
-type CanonicalLogicalExportSummary struct {
-	RecordCount uint64
-	SHA256      string
-	Scopes      []memory.Scope
-}
+// CanonicalLogicalExportSummary is retained until the Badger package retirement (TASK-020).
+type CanonicalLogicalExportSummary = archive.CanonicalLogicalExportSummary
 
-// CanonicalLogicalImportOptions controls bounded, resumable import batches.
-type CanonicalLogicalImportOptions struct {
-	BatchSize int
-	Progress  func(CanonicalLogicalImportProgress) error
-}
+// CanonicalLogicalImportOptions is retained until the Badger package retirement (TASK-020).
+type CanonicalLogicalImportOptions = archive.CanonicalLogicalImportOptions
 
-// CanonicalLogicalImportProgress reports durable batch progress after one
-// transaction committed.
-type CanonicalLogicalImportProgress struct {
-	ImportedRecords uint64
-}
+// CanonicalLogicalImportProgress is retained until the Badger package retirement (TASK-020).
+type CanonicalLogicalImportProgress = archive.CanonicalLogicalImportProgress

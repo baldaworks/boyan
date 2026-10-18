@@ -17,6 +17,7 @@ components:
       - pkg/memory
       - client/http
       - boyantest
+      - store/archive
 
   memory_engine:
     in:

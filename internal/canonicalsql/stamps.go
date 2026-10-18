@@ -61,6 +61,10 @@ func keyFromFrame(f Family, frame []byte) (Key, error) {
 // ScanStamps bounds client memory and envelope hydration. The server may sort
 // tied sequence/family key sets; the full binary key is never a B-tree column.
 func (tx *Tx) ScanStamps(ctx context.Context, after *StampCursor, limit int) ([]Stamp, error) {
+	return tx.scanStampsSince(ctx, 0, after, limit)
+}
+
+func (tx *Tx) scanStampsSince(ctx context.Context, since uint64, after *StampCursor, limit int) ([]Stamp, error) {
 	if err := tx.check(ctx, false); err != nil {
 		return nil, err
 	}
@@ -69,7 +73,7 @@ func (tx *Tx) ScanStamps(ctx context.Context, after *StampCursor, limit int) ([]
 		return nil, tx.fail(limitError())
 	}
 
-	statement, args, err := tx.stampPageStatement(after, limit)
+	statement, args, err := tx.stampPageStatementSince(since, after, limit)
 	if err != nil {
 		return nil, tx.fail(err)
 	}
@@ -153,9 +157,17 @@ func (tx *Tx) hydrateStamp(ctx context.Context, stamp *Stamp) error {
 }
 
 func (tx *Tx) stampPageStatement(after *StampCursor, limit int) (string, []any, error) {
+	return tx.stampPageStatementSince(0, after, limit)
+}
+
+func (tx *Tx) stampPageStatementSince(since uint64, after *StampCursor, limit int) (string, []any, error) {
 	where := ""
 
 	var args []any
+	if since != 0 {
+		args = []any{Uint64(since)}
+		where = " WHERE last_seq>$1"
+	}
 
 	if after != nil {
 		if _, err := keyFromFrame(after.Family, after.BinaryKey); err != nil {
