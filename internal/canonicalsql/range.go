@@ -156,21 +156,12 @@ func scanRow(r rows, family Family, def familyDef) (Row, error) {
 		return Row{}, err
 	}
 
-	key := Key{Family: family}
-	if def.scoped {
-		key.Scope = memory.Scope{Key: string(values[0]), Kind: memory.ScopeKind(values[1])}
-		key.Parts = values[2:]
-	} else if len(def.parts) != 0 {
-		key.Parts = values
-	} else if len(values[0]) != 0 {
-		return Row{}, invalid("invalid canonical singleton")
-	}
-
-	if _, _, err := key.values(); err != nil {
+	key, err := keyFromValues(family, def, values)
+	if err != nil {
 		return Row{}, err
 	}
 
-	encoded, err := validateStoredValue(key, encoded, size, extra)
+	encoded, err = validateStoredValue(key, encoded, size, extra)
 	if err != nil {
 		return Row{}, err
 	}

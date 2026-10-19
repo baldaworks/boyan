@@ -70,17 +70,19 @@ func validateStoredValue(key Key, encoded []byte, size int, extra [][]byte) ([]b
 	}
 
 	if len(encoded) != size {
-		return nil, invalid("canonical SQL envelope size mismatch")
+		return nil, corruptRow()
 	}
 
+	// These bytes came from storage. The same validation on caller-supplied
+	// envelopes remains an input error in columnValues and the public codec.
 	expected, err := columnValues(key, encoded)
 	if err != nil {
-		return nil, err
+		return nil, corruptRow()
 	}
 
 	for i, col := range expected {
 		if !bytes.Equal(col, extra[i]) {
-			return nil, invalid("canonical SQL envelope/column mismatch")
+			return nil, corruptRow()
 		}
 	}
 

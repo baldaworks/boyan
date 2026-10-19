@@ -114,10 +114,7 @@ func TestCorruptEnvelopeAndMaterializedColumnsFailClosed(t *testing.T) {
 		mustUpdate(t, c, func(tx *Tx) error { return tx.Put(t.Context(), key, good) })
 		rawExec(t, c, "UPDATE "+c.table("message")+" SET source_id=$1", []byte("foreign"))
 
-		storedCode := memory.CodeInvalidDerived
-		if db.Postgres != nil {
-			storedCode = memory.CodeStoreFailure
-		}
+		storedCode := memory.CodeStoreFailure
 
 		for _, scan := range []bool{false, true} {
 			err := c.View(t.Context(), func(tx *Tx) error {
