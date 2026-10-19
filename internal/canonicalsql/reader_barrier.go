@@ -90,10 +90,36 @@ func recheckReaderRevisions(ctx context.Context, tx *Tx, captured readerSnapshot
 	}
 
 	for _, record := range captured.records {
-		if err := requireProofHead(ctx, tx, scope, memory.RevisionRef{ItemID: record.ItemID,
+		if err := recheckReaderHead(ctx, tx, scope, memory.RevisionRef{ItemID: record.ItemID,
 			RevisionID: record.RevisionID}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func recheckReaderHead(ctx context.Context, tx *Tx, scope memory.Scope, ref memory.RevisionRef) error {
+	key, err := privacyKey(scope, Head, ref.ItemID)
+	if err != nil {
+		return err
+	}
+
+	var head memory.ItemHead
+	if err := getPrivacyRecord(ctx, tx, key, Head, &head); err != nil {
+		if privacyMissing(err) {
 			return readerStateChanged()
 		}
+
+		return err
+	}
+
+	if head.Validate() != nil || head.ItemID != ref.ItemID {
+		return corruptRow()
+	}
+
+	if head.RevisionID != ref.RevisionID {
+		return readerStateChanged()
 	}
 
 	return nil

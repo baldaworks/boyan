@@ -5,7 +5,7 @@ import (
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
-// ScanActiveHeads reads a bounded exclusive page in original item-byte order.
+// ScanActiveHeads reads a bounded exclusive page in encoded item-ID order.
 func (o *Owner) ScanActiveHeads(ctx context.Context, request memory.ActiveHeadScanRequest) ([]memory.ItemHead, error) {
 	if err := mutationContext(ctx); err != nil {
 		return nil, err
@@ -32,12 +32,7 @@ func (o *Owner) ScanActiveHeads(ctx context.Context, request memory.ActiveHeadSc
 }
 
 func scanReaderHeads(ctx context.Context, tx *Tx, request memory.ActiveHeadScanRequest) ([]memory.ItemHead, error) {
-	scan := Range{Family: Head, Scope: &request.Scope, Limit: int(request.Limit)}
-	if request.AfterItemID != "" {
-		scan.After = &Key{Family: Head, Scope: request.Scope, Parts: [][]byte{[]byte(request.AfterItemID)}}
-	}
-
-	rows, err := tx.Scan(ctx, scan)
+	rows, err := tx.activeHeadPage(ctx, request)
 	if err != nil {
 		return nil, err
 	}

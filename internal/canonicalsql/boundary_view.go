@@ -137,7 +137,7 @@ func collectBoundaryRevisionIDs(ctx context.Context, tx *Tx, scope memory.Scope,
 		}
 
 		for _, head := range heads {
-			if head.ItemID <= cursor {
+			if !boundaryHeadAdvances(head, cursor) {
 				return nil, corruptRow()
 			}
 
@@ -149,6 +149,10 @@ func collectBoundaryRevisionIDs(ctx context.Context, tx *Tx, scope memory.Scope,
 			ids = append(ids, head.RevisionID)
 		}
 	}
+}
+
+func boundaryHeadAdvances(head memory.ItemHead, cursor string) bool {
+	return len(head.ItemID) > len(cursor) || len(head.ItemID) == len(cursor) && head.ItemID > cursor
 }
 
 func validateBoundaryHead(ctx context.Context, tx *Tx, scope memory.Scope, head memory.ItemHead) error {

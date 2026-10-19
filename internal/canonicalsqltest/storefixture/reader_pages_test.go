@@ -13,11 +13,11 @@ import (
 	"time"
 )
 
-func TestPublicReaderRawPagesAndReopen(t *testing.T) {
+func TestPublicReaderEncodedActiveAndRawSourcePagesAndReopen(t *testing.T) {
 	forEachMutation(t, func(t *testing.T, f *storefixture.Fixture, store mutationStore, _ mutationProbe) {
 		initial := nativeMutation(t)
 
-		ids := []string{"aa", "a\x00z", "z", "aaa", "a", strings.Repeat("q", 65535)}
+		ids := []string{"aa", "a\x00z", "z", "aaa", "a", "é", "€", "a\x00", strings.Repeat("q", 65535)}
 		for index, id := range ids {
 			mutation := nativeMutation(t)
 			mutation.ExpectedScopeVersion = uint64(index)
@@ -32,8 +32,7 @@ func TestPublicReaderRawPagesAndReopen(t *testing.T) {
 			}
 		}
 
-		want := []string{"a", "a\x00z", "aa", "aaa", strings.Repeat("q", 65535), "z"}
-		assertReaderRawPages(t, f.Store.(activeReaderStore), initial.Scope, initial.Sources[0].SourceID, want)
+		assertReaderOrderedPages(t, f.Store.(activeReaderStore), initial.Scope, initial.Sources[0].SourceID)
 
 		if err := f.Store.Close(); err != nil {
 			t.Fatal(err)
@@ -45,21 +44,45 @@ func TestPublicReaderRawPagesAndReopen(t *testing.T) {
 		}
 		defer reopened.Close()
 
-		assertReaderRawPages(t, reopened.(activeReaderStore), initial.Scope, initial.Sources[0].SourceID, want)
+		assertReaderOrderedPages(t, reopened.(activeReaderStore), initial.Scope, initial.Sources[0].SourceID)
 	})
 }
 
-func assertReaderRawPages(t *testing.T, store activeReaderStore, scope memory.Scope, source string, want []string) {
+func assertReaderOrderedPages(t *testing.T, store activeReaderStore, scope memory.Scope, source string) {
 	t.Helper()
+
+	want := []string{"a", "z", "a\x00", "aa", "é", "a\x00z", "aaa", "€", strings.Repeat("q", 65535)}
 
 	after := ""
 	for _, id := range want {
 		heads, err := store.ScanActiveHeads(t.Context(), memory.ActiveHeadScanRequest{Scope: scope,
 			AfterItemID: after, Limit: 1})
 		if err != nil || len(heads) != 1 || heads[0].ItemID != id {
-			t.Fatalf("head after %q: count=%d err=%v", after, len(heads), err)
+			t.Fatalf("encoded head after %q: got=%+v want=%q err=%v", after, heads, id, err)
 		}
 
+		active, err := store.ScanActiveMemory(t.Context(), memory.ActiveMemoryScanRequest{Scope: scope,
+			AfterItemID: after, Limit: 1})
+		if err != nil || len(active) != 1 || active[0].Item.ItemID != id || active[0].RevisionID != id ||
+			len(active[0].Evidence) != 1 {
+			t.Fatalf("encoded memory after %q: count=%d want=%q err=%v", after, len(active), id, err)
+		}
+
+		after = id
+	}
+
+	assertReaderPageEnds(t, store, scope, after)
+	assertReaderRawSourcePages(t, store, scope, source)
+}
+
+func assertReaderRawSourcePages(t *testing.T, store activeReaderStore, scope memory.Scope, source string) {
+	t.Helper()
+
+	// Source/revision pages retain their separate raw-byte cursor contract.
+	raw := []string{"a", "a\x00", "a\x00z", "aa", "aaa", strings.Repeat("q", 65535), "z", "é", "€"}
+
+	after := ""
+	for _, id := range raw {
 		ids, next, err := store.SourceRevisionBatch(t.Context(), scope, source, after, 1)
 		if err != nil || !reflect.DeepEqual(ids, []string{id}) || next != id {
 			t.Fatalf("source page after %q: count=%d err=%v", after, len(ids), err)
@@ -67,8 +90,6 @@ func assertReaderRawPages(t *testing.T, store activeReaderStore, scope memory.Sc
 
 		after = id
 	}
-
-	assertReaderPageEnds(t, store, scope, after)
 }
 
 func assertReaderPageEnds(t *testing.T, store activeReaderStore, scope memory.Scope, after string) {
