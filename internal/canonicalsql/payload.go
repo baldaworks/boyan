@@ -45,6 +45,14 @@ func (o *Owner) PutPayload(ctx context.Context, data []byte, ref memory.PayloadR
 
 // LoadPayload reads and validates the exact referenced immutable content.
 func (o *Owner) LoadPayload(ctx context.Context, ref memory.PayloadRef) ([]byte, error) {
+	if ctx == nil {
+		return nil, invalid("invalid canonical SQL context")
+	}
+
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	key, err := payloadRecordKey(ref)
 	if err != nil {
 		return nil, err
@@ -68,6 +76,14 @@ func (o *Owner) LoadPayload(ctx context.Context, ref memory.PayloadRef) ([]byte,
 
 // DeletePayload removes raw content after logical forgetting, with an archive stamp.
 func (o *Owner) DeletePayload(ctx context.Context, ref memory.PayloadRef) error {
+	if ctx == nil {
+		return invalid("invalid canonical SQL context")
+	}
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	key, err := payloadRecordKey(ref)
 	if err != nil {
 		return err
