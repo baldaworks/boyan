@@ -57,24 +57,32 @@ func (p *interleavingProjection) SearchRecallConsistent(
 }
 
 //nolint:funlen // Real canonical ingest, SQL publication and the interleaving hook share one fixture.
-func newInterleavingRecall(t *testing.T) (*read.RecallService, m.RecallRequest) {
+func newInterleavingRecall(t *testing.T, newCanonical recallOwnerFactory) (*read.RecallService, m.RecallRequest) {
 	t.Helper()
 
-	store, err := b.OpenCanonicalStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store, reader := func() (recallOwner, m.RecallCanonicalReader) {
+		if newCanonical != nil {
+			return newCanonical(t)
+		}
+
+		store, err := b.OpenCanonicalStore(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		reader, err := b.NewCanonicalReader(store)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		return store, reader
+	}()
 
 	t.Cleanup(func() { _ = store.Close() })
 
 	processor, err := core.NewCanonicalTurnProcessor(
 		store, interleavingExtractor{}, m.PolicyRegistry{Version: "policy-v1"},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	reader, err := b.NewCanonicalReader(store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,21 +157,23 @@ func (f recallCommitFixture) commit(t *testing.T, id, text string, at time.Time)
 }
 
 func TestRecallCommitInterleavingReturnsRetryableConflict(t *testing.T) {
-	service, request := newInterleavingRecall(t)
-	ctx := context.Background()
-	response, err := service.Search(ctx, request)
-	code, class, ok := m.ClassifyError(err)
+	runRecallAuthorities(t, func(t *testing.T, newCanonical recallOwnerFactory) {
+		service, request := newInterleavingRecall(t, newCanonical)
+		ctx := context.Background()
+		response, err := service.Search(ctx, request)
+		code, class, ok := m.ClassifyError(err)
 
-	if response.ScopeChangeSeq != 0 || len(response.Results) != 0 {
-		t.Fatalf("partial response returned: %+v", response)
-	}
+		if response.ScopeChangeSeq != 0 || len(response.Results) != 0 {
+			t.Fatalf("partial response returned: %+v", response)
+		}
 
-	if !ok || code != m.CodeConflict || class != m.ErrorClassRetryable {
-		t.Fatalf("expected retryable interleaving conflict: %v", err)
-	}
+		if !ok || code != m.CodeConflict || class != m.ErrorClassRetryable {
+			t.Fatalf("expected retryable interleaving conflict: %v", err)
+		}
 
-	response, err = service.Search(ctx, request)
-	if err != nil || len(response.Results) != 2 || response.ScopeChangeSeq != 2 {
-		t.Fatalf("retry control: %+v %v", response, err)
-	}
+		response, err = service.Search(ctx, request)
+		if err != nil || len(response.Results) != 2 || response.ScopeChangeSeq != 2 {
+			t.Fatalf("retry control: %+v %v", response, err)
+		}
+	})
 }

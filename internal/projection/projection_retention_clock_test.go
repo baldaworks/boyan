@@ -12,71 +12,82 @@ import (
 )
 
 func TestProjectionRetentionUsesPublicationOrder(t *testing.T) {
-	for _, test := range []struct {
-		name    string
-		offsets []int
-	}{
-		{name: "backward", offsets: []int{1, 10, 3, 4, 5, 6}},
-		{name: "equal", offsets: []int{1, 1, 1, 1, 1, 1}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			store, applier, runtime := retentionClockRuntime(t, test.offsets)
-			scope := memory.Scope{Kind: memory.ScopeKindPersonal, Key: "test:retention-clock"}
-			other := memory.Scope{Kind: memory.ScopeKindGroup, Key: scope.Key}
-			requireNoError(t, runtime.Sync(t.Context(), other), "%v")
+	runProjectionAuthorities(t, func(t *testing.T, newCanonical projectionOwnerFactory) {
+		for _, test := range []struct {
+			name    string
+			offsets []int
+		}{
+			{name: "backward", offsets: []int{1, 10, 3, 4, 5, 6}},
+			{name: "equal", offsets: []int{1, 1, 1, 1, 1, 1}},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				store, applier, runtime := retentionClockRuntime(t, test.offsets, newCanonical)
+				scope := memory.Scope{Kind: memory.ScopeKindPersonal, Key: "test:retention-clock"}
+				other := memory.Scope{Kind: memory.ScopeKindGroup, Key: scope.Key}
+				requireNoError(t, runtime.Sync(t.Context(), other), "%v")
 
-			stopSearch, searchErrors := startRetentionSearch(applier.store, other)
-			defer stopSearch()
+				stopSearch, searchErrors := startRetentionSearch(applier.store, other)
+				defer stopSearch()
 
-			for i := range test.offsets {
-				// Fixed generation names make the equal-time counterexample
-				// deterministic: key order cannot substitute for publication order.
-				_, err := runtime.coordinator.Rebuild(t.Context(), scope, "sqlite", fmt.Sprintf("generation-%d", i))
-				requireNoError(t, err, "%v")
-			}
+				for i := range test.offsets {
+					// Fixed generation names make the equal-time counterexample
+					// deterministic: key order cannot substitute for publication order.
+					_, err := runtime.coordinator.Rebuild(t.Context(), scope, "sqlite", fmt.Sprintf("generation-%d", i))
+					requireNoError(t, err, "%v")
+				}
 
-			var builds int
-			requireNoError(
-				t,
-				applier.db.QueryRowContext(t.Context(), "SELECT count(*) FROM lexical_build").Scan(&builds),
-				"%v",
-			)
+				var builds int
+				requireNoError(
+					t,
+					applier.db.QueryRowContext(t.Context(), "SELECT count(*) FROM lexical_build").Scan(&builds),
+					"%v",
+				)
 
-			if builds > 3 {
-				t.Fatalf("retained %d builds, want at most active+previous plus other scope", builds)
-			}
+				if builds > 3 {
+					t.Fatalf("retained %d builds, want at most active+previous plus other scope", builds)
+				}
 
-			assertClockPublication(t, applier, scope)
+				assertClockPublication(t, applier, scope)
 
-			if _, found, err := store.LoadActiveProjectionManifest(t.Context(), other, "sqlite"); err != nil || !found {
-				t.Fatalf("other scope lost: %v %v", found, err)
-			}
+				if _, found, err := store.LoadActiveProjectionManifest(t.Context(), other, "sqlite"); err != nil || !found {
+					t.Fatalf("other scope lost: %v %v", found, err)
+				}
 
-			select {
-			case err := <-searchErrors:
-				t.Fatalf("search during retention: %v", err)
-			default:
-			}
-		})
-	}
+				select {
+				case err := <-searchErrors:
+					t.Fatalf("search during retention: %v", err)
+				default:
+				}
+			})
+		}
+	})
 }
 
 func retentionClockRuntime(
 	t *testing.T,
 	offsets []int,
-) (*badger.CanonicalStore, *projectionSQLApplier, *ProjectionRuntime) {
+	newCanonical projectionOwnerFactory,
+) (projectionTestOwner, *projectionSQLApplier, *ProjectionRuntime) {
 	t.Helper()
 	root := t.TempDir()
-	store, err := badger.OpenCanonicalStore(filepath.Join(root, "canonical"))
-	requireNoError(t, err, "%v")
-	t.Cleanup(func() { requireNoError(t, store.Close(), "%v") })
+	store, reader := func() (projectionTestOwner, memory.RecallCanonicalReader) {
+		if newCanonical != nil {
+			return newCanonical(t)
+		}
 
-	reader, err := badger.NewCanonicalReader(store)
-	requireNoError(t, err, "%v")
+		store, err := badger.OpenCanonicalStore(filepath.Join(root, "canonical"))
+		requireNoError(t, err, "%v")
+		reader, err := badger.NewCanonicalReader(store)
+		requireNoError(t, err, "%v")
+
+		return store, reader
+	}()
+
+	t.Cleanup(func() { requireNoError(t, store.Close(), "%v") })
 	applier := openProjectionSQLite(t, root, store, reader)
 	t.Cleanup(func() { requireNoError(t, applier.Close(), "%v") })
 
-	checkpoints := &retentionClockStore{CanonicalStore: store, offsets: offsets}
+	checkpoints := &retentionClockStore{projectionTestOwner: store, offsets: offsets}
 	runtime, err := NewProjectionRuntime(store, checkpoints, applier, "sqlite", 1)
 	requireNoError(t, err, "%v")
 	t.Cleanup(func() { requireNoError(t, runtime.Close(context.Background()), "%v") })
@@ -85,7 +96,7 @@ func retentionClockRuntime(
 }
 
 type retentionClockStore struct {
-	*badger.CanonicalStore
+	projectionTestOwner
 
 	offsets     []int
 	activations int
@@ -99,7 +110,7 @@ func (store *retentionClockStore) ActivateProjectionGeneration(ctx context.Conte
 		store.activations++
 	}
 
-	return store.CanonicalStore.ActivateProjectionGeneration(ctx, manifest, at)
+	return store.projectionTestOwner.ActivateProjectionGeneration(ctx, manifest, at)
 }
 
 func assertClockPublication(t *testing.T, applier *projectionSQLApplier, scope memory.Scope) {

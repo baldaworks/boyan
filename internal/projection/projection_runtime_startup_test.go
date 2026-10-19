@@ -37,40 +37,53 @@ func (s *startupScopePager) ListCanonicalScopeStates(
 }
 
 func TestProjectionStartSynchronouslyPagesDurableScopes(t *testing.T) {
-	ctx := context.Background()
-	store, err := badger.OpenCanonicalStore(t.TempDir())
-	requireNoError(t, err, "%v")
-	t.Cleanup(func() { _ = store.Close() })
+	runProjectionAuthorities(t, func(t *testing.T, newCanonical projectionOwnerFactory) {
+		ctx := context.Background()
+		store := func() projectionTestOwner {
+			if newCanonical != nil {
+				owner, _ := newCanonical(t)
 
-	pager := &startupScopePager{CanonicalStore: store, scopes: []memory.ScopeState{
-		{SchemaVersion: memory.CanonicalSchemaVersionV1,
-			Scope: memory.Scope{Key: "startup:a", Kind: memory.ScopeKindPersonal}},
-		{SchemaVersion: memory.CanonicalSchemaVersionV1,
-			Scope: memory.Scope{Key: "startup:b", Kind: memory.ScopeKindGroup}},
-	}}
-	applier := &replayOnlyApplier{}
-	runtime, err := NewProjectionRuntime(pager, store, applier, "startup", 1)
-	requireNoError(t, err, "%v")
-	requireNoError(t, runtime.Start(ctx), "%v")
+				return owner
+			}
 
-	if pager.calls != 2 || applier.commits != 2 {
-		t.Fatalf("pages=%d commits=%d, want 2 each before Start returns", pager.calls, applier.commits)
-	}
+			store, err := badger.OpenCanonicalStore(t.TempDir())
+			requireNoError(t, err, "%v")
 
-	for _, state := range pager.scopes {
-		_, found, err := store.LoadActiveProjectionManifest(ctx, state.Scope, "startup")
+			return store
+		}()
+
+		t.Cleanup(func() { _ = store.Close() })
+
+		pager := &startupScopePager{CanonicalStore: store, scopes: []memory.ScopeState{
+			{SchemaVersion: memory.CanonicalSchemaVersionV1,
+				Scope: memory.Scope{Key: "startup:a", Kind: memory.ScopeKindPersonal}},
+			{SchemaVersion: memory.CanonicalSchemaVersionV1,
+				Scope: memory.Scope{Key: "startup:b", Kind: memory.ScopeKindGroup}},
+		}}
+		applier := &replayOnlyApplier{}
+		runtime, err := NewProjectionRuntime(pager, store, applier, "startup", 1)
 		requireNoError(t, err, "%v")
+		requireNoError(t, runtime.Start(ctx), "%v")
 
-		if !found {
-			t.Fatal("startup missed scope without first manifest")
+		if pager.calls != 2 || applier.commits != 2 {
+			t.Fatalf("pages=%d commits=%d, want 2 each before Start returns", pager.calls, applier.commits)
 		}
-	}
 
-	requireNoError(t, runtime.Close(ctx), "%v")
+		for _, state := range pager.scopes {
+			_, found, err := store.LoadActiveProjectionManifest(ctx, state.Scope, "startup")
+			requireNoError(t, err, "%v")
 
-	if err := runtime.Start(ctx); err == nil {
-		t.Fatal("Start admitted after Close")
-	}
+			if !found {
+				t.Fatal("startup missed scope without first manifest")
+			}
+		}
+
+		requireNoError(t, runtime.Close(ctx), "%v")
+
+		if err := runtime.Start(ctx); err == nil {
+			t.Fatal("Start admitted after Close")
+		}
+	})
 }
 
 type blockingStartupPager struct {
@@ -89,36 +102,49 @@ func (s *blockingStartupPager) ListCanonicalScopeStates(
 }
 
 func TestProjectionCloseDrainsCanceledStartupEnumeration(t *testing.T) {
-	store, err := badger.OpenCanonicalStore(t.TempDir())
-	requireNoError(t, err, "%v")
-	t.Cleanup(func() { _ = store.Close() })
+	runProjectionAuthorities(t, func(t *testing.T, newCanonical projectionOwnerFactory) {
+		store := func() projectionTestOwner {
+			if newCanonical != nil {
+				owner, _ := newCanonical(t)
 
-	pager := &blockingStartupPager{CanonicalStore: store, started: make(chan struct{})}
-	runtime, err := NewProjectionRuntime(pager, store, &replayOnlyApplier{}, "startup", 1)
-	requireNoError(t, err, "%v")
+				return owner
+			}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+			store, err := badger.OpenCanonicalStore(t.TempDir())
+			requireNoError(t, err, "%v")
 
-	done := make(chan error, 1)
-	go func() { done <- runtime.Start(ctx) }()
+			return store
+		}()
 
-	<-pager.started
+		t.Cleanup(func() { _ = store.Close() })
 
-	closeCtx, closeCancel := context.WithTimeout(context.Background(), time.Millisecond)
-	defer closeCancel()
+		pager := &blockingStartupPager{CanonicalStore: store, started: make(chan struct{})}
+		runtime, err := NewProjectionRuntime(pager, store, &replayOnlyApplier{}, "startup", 1)
+		requireNoError(t, err, "%v")
 
-	if err := runtime.Close(closeCtx); err == nil {
-		t.Fatal("Close ignored active startup enumeration")
-	}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 
-	cancel()
+		done := make(chan error, 1)
+		go func() { done <- runtime.Start(ctx) }()
 
-	if err := <-done; err == nil {
-		t.Fatal("Start ignored cancellation")
-	}
+		<-pager.started
 
-	requireNoError(t, runtime.Close(context.Background()), "%v")
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), time.Millisecond)
+		defer closeCancel()
+
+		if err := runtime.Close(closeCtx); err == nil {
+			t.Fatal("Close ignored active startup enumeration")
+		}
+
+		cancel()
+
+		if err := <-done; err == nil {
+			t.Fatal("Start ignored cancellation")
+		}
+
+		requireNoError(t, runtime.Close(context.Background()), "%v")
+	})
 }
 
 type failingStartupCheckpoints struct {
@@ -149,23 +175,36 @@ func (*resumableStartupApplier) ResumeProjection(context.Context, memory.Scope, 
 }
 
 func TestProjectionStartPropagatesCheckpointFailure(t *testing.T) {
-	store, err := badger.OpenCanonicalStore(t.TempDir())
-	requireNoError(t, err, "%v")
-	t.Cleanup(func() { _ = store.Close() })
+	runProjectionAuthorities(t, func(t *testing.T, newCanonical projectionOwnerFactory) {
+		store := func() projectionTestOwner {
+			if newCanonical != nil {
+				owner, _ := newCanonical(t)
 
-	pager := &startupScopePager{CanonicalStore: store, scopes: []memory.ScopeState{
-		{SchemaVersion: memory.CanonicalSchemaVersionV1,
-			Scope: memory.Scope{Key: "startup:error", Kind: memory.ScopeKindPersonal}},
-	}}
-	applier := &resumableStartupApplier{}
-	runtime, err := NewProjectionRuntime(pager, failingStartupCheckpoints{store}, applier, "startup", 1)
-	requireNoError(t, err, "%v")
+				return owner
+			}
 
-	if err := runtime.Start(context.Background()); err == nil {
-		t.Fatal("Start discarded checkpoint read failure")
-	}
+			store, err := badger.OpenCanonicalStore(t.TempDir())
+			requireNoError(t, err, "%v")
 
-	if applier.commits != 0 || applier.begins != 0 {
-		t.Fatal("failed checkpoint read installed a replacement generation")
-	}
+			return store
+		}()
+
+		t.Cleanup(func() { _ = store.Close() })
+
+		pager := &startupScopePager{CanonicalStore: store, scopes: []memory.ScopeState{
+			{SchemaVersion: memory.CanonicalSchemaVersionV1,
+				Scope: memory.Scope{Key: "startup:error", Kind: memory.ScopeKindPersonal}},
+		}}
+		applier := &resumableStartupApplier{}
+		runtime, err := NewProjectionRuntime(pager, failingStartupCheckpoints{store}, applier, "startup", 1)
+		requireNoError(t, err, "%v")
+
+		if err := runtime.Start(context.Background()); err == nil {
+			t.Fatal("Start discarded checkpoint read failure")
+		}
+
+		if applier.commits != 0 || applier.begins != 0 {
+			t.Fatal("failed checkpoint read installed a replacement generation")
+		}
+	})
 }

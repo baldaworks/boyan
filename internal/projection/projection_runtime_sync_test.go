@@ -62,55 +62,63 @@ func projectionMutation(scope memory.Scope, version uint64, id string) memory.Ca
 }
 
 func TestProjectionSyncResumesCommittedProgress(t *testing.T) {
-	root := t.TempDir()
+	runProjectionAuthorities(t, func(t *testing.T, newCanonical projectionOwnerFactory) {
+		root := t.TempDir()
 
-	store, err := badger.OpenCanonicalStore(filepath.Join(root, "canonical"))
-	requireNoError(t, err, "%v")
+		store, reader := func() (projectionTestOwner, memory.RecallCanonicalReader) {
+			if newCanonical != nil {
+				return newCanonical(t)
+			}
 
-	defer store.Close()
+			store, err := badger.OpenCanonicalStore(filepath.Join(root, "canonical"))
+			requireNoError(t, err, "%v")
+			reader, err := badger.NewCanonicalReader(store)
+			requireNoError(t, err, "%v")
 
-	reader, err := badger.NewCanonicalReader(store)
-	requireNoError(t, err, "%v")
+			return store, reader
+		}()
+		defer store.Close()
 
-	tracked := &scanTrackingStore{CanonicalStore: store}
-	openRuntime := func() (*ProjectionRuntime, *projectionSQLApplier) {
-		applier := openProjectionSQLite(t, root, store, reader)
+		tracked := &scanTrackingStore{CanonicalStore: store}
+		openRuntime := func() (*ProjectionRuntime, *projectionSQLApplier) {
+			applier := openProjectionSQLite(t, root, store, reader)
 
-		runtime, err := NewProjectionRuntime(tracked, store, applier, "sqlite", 1)
+			runtime, err := NewProjectionRuntime(tracked, store, applier, "sqlite", 1)
+			requireNoError(t, err, "%v")
+
+			return runtime, applier
+		}
+		scope := memory.Scope{Kind: memory.ScopeKindPersonal, Key: "test:progress"}
+
+		runtime, applier := openRuntime()
+		defer func() { _ = runtime.Close(context.Background()); _ = applier.Close() }()
+
+		if _, err := store.ApplyCanonicalMutation(context.Background(), projectionMutation(scope, 0, "one")); err != nil {
+			t.Fatal(err)
+		}
+
+		requireNoError(t, runtime.Sync(context.Background(), scope), "%v")
+
+		first, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "sqlite")
 		requireNoError(t, err, "%v")
 
-		return runtime, applier
-	}
-	scope := memory.Scope{Kind: memory.ScopeKindPersonal, Key: "test:progress"}
+		requireNoError(t, runtime.Sync(context.Background(), scope), "%v")
 
-	runtime, applier := openRuntime()
-	defer func() { _ = runtime.Close(context.Background()); _ = applier.Close() }()
+		unchanged, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "sqlite")
+		requireNoError(t, err, "%v")
 
-	if _, err := store.ApplyCanonicalMutation(context.Background(), projectionMutation(scope, 0, "one")); err != nil {
-		t.Fatal(err)
-	}
+		if unchanged.GenerationID != first.GenerationID ||
+			!unchanged.UpdatedAt.Equal(first.UpdatedAt) {
+			t.Error("unchanged sync rebuilt generation")
+		}
 
-	requireNoError(t, runtime.Sync(context.Background(), scope), "%v")
+		requireNoError(t, runtime.Close(context.Background()), "%v")
 
-	first, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "sqlite")
-	requireNoError(t, err, "%v")
+		requireNoError(t, applier.Close(), "%v")
 
-	requireNoError(t, runtime.Sync(context.Background(), scope), "%v")
-
-	unchanged, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "sqlite")
-	requireNoError(t, err, "%v")
-
-	if unchanged.GenerationID != first.GenerationID ||
-		!unchanged.UpdatedAt.Equal(first.UpdatedAt) {
-		t.Error("unchanged sync rebuilt generation")
-	}
-
-	requireNoError(t, runtime.Close(context.Background()), "%v")
-
-	requireNoError(t, applier.Close(), "%v")
-
-	runtime, applier = openRuntime()
-	assertResumedProjectionDelta(t, runtime, tracked, store, scope, first)
+		runtime, applier = openRuntime()
+		assertResumedProjectionDelta(t, runtime, tracked, store, scope, first)
+	})
 }
 
 type failedCommitApplier struct {
@@ -132,56 +140,65 @@ func (a *failedCommitApplier) CommitProjectionManifest(ctx context.Context, mani
 }
 
 func TestProjectionSyncRecoversDirtyAfterRestart(t *testing.T) {
-	root := t.TempDir()
+	runProjectionAuthorities(t, func(t *testing.T, newCanonical projectionOwnerFactory) {
+		root := t.TempDir()
 
-	store, err := badger.OpenCanonicalStore(filepath.Join(root, "canonical"))
-	requireNoError(t, err, "%v")
+		store, reader := func() (projectionTestOwner, memory.RecallCanonicalReader) {
+			if newCanonical != nil {
+				return newCanonical(t)
+			}
 
-	defer store.Close()
+			store, err := badger.OpenCanonicalStore(filepath.Join(root, "canonical"))
+			requireNoError(t, err, "%v")
 
-	reader, err := badger.NewCanonicalReader(store)
-	requireNoError(t, err, "%v")
+			reader, err := badger.NewCanonicalReader(store)
+			requireNoError(t, err, "%v")
 
-	runtime, applier := openDirtyProjectionRuntime(t, root, store, reader)
-	defer func() { _ = runtime.Close(context.Background()); _ = applier.Close() }()
+			return store, reader
+		}()
+		defer store.Close()
 
-	scope := memory.Scope{Kind: memory.ScopeKindPersonal, Key: "test:dirty"}
+		runtime, applier := openDirtyProjectionRuntime(t, root, store, reader)
+		defer func() { _ = runtime.Close(context.Background()); _ = applier.Close() }()
 
-	other := memory.Scope{Kind: memory.ScopeKindGroup, Key: scope.Key}
-	for _, scope := range []memory.Scope{scope, other} {
-		if _, err := store.ApplyCanonicalMutation(context.Background(), projectionMutation(scope, 0, "one")); err != nil {
+		scope := memory.Scope{Kind: memory.ScopeKindPersonal, Key: "test:dirty"}
+
+		other := memory.Scope{Kind: memory.ScopeKindGroup, Key: scope.Key}
+		for _, scope := range []memory.Scope{scope, other} {
+			if _, err := store.ApplyCanonicalMutation(context.Background(), projectionMutation(scope, 0, "one")); err != nil {
+				t.Fatal(err)
+			}
+
+			requireNoError(t, runtime.Sync(context.Background(), scope), "%v")
+		}
+
+		first, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "sqlite")
+		requireNoError(t, err, "%v")
+
+		foreign, _, err := store.LoadActiveProjectionManifest(context.Background(), other, "sqlite")
+		requireNoError(t, err, "%v")
+
+		if _, err := store.ApplyCanonicalMutation(context.Background(), projectionMutation(scope, 1, "two")); err != nil {
 			t.Fatal(err)
 		}
 
+		applier.fail = true
+
+		if err := runtime.Sync(context.Background(), scope); err == nil {
+			t.Fatal("injected commit failure was ignored")
+		}
+
+		assertDirtyProjectionManifest(t, store, scope, first)
+
+		requireNoError(t, runtime.Close(context.Background()), "%v")
+
+		requireNoError(t, applier.Close(), "%v")
+
+		runtime, applier = openDirtyProjectionRuntime(t, root, store, reader)
 		requireNoError(t, runtime.Sync(context.Background(), scope), "%v")
-	}
 
-	first, _, err := store.LoadActiveProjectionManifest(context.Background(), scope, "sqlite")
-	requireNoError(t, err, "%v")
-
-	foreign, _, err := store.LoadActiveProjectionManifest(context.Background(), other, "sqlite")
-	requireNoError(t, err, "%v")
-
-	if _, err := store.ApplyCanonicalMutation(context.Background(), projectionMutation(scope, 1, "two")); err != nil {
-		t.Fatal(err)
-	}
-
-	applier.fail = true
-
-	if err := runtime.Sync(context.Background(), scope); err == nil {
-		t.Fatal("injected commit failure was ignored")
-	}
-
-	assertDirtyProjectionManifest(t, store, scope, first)
-
-	requireNoError(t, runtime.Close(context.Background()), "%v")
-
-	requireNoError(t, applier.Close(), "%v")
-
-	runtime, applier = openDirtyProjectionRuntime(t, root, store, reader)
-	requireNoError(t, runtime.Sync(context.Background(), scope), "%v")
-
-	assertProjectionRecoveredAfterRestart(t, runtime, store, scope, other, first, foreign)
+		assertProjectionRecoveredAfterRestart(t, runtime, store, scope, other, first, foreign)
+	})
 }
 
 type replayOnlyApplier struct{ commits int }
@@ -202,30 +219,42 @@ func (a *replayOnlyApplier) Commit(context.Context, memory.Scope, string) error 
 }
 
 func TestProjectionSyncSupportsReplayOnlyApplier(t *testing.T) {
-	store, err := badger.OpenCanonicalStore(t.TempDir())
-	requireNoError(t, err, "%v")
+	runProjectionAuthorities(t, func(t *testing.T, newCanonical projectionOwnerFactory) {
+		store := func() projectionTestOwner {
+			if newCanonical != nil {
+				owner, _ := newCanonical(t)
 
-	defer store.Close()
+				return owner
+			}
 
-	applier := &replayOnlyApplier{}
+			store, err := badger.OpenCanonicalStore(t.TempDir())
+			requireNoError(t, err, "%v")
 
-	runtime, err := NewProjectionRuntime(store, store, applier, "sqlite", 1)
-	requireNoError(t, err, "%v")
+			return store
+		}()
 
-	requireNoError(t, runtime.Sync(
-		context.Background(),
-		memory.Scope{Kind: memory.ScopeKindPersonal, Key: "test:portable"},
-	), "%v")
+		defer store.Close()
 
-	if applier.commits == 0 {
-		t.Fatal("projection was never committed")
-	}
+		applier := &replayOnlyApplier{}
+
+		runtime, err := NewProjectionRuntime(store, store, applier, "sqlite", 1)
+		requireNoError(t, err, "%v")
+
+		requireNoError(t, runtime.Sync(
+			context.Background(),
+			memory.Scope{Kind: memory.ScopeKindPersonal, Key: "test:portable"},
+		), "%v")
+
+		if applier.commits == 0 {
+			t.Fatal("projection was never committed")
+		}
+	})
 }
 
 func assertConcurrentProjectionNoop(
 	t *testing.T,
 	runtime *ProjectionRuntime,
-	store *badger.CanonicalStore,
+	store projectionTestOwner,
 	scope memory.Scope,
 	recovered memory.ProjectionManifest,
 ) {
@@ -256,7 +285,7 @@ func assertResumedProjectionDelta(
 	t *testing.T,
 	runtime *ProjectionRuntime,
 	tracked *scanTrackingStore,
-	store *badger.CanonicalStore,
+	store projectionTestOwner,
 	scope memory.Scope,
 	first memory.ProjectionManifest,
 ) {
@@ -284,7 +313,7 @@ func assertResumedProjectionDelta(
 
 func assertDirtyProjectionManifest(
 	t *testing.T,
-	store *badger.CanonicalStore,
+	store projectionTestOwner,
 	scope memory.Scope,
 	first memory.ProjectionManifest,
 ) {
@@ -300,7 +329,7 @@ func assertDirtyProjectionManifest(
 func assertProjectionRecoveredAfterRestart(
 	t *testing.T,
 	runtime *ProjectionRuntime,
-	store *badger.CanonicalStore,
+	store projectionTestOwner,
 	scope,
 	other memory.Scope,
 	first,
@@ -328,8 +357,8 @@ func assertProjectionRecoveredAfterRestart(
 func openDirtyProjectionRuntime(
 	t *testing.T,
 	root string,
-	store *badger.CanonicalStore,
-	reader *badger.CanonicalReader,
+	store projectionTestOwner,
+	reader memory.RecallCanonicalReader,
 ) (*ProjectionRuntime, *failedCommitApplier) {
 	t.Helper()
 

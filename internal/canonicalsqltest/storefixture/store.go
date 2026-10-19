@@ -4,6 +4,8 @@ package storefixture
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/baldaworks/boyan/internal/canonicalsqltest"
@@ -27,46 +29,90 @@ type Fixture struct {
 	Open     func(context.Context) (Store, error)
 }
 
+const privateDirectoryMode = 0o700
+
+// New opens an independent public owner for one explicitly selected backend.
+// It lets consumer matrices construct a fresh authority in each nested case.
+func New(t *testing.T, backend canonicalsqltest.Backend) *Fixture {
+	t.Helper()
+
+	var db *canonicalsqltest.Database
+
+	switch backend {
+	case canonicalsqltest.Postgres:
+		db = canonicalsqltest.PostgresDatabase(t)
+	case canonicalsqltest.SQLite:
+		var err error
+
+		dir := filepath.Join(t.TempDir(), "canonical")
+		if err := os.MkdirAll(dir, privateDirectoryMode); err != nil {
+			t.Fatal(err)
+		}
+
+		db, err = canonicalsqltest.OpenSQLite(t.Context(), filepath.Join(dir, "canonical.sqlite"))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		t.Cleanup(func() {
+			if err := db.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+	default:
+		t.Fatalf("unsupported fixture backend %q", backend)
+	}
+
+	return openFixture(t, db)
+}
+
 // ForEach runs both public owner factories with real isolated databases and
 // required PostgreSQL configuration validation inherited from the raw helper.
 func ForEach(t *testing.T, run func(*testing.T, *Fixture)) {
 	t.Helper()
 
 	canonicalsqltest.ForEach(t, func(t *testing.T, db *canonicalsqltest.Database) {
-		if db.SQLite != nil {
-			if err := db.Close(); err != nil {
-				t.Fatal(err)
-			}
-		}
+		run(t, openFixture(t, db))
+	})
+}
 
-		open := func(ctx context.Context) (Store, error) {
-			var (
-				store Store
-				err   error
-			)
-			if db.Backend == canonicalsqltest.SQLite {
-				store, err = sqlite.Open(ctx, sqlite.Config{Path: db.DSN})
-			} else {
-				store, err = postgres.Open(ctx, postgres.Config{DSN: db.DSN, AllowLocalInsecure: true})
-			}
+func openFixture(t *testing.T, db *canonicalsqltest.Database) *Fixture {
+	t.Helper()
 
-			if err != nil {
-				return nil, err
-			}
-
-			return store, nil
-		}
-
-		store, err := open(t.Context())
-		if err != nil {
+	if db.SQLite != nil {
+		if err := db.Close(); err != nil {
 			t.Fatal(err)
 		}
+	}
 
-		t.Cleanup(func() {
-			if err := store.Close(); err != nil {
-				t.Error(err)
-			}
-		})
-		run(t, &Fixture{Backend: db.Backend, Database: db, Store: store, Open: open})
+	open := func(ctx context.Context) (Store, error) {
+		var (
+			store Store
+			err   error
+		)
+		if db.Backend == canonicalsqltest.SQLite {
+			store, err = sqlite.Open(ctx, sqlite.Config{Path: db.DSN})
+		} else {
+			store, err = postgres.Open(ctx, postgres.Config{DSN: db.DSN, AllowLocalInsecure: true})
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		return store, nil
+	}
+
+	store, err := open(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
 	})
+
+	return &Fixture{Backend: db.Backend, Database: db, Store: store, Open: open}
 }

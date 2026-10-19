@@ -13,9 +13,9 @@ import (
 	"github.com/baldaworks/boyan/pkg/memory"
 )
 
-func privacyRevokedCandidate(t *testing.T, producer string) (*Store, semantic.Generation) {
+func privacyRevokedCandidate(t *testing.T, producer string, newCanonical denialOwnerFactory) (*Store, semantic.Generation) {
 	t.Helper()
-	canonical := denialCanonicalStore(t)
+	canonical := newCanonical(t)
 	s, _ := openTestStore(t, true)
 	g, coverage, chunks := semanticFixture()
 	chunks[0].ItemID, coverage[0].ItemID = "revision", "revision"
@@ -102,137 +102,145 @@ func privacyRevokedCandidate(t *testing.T, producer string) (*Store, semantic.Ge
 }
 
 func TestSemanticReleasePrivacyRevokedProducers(t *testing.T) {
-	for _, producer := range []string{"chunk scrub", "zero coverage scrub", "partial chunk scrub", "canonical denial"} {
-		t.Run(producer, func(t *testing.T) {
-			s, g := privacyRevokedCandidate(t, producer)
+	runDenialAuthorities(t, func(t *testing.T, newCanonical denialOwnerFactory) {
+		for _, producer := range []string{"chunk scrub", "zero coverage scrub", "partial chunk scrub", "canonical denial"} {
+			t.Run(producer, func(t *testing.T) {
+				s, g := privacyRevokedCandidate(t, producer, newCanonical)
 
-			before, found, err := s.ActiveState(t.Context(), g.Scope)
-			if err != nil || !found || before.BuildID != "winner" {
-				t.Fatalf("winner=%v %v", before, err)
-			}
+				before, found, err := s.ActiveState(t.Context(), g.Scope)
+				if err != nil || !found || before.BuildID != "winner" {
+					t.Fatalf("winner=%v %v", before, err)
+				}
 
-			if err := s.Publish(t.Context(), semantic.Publication{View: g.View(), BuildID: g.BuildID, ExpectedActiveBuildID: before.BuildID, ExpectedActiveEpoch: before.PublicationEpoch}); err == nil {
-				t.Fatal("revoked candidate published")
-			}
+				if err := s.Publish(t.Context(), semantic.Publication{View: g.View(), BuildID: g.BuildID, ExpectedActiveBuildID: before.BuildID, ExpectedActiveEpoch: before.PublicationEpoch}); err == nil {
+					t.Fatal("revoked candidate published")
+				}
 
-			result, err := s.ReleaseUnpublished(t.Context(), g.Scope, g.BuildID)
-			if err != nil || result.Disposition != semantic.CandidateReleased {
-				t.Fatalf("release=%v err=%v", result, err)
-			}
+				result, err := s.ReleaseUnpublished(t.Context(), g.Scope, g.BuildID)
+				if err != nil || result.Disposition != semantic.CandidateReleased {
+					t.Fatalf("release=%v err=%v", result, err)
+				}
 
-			assertReleasedFamilies(t, s, g.BuildID)
+				assertReleasedFamilies(t, s, g.BuildID)
 
-			after, found, err := s.ActiveState(t.Context(), g.Scope)
-			if err != nil || !found || after != before {
-				t.Fatalf("winner changed: %v %v", after, err)
-			}
+				after, found, err := s.ActiveState(t.Context(), g.Scope)
+				if err != nil || !found || after != before {
+					t.Fatalf("winner changed: %v %v", after, err)
+				}
 
-			assertPrivacyCount(t, s, `SELECT complete FROM semantic_build WHERE build_id='empty-peer'`, 1)
-			assertPrivacyCount(t, s, `SELECT count(*) FROM semantic_chunk WHERE build_id='winner'`, 1)
+				assertPrivacyCount(t, s, `SELECT complete FROM semantic_build WHERE build_id='empty-peer'`, 1)
+				assertPrivacyCount(t, s, `SELECT count(*) FROM semantic_chunk WHERE build_id='winner'`, 1)
 
-			result, err = s.ReleaseUnpublished(t.Context(), g.Scope, g.BuildID)
-			if err != nil || result.Disposition != semantic.CandidateMissing {
-				t.Fatalf("repeat=%v %v", result, err)
-			}
-		})
-	}
+				result, err = s.ReleaseUnpublished(t.Context(), g.Scope, g.BuildID)
+				if err != nil || result.Disposition != semantic.CandidateMissing {
+					t.Fatalf("repeat=%v %v", result, err)
+				}
+			})
+		}
+	})
 }
 
 func TestSemanticReleasePrivacyRevokedRejectsMalformedControl(t *testing.T) {
-	for _, mutation := range []string{
-		"coverage_hash='bad'", "model_space='bad'", "reason='other'", "complete=1", "epoch=x'0000000000000001'",
-	} {
-		t.Run(mutation, func(t *testing.T) {
-			s, g := privacyRevokedCandidate(t, "chunk scrub")
-			execTest(t, s.writer, "UPDATE semantic_build SET "+mutation+" WHERE build_id=?", g.BuildID)
+	runDenialAuthorities(t, func(t *testing.T, newCanonical denialOwnerFactory) {
+		for _, mutation := range []string{
+			"coverage_hash='bad'", "model_space='bad'", "reason='other'", "complete=1", "epoch=x'0000000000000001'",
+		} {
+			t.Run(mutation, func(t *testing.T) {
+				s, g := privacyRevokedCandidate(t, "chunk scrub", newCanonical)
+				execTest(t, s.writer, "UPDATE semantic_build SET "+mutation+" WHERE build_id=?", g.BuildID)
 
-			result, err := s.ReleaseUnpublished(t.Context(), g.Scope, g.BuildID)
-			if !errors.Is(err, semantic.ErrCorrupt) || result != (semantic.CandidateRelease{}) {
-				t.Fatalf("release=%v err=%v", result, err)
-			}
+				result, err := s.ReleaseUnpublished(t.Context(), g.Scope, g.BuildID)
+				if !errors.Is(err, semantic.ErrCorrupt) || result != (semantic.CandidateRelease{}) {
+					t.Fatalf("release=%v err=%v", result, err)
+				}
 
-			assertPrivacyCount(t, s, `SELECT count(*) FROM semantic_build WHERE build_id=? AND status='degraded'`, 1, g.BuildID)
-			assertPrivacyCount(t, s, `SELECT count(*) FROM semantic_chunk WHERE build_id=?`, 1, g.BuildID)
-		})
-	}
+				assertPrivacyCount(t, s, `SELECT count(*) FROM semantic_build WHERE build_id=? AND status='degraded'`, 1, g.BuildID)
+				assertPrivacyCount(t, s, `SELECT count(*) FROM semantic_chunk WHERE build_id=?`, 1, g.BuildID)
+			})
+		}
+	})
 }
 
 func TestSemanticReleasePrivacyRevokedOwnerGuards(t *testing.T) {
-	s, g := privacyRevokedCandidate(t, "chunk scrub")
-	for _, scope := range []memory.Scope{
-		{Kind: g.Scope.Kind, Key: "test:other"},
-		{Kind: memory.ScopeKindGroup, Key: g.Scope.Key},
-	} {
-		result, err := s.ReleaseUnpublished(t.Context(), scope, g.BuildID)
-		if !errors.Is(err, semantic.ErrConflict) || result != (semantic.CandidateRelease{}) {
-			t.Fatalf("foreign scope release=%v err=%v", result, err)
+	runDenialAuthorities(t, func(t *testing.T, newCanonical denialOwnerFactory) {
+		s, g := privacyRevokedCandidate(t, "chunk scrub", newCanonical)
+		for _, scope := range []memory.Scope{
+			{Kind: g.Scope.Kind, Key: "test:other"},
+			{Kind: memory.ScopeKindGroup, Key: g.Scope.Key},
+		} {
+			result, err := s.ReleaseUnpublished(t.Context(), scope, g.BuildID)
+			if !errors.Is(err, semantic.ErrConflict) || result != (semantic.CandidateRelease{}) {
+				t.Fatalf("foreign scope release=%v err=%v", result, err)
+			}
 		}
-	}
 
-	s.semanticStaging.Store(g.BuildID, semanticOperationStage)
-	result, err := s.ReleaseUnpublished(t.Context(), g.Scope, g.BuildID)
-	s.semanticStaging.Delete(g.BuildID)
+		s.semanticStaging.Store(g.BuildID, semanticOperationStage)
+		result, err := s.ReleaseUnpublished(t.Context(), g.Scope, g.BuildID)
+		s.semanticStaging.Delete(g.BuildID)
 
-	if !errors.Is(err, semantic.ErrConflict) || result != (semantic.CandidateRelease{}) {
-		t.Fatalf("live Stage release=%v err=%v", result, err)
-	}
-	// A malformed active epoch-zero reference must never be normalized away.
-	execTest(t, s.writer, "UPDATE semantic_active SET build_id=?,epoch=?", g.BuildID, encodeUint64(0))
+		if !errors.Is(err, semantic.ErrConflict) || result != (semantic.CandidateRelease{}) {
+			t.Fatalf("live Stage release=%v err=%v", result, err)
+		}
+		// A malformed active epoch-zero reference must never be normalized away.
+		execTest(t, s.writer, "UPDATE semantic_active SET build_id=?,epoch=?", g.BuildID, encodeUint64(0))
 
-	result, err = s.ReleaseUnpublished(t.Context(), g.Scope, g.BuildID)
-	if !errors.Is(err, semantic.ErrCorrupt) || result != (semantic.CandidateRelease{}) {
-		t.Fatalf("active-zero release=%v err=%v", result, err)
-	}
+		result, err = s.ReleaseUnpublished(t.Context(), g.Scope, g.BuildID)
+		if !errors.Is(err, semantic.ErrCorrupt) || result != (semantic.CandidateRelease{}) {
+			t.Fatalf("active-zero release=%v err=%v", result, err)
+		}
 
-	assertPrivacyCount(t, s, `SELECT count(*) FROM semantic_build WHERE build_id=? AND status='degraded' AND reason='canonical_forget'`, 1, g.BuildID)
-	assertPrivacyCount(t, s, `SELECT count(*) FROM semantic_chunk WHERE build_id=?`, 1, g.BuildID)
+		assertPrivacyCount(t, s, `SELECT count(*) FROM semantic_build WHERE build_id=? AND status='degraded' AND reason='canonical_forget'`, 1, g.BuildID)
+		assertPrivacyCount(t, s, `SELECT count(*) FROM semantic_chunk WHERE build_id=?`, 1, g.BuildID)
+	})
 }
 
 func TestSemanticReleasePrivacyRevokedCancellationResumes(t *testing.T) {
-	for _, boundary := range []string{"AFTER UPDATE OF status ON semantic_build", "BEFORE DELETE ON semantic_chunk"} {
-		t.Run(boundary, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(t.Context())
-			defer cancel()
+	runDenialAuthorities(t, func(t *testing.T, newCanonical denialOwnerFactory) {
+		for _, boundary := range []string{"AFTER UPDATE OF status ON semantic_build", "BEFORE DELETE ON semantic_chunk"} {
+			t.Run(boundary, func(t *testing.T) {
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
 
-			name := releaseSQLFunction(t, cancel)
-			s, g := privacyRevokedCandidate(t, "chunk scrub")
+				name := releaseSQLFunction(t, cancel)
+				s, g := privacyRevokedCandidate(t, "chunk scrub", newCanonical)
 
-			winner, found, err := s.ActiveState(t.Context(), g.Scope)
-			if err != nil || !found {
-				t.Fatalf("winner=%v found=%v err=%v", winner, found, err)
-			}
+				winner, found, err := s.ActiveState(t.Context(), g.Scope)
+				if err != nil || !found {
+					t.Fatalf("winner=%v found=%v err=%v", winner, found, err)
+				}
 
-			execTest(t, s.writer, "CREATE TRIGGER cancel_privacy_release "+boundary+" BEGIN SELECT "+name+"(); END")
+				execTest(t, s.writer, "CREATE TRIGGER cancel_privacy_release "+boundary+" BEGIN SELECT "+name+"(); END")
 
-			result, err := s.ReleaseUnpublished(ctx, g.Scope, g.BuildID)
-			if !errors.Is(err, context.Canceled) || result != (semantic.CandidateRelease{}) {
-				t.Fatalf("canceled release=%v err=%v", result, err)
-			}
+				result, err := s.ReleaseUnpublished(ctx, g.Scope, g.BuildID)
+				if !errors.Is(err, context.Canceled) || result != (semantic.CandidateRelease{}) {
+					t.Fatalf("canceled release=%v err=%v", result, err)
+				}
 
-			status, reason := "building", ""
-			if boundary == "AFTER UPDATE OF status ON semantic_build" {
-				status, reason = "degraded", "canonical_forget"
-			}
+				status, reason := "building", ""
+				if boundary == "AFTER UPDATE OF status ON semantic_build" {
+					status, reason = "degraded", "canonical_forget"
+				}
 
-			assertPrivacyCount(t, s, `SELECT count(*) FROM semantic_build WHERE build_id=? AND complete=0 AND status=? AND reason=? AND epoch=?`, 1, g.BuildID, status, reason, encodeUint64(0))
-			assertPrivacyCount(t, s, `SELECT count(*) FROM semantic_chunk WHERE build_id=?`, 1, g.BuildID)
+				assertPrivacyCount(t, s, `SELECT count(*) FROM semantic_build WHERE build_id=? AND complete=0 AND status=? AND reason=? AND epoch=?`, 1, g.BuildID, status, reason, encodeUint64(0))
+				assertPrivacyCount(t, s, `SELECT count(*) FROM semantic_chunk WHERE build_id=?`, 1, g.BuildID)
 
-			if err := s.Publish(t.Context(), semantic.Publication{View: g.View(), BuildID: g.BuildID, ExpectedActiveBuildID: winner.BuildID, ExpectedActiveEpoch: winner.PublicationEpoch}); err == nil {
-				t.Fatal("interrupted release made revoked candidate publishable")
-			}
+				if err := s.Publish(t.Context(), semantic.Publication{View: g.View(), BuildID: g.BuildID, ExpectedActiveBuildID: winner.BuildID, ExpectedActiveEpoch: winner.PublicationEpoch}); err == nil {
+					t.Fatal("interrupted release made revoked candidate publishable")
+				}
 
-			execTest(t, s.writer, "DROP TRIGGER cancel_privacy_release")
+				execTest(t, s.writer, "DROP TRIGGER cancel_privacy_release")
 
-			result, err = s.ReleaseUnpublished(t.Context(), g.Scope, g.BuildID)
-			if err != nil || result.Disposition != semantic.CandidateReleased {
-				t.Fatalf("resumed release=%v err=%v", result, err)
-			}
+				result, err = s.ReleaseUnpublished(t.Context(), g.Scope, g.BuildID)
+				if err != nil || result.Disposition != semantic.CandidateReleased {
+					t.Fatalf("resumed release=%v err=%v", result, err)
+				}
 
-			assertReleasedFamilies(t, s, g.BuildID)
-			assertPrivacyCount(t, s, `SELECT count(*) FROM semantic_chunk WHERE build_id='winner'`, 1)
-			assertPrivacyCount(t, s, `SELECT complete FROM semantic_build WHERE build_id='empty-peer'`, 1)
-		})
-	}
+				assertReleasedFamilies(t, s, g.BuildID)
+				assertPrivacyCount(t, s, `SELECT count(*) FROM semantic_chunk WHERE build_id='winner'`, 1)
+				assertPrivacyCount(t, s, `SELECT complete FROM semantic_build WHERE build_id='empty-peer'`, 1)
+			})
+		}
+	})
 }
 
 func TestSemanticReleaseOwnershipProbeBoundsStoredScope(t *testing.T) {
