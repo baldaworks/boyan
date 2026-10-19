@@ -176,7 +176,9 @@ func readerSourceAuthorized(ctx context.Context, tx *Tx, source memory.Canonical
 		return false, err
 	}
 
-	if source.Sensitivity != memory.SensitivityStandard || record.State != sourcePrivacyStandard || record.Preparing {
+	// A sensitive sibling restricts raw Trace, while this source's standard
+	// derived revisions retain their independently checked Recall eligibility.
+	if source.Sensitivity != memory.SensitivityStandard || record.State == sourcePrivacyUnknown || record.Preparing {
 		return false, nil
 	}
 

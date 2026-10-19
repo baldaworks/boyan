@@ -114,6 +114,18 @@ func recheckTraceGraph(ctx context.Context, tx *Tx, graph traceGraph) error {
 		return err
 	}
 
+	// Raw output needs source-wide standard classification at every barrier,
+	// independently of a benign derived revision's Recall eligibility.
+	for id := range graph.captured.sources {
+		if _, err := preflightTraceSource(ctx, tx, graph.captured.state.Scope, id); err != nil {
+			return err
+		}
+	}
+
+	return recheckDerivedGraph(ctx, tx, graph, state)
+}
+
+func recheckDerivedGraph(ctx context.Context, tx *Tx, graph traceGraph, state memory.ScopeState) error {
 	if err := recheckReaderSources(ctx, tx, graph.captured); err != nil {
 		return err
 	}

@@ -9,8 +9,8 @@ import (
 )
 
 func TestPublicReaderPrivacyAndCorruption(t *testing.T) {
-	for _, kind := range []string{"source-denied", "revision-denied", "sensitive", "unknown", "incomplete",
-		"unprepared", "scope-fence", "payload-missing", "payload-corrupt", "head-corrupt", "source-binding",
+	for _, kind := range []string{"source-denied", "revision-denied", "sensitive", "revision-sensitive", "unknown",
+		"incomplete", "unprepared", "scope-fence", "payload-missing", "payload-corrupt", "head-corrupt", "source-binding",
 		"membership-subset", "message-owner", "certified-owner", "scope-stamp", "restore-loading"} {
 		t.Run(kind, func(t *testing.T) {
 			forEachMutation(t, func(t *testing.T, f *storefixture.Fixture, store mutationStore, probe mutationProbe) {
@@ -55,7 +55,15 @@ func alterReaderAuthority(t *testing.T, p mutationProbe, m memory.CanonicalMutat
 	case "revision-denied":
 		p.write(t, key(canonicalsql.DeniedRevision, "revision"), map[string]any{"revision_id": "revision",
 			"denied_at": time.Now()})
-	case "sensitive", "unknown", "membership-subset", "source-binding":
+	case "sensitive":
+		source := m.Sources[0]
+		source.Sensitivity = memory.SensitivitySensitive
+		p.write(t, key(canonicalsql.Source, source.SourceID), source)
+	case "revision-sensitive":
+		revision := m.Revisions[0]
+		revision.Sensitivity = memory.SensitivitySensitive
+		p.write(t, key(canonicalsql.Revision, revision.RevisionID), revision)
+	case "unknown", "membership-subset", "source-binding":
 		return alterReaderPrivacyRecord(t, p, m, kind)
 	case "incomplete":
 		p.write(t, key(canonicalsql.SourcePrivacyScope, "coverage"), map[string]any{"version": 1, "scope": scope,

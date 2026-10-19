@@ -207,7 +207,7 @@ func (o *Owner) LoadCanonicalCompatibility(ctx context.Context, scope memory.Sco
 func (o *Owner) publishCompatibility(ctx context.Context, graph traceGraph,
 	result memory.CanonicalCompatibilityPayload, found bool) (memory.CanonicalCompatibilityPayload, bool, error) {
 	if found {
-		if err := o.finalTracePrivacyBarrier(ctx, graph); err != nil {
+		if err := o.finalCompatibilityPrivacyBarrier(ctx, graph); err != nil {
 			if compatibilityIdentityAbsent(err) {
 				return memory.CanonicalCompatibilityPayload{}, false, nil
 			}
@@ -217,6 +217,23 @@ func (o *Owner) publishCompatibility(ctx context.Context, graph traceGraph,
 	}
 
 	return result, found, nil
+}
+
+// Compatibility publishes derived metadata and legacy identities. It shares
+// snapshot and evidence checks without granting permission to disclose raw text.
+func (o *Owner) finalCompatibilityPrivacyBarrier(ctx context.Context, graph traceGraph) error {
+	return o.View(ctx, func(ctx context.Context, tx *Tx) error {
+		state, err := traceScopeState(ctx, tx, graph.captured.state.Scope)
+		if err != nil {
+			return err
+		}
+
+		if err := tracePayloadBounds(ctx, tx, graph.captured); err != nil {
+			return err
+		}
+
+		return recheckDerivedGraph(ctx, tx, graph, state)
+	})
 }
 
 func captureCompatibilitySources(ctx context.Context, tx *Tx, scope memory.Scope, view traceView,

@@ -45,15 +45,11 @@ func alterReaderBarrier(t *testing.T, owner *Owner, h privacyHistory, kind strin
 
 			return putPrivacyRecord(ctx, tx, key, ScopeState, state)
 		case "sensitive":
-			record, _, err := loadSourcePrivacy(ctx, tx, h.source)
-			if err != nil {
-				return err
-			}
+			source := h.source
+			source.Sensitivity = memory.SensitivitySensitive
+			key, _ := privacyKey(h.scope, Source, source.SourceID)
 
-			record.State = sourcePrivacySensitive
-			key, _ := privacyKey(h.scope, SourcePrivacy, h.source.SourceID)
-
-			return putPrivacyRecord(ctx, tx, key, SourcePrivacy, record)
+			return putPrivacyRecord(ctx, tx, key, Source, source)
 		case "head-change":
 			key, _ := privacyKey(h.scope, Head, h.item.ItemID)
 
