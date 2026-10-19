@@ -15,8 +15,8 @@ func (a *SQLiteCanonicalApplier) ReconcileProjection(ctx context.Context) (resul
 }
 
 // Ordinary activation reconciles its full scope only. Startup retains the
-// global repair-before-prune pass. The existing canonical walker still supplies
-// previous-manifest authority; no cached or SQL-only retention proof replaces it.
+// global repair-before-prune pass. Canonical bindings certify retained physical
+// tuples; SQL publication pointers supply order only after clean active repair.
 func (a *SQLiteCanonicalApplier) reconcileProjection(ctx context.Context, scope *memory.Scope) (result error) {
 	defer func() { result = lexicalStorageError(result) }()
 
@@ -41,16 +41,21 @@ func (a *SQLiteCanonicalApplier) reconcileProjection(ctx context.Context, scope 
 		return err
 	}
 
+	reconciled := make(map[memory.Scope]bool)
+
 	for _, manifest := range active {
-		if err := a.reconcileActive(ctx, manifest); err != nil {
+		repaired, err := a.reconcileActive(ctx, manifest)
+		if err != nil {
 			return err
 		}
+
+		reconciled[manifest.Scope] = repaired
 	}
 
 	keep := make(map[string]bool)
 
 	for _, manifest := range retained {
-		id, err := a.store.referencedBuildID(ctx, manifest)
+		id, err := a.retainedBuildID(ctx, manifest, reconciled[manifest.Scope])
 		if err != nil {
 			return err
 		}
@@ -63,61 +68,63 @@ func (a *SQLiteCanonicalApplier) reconcileProjection(ctx context.Context, scope 
 	return a.pruneBuilds(ctx, keep, scope)
 }
 
-func (a *SQLiteCanonicalApplier) reconcileActive(ctx context.Context, manifest memory.ProjectionManifest) error {
+func (a *SQLiteCanonicalApplier) reconcileActive(ctx context.Context,
+	manifest memory.ProjectionManifest) (bool, error) {
 	unlock, err := a.lockScope(ctx, manifest.Scope)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer unlock()
 
 	if a.foreignScopeOwner(manifest.Scope) {
-		return nil
+		return false, nil
 	}
 
-	_, err = a.resumeLocked(ctx, manifest.Scope, manifest.GenerationID)
-
-	return err
+	return a.resumeLocked(ctx, manifest.Scope, manifest.GenerationID)
 }
 
-//nolint:cyclop // Validate every walked manifest before retaining exact scope and previous-generation authority.
+func (a *SQLiteCanonicalApplier) retainedBuildID(ctx context.Context,
+	manifest memory.ProjectionManifest, reconciled bool) (string, error) {
+	if reconciled && manifest.Status == memory.ProjectionGenerationSuperseded {
+		return a.store.referencedPreviousBuildID(ctx, manifest)
+	}
+
+	// A missing/dirty/unrepaired active publication cannot establish which
+	// superseded candidate preceded it. Preserve all complete canonical-bound
+	// candidates until repair, without inventing order from wall-clock time.
+	return a.store.referencedBuildID(ctx, manifest)
+}
+
 func retainedProjectionManifests(ctx context.Context, walker projectionManifestWalker, scope *memory.Scope) (
 	[]memory.ProjectionManifest, []memory.ProjectionManifest, error) {
 	var keep, active []memory.ProjectionManifest
 
-	previous := make(map[memory.Scope]memory.ProjectionManifest)
+	err := walker.WalkProjectionManifests(
+		ctx,
+		"sqlite",
+		func(manifest memory.ProjectionManifest, referenced bool) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 
-	err := walker.WalkProjectionManifests(ctx, "sqlite", func(manifest memory.ProjectionManifest, referenced bool) error {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
+			if manifest.Validate() != nil || manifest.ProjectionID != "sqlite" {
+				return ErrCorrupt
+			}
 
-		if manifest.Validate() != nil || manifest.ProjectionID != "sqlite" {
-			return ErrCorrupt
-		}
+			if scope != nil && manifest.Scope != *scope {
+				return nil
+			}
 
-		if scope != nil && manifest.Scope != *scope {
+			if referenced || manifest.Status == memory.ProjectionGenerationSuperseded {
+				keep = append(keep, manifest)
+				if referenced && manifest.Status == memory.ProjectionGenerationActive {
+					active = append(active, manifest)
+				}
+			}
+
 			return nil
-		}
-
-		if referenced {
-			keep = append(keep, manifest)
-			if manifest.Status == memory.ProjectionGenerationActive {
-				active = append(active, manifest)
-			}
-		}
-
-		if manifest.Status == memory.ProjectionGenerationSuperseded {
-			old := previous[manifest.Scope]
-			if old.GenerationID == "" || old.UpdatedAt.Before(manifest.UpdatedAt) {
-				previous[manifest.Scope] = manifest
-			}
-		}
-
-		return nil
-	})
-	for _, manifest := range previous {
-		keep = append(keep, manifest)
-	}
+		},
+	)
 
 	return keep, active, err
 }

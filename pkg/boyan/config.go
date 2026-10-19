@@ -2,6 +2,7 @@
 package boyan
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -26,6 +27,7 @@ const (
 // Config controls one local Boyan host.
 type Config struct {
 	StateDir    string            `mapstructure:"state_dir"`
+	Canonical   CanonicalConfig   `mapstructure:"canonical"`
 	Log         LogConfig         `mapstructure:"log"`
 	HTTP        HTTPConfig        `mapstructure:"http"`
 	Derivation  DerivationConfig  `mapstructure:"derivation"`
@@ -72,7 +74,8 @@ type DerivationConfig struct {
 	Runtime        runtimeconfig.RuntimeConfig `mapstructure:"runtime"`
 }
 
-// MaintenanceConfig controls canonical maintenance defaults.
+// MaintenanceConfig retains deprecated Badger maintenance settings for source
+// compatibility. These settings have no SQL garbage-collection action.
 type MaintenanceConfig struct {
 	ValueLogGCInterval time.Duration `mapstructure:"value_log_gc_interval"`
 	DiscardRatio       float64       `mapstructure:"discard_ratio"`
@@ -82,6 +85,9 @@ type MaintenanceConfig struct {
 func DefaultConfig() Config {
 	return Config{
 		StateDir: defaultStateDir,
+		Canonical: CanonicalConfig{Backend: "sqlite", Postgres: CanonicalPostgresConfig{
+			DSNEnv: defaultPostgresDSNEnv, ConnectTimeout: defaultPostgresConnectTimeout,
+		}},
 		Log: LogConfig{
 			Level: "info",
 		},
@@ -103,9 +109,16 @@ func DefaultConfig() Config {
 	}
 }
 
-// Validate checks configuration without opening files, sockets, or databases.
+// Validate checks configuration and resolves the PostgreSQL environment secret
+// without creating state or opening sockets/databases. TLS validation may read
+// explicitly configured certificate files; resolved secrets are not retained.
 func (config Config) Validate() error {
-	_, err := config.normalized()
+	normalized, err := config.normalized()
+	if err != nil {
+		return err
+	}
+
+	_, err = normalized.resolveCanonical(context.Background())
 
 	return err
 }
@@ -160,10 +173,17 @@ func (config Config) normalized() (Config, error) {
 
 	config.Embeddings = embeddings
 
-	return config.normalizeDerivation(defaults)
+	return config.normalizeOperational(defaults)
 }
 
-func (config Config) normalizeDerivation(defaults Config) (Config, error) {
+func (config Config) normalizeOperational(defaults Config) (Config, error) {
+	canonical, err := normalizeCanonical(config.StateDir, config.Canonical)
+	if err != nil {
+		return Config{}, err
+	}
+
+	config.Canonical = canonical
+
 	config.Derivation.Provider = strings.TrimSpace(config.Derivation.Provider)
 	if strings.TrimSpace(config.Derivation.WorkingDir) == "" {
 		config.Derivation.WorkingDir = defaults.Derivation.WorkingDir

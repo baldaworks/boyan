@@ -7,6 +7,9 @@ services:
     command: [serve, --config, /etc/boyan/config.yaml, --state-dir, /var/lib/boyan]
     environment:
       BOYAN_HTTP_LISTEN: 127.0.0.1:8686
+      # Canonical SQLite defaults to /var/lib/boyan/canonical/canonical.sqlite.
+      # PostgreSQL also retains this local volume for disposable SQLite search;
+      # select it in BOYAN_CONFIG and supply its named DSN secret separately.
       BOYAN_EMBEDDINGS_ENABLED: 'false'
     volumes:
       - ${BOYAN_CONFIG:-../../boyan.example.yaml}:/etc/boyan/config.yaml:ro

@@ -5,6 +5,8 @@ import (
 
 	"github.com/baldaworks/boyan/internal/embedding"
 	semanticcore "github.com/baldaworks/boyan/internal/semantic"
+	canonicalpostgres "github.com/baldaworks/boyan/store/postgres"
+	canonicalsqlite "github.com/baldaworks/boyan/store/sqlite"
 
 	runtimeconfig "github.com/normahq/runtime/v2/appconfig"
 )
@@ -12,11 +14,20 @@ import (
 // Config controls one internal standalone runtime instance.
 type Config struct {
 	StateDir    string
+	Canonical   CanonicalConfig
 	Log         LogConfig
 	HTTP        HTTPConfig
 	Derivation  DerivationConfig
 	Maintenance MaintenanceConfig
 	Embeddings  EmbeddingsConfig
+}
+
+// CanonicalConfig carries validated selection for SQL runtime composition.
+// Runtime activation is handled separately from configuration forwarding.
+type CanonicalConfig struct {
+	Backend  string
+	SQLite   canonicalsqlite.Config
+	Postgres canonicalpostgres.Config
 }
 
 // EmbeddingsConfig carries an already constructed provider, so credentials are

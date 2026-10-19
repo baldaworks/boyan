@@ -34,6 +34,14 @@ func (PostgresConfig) String() string { return "canonical PostgreSQL config (red
 // GoString also redacts diagnostic %#v formatting.
 func (config PostgresConfig) GoString() string { return config.String() }
 
+// Validate checks the same native parser/TLS policy as OpenPostgresOwner,
+// without dialing, acquiring ownership or opening a database.
+func (config PostgresConfig) Validate() error {
+	_, err := config.parse()
+
+	return err
+}
+
 // OpenPostgresOwner acquires session ownership before migration on a single
 // direct connection. It never reconnects, retries commits, or falls back to
 // another database backend.

@@ -18,6 +18,11 @@ type Config struct {
 	BusyTimeout time.Duration
 }
 
+// Validate checks path syntax and timeout bounds without opening storage.
+func (config Config) Validate() error {
+	return (canonicalsql.SQLiteConfig{Path: config.Path, BusyTimeout: config.BusyTimeout}).Validate()
+}
+
 // Store is the stable comparable canonical authority for this file. It holds
 // one dedicated connection; it never reconnects or switches canonical backends.
 type Store struct{ owner *canonicalsql.Owner }

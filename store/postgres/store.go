@@ -26,6 +26,12 @@ func (Config) String() string { return "canonical PostgreSQL config (redacted)" 
 // GoString redacts connection configuration in %#v diagnostic formatting.
 func (config Config) GoString() string { return config.String() }
 
+// Validate checks connection syntax, TLS policy and timeout without connecting.
+func (config Config) Validate() error {
+	return (canonicalsql.PostgresConfig{DSN: config.DSN, ConnectTimeout: config.ConnectTimeout,
+		AllowLocalInsecure: config.AllowLocalInsecure}).Validate()
+}
+
 // Store is the stable comparable authority for this database. It owns exactly
 // one direct connection and cannot reconnect after losing session ownership.
 type Store struct{ owner *canonicalsql.Owner }

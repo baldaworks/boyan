@@ -29,6 +29,9 @@ type SQLiteConfig struct {
 	BusyTimeout time.Duration
 }
 
+// Validate checks ordinary-path and timeout bounds without filesystem changes.
+func (config SQLiteConfig) Validate() error { return config.validate() }
+
 func (config SQLiteConfig) validate() error {
 	if strings.TrimSpace(config.Path) == "" || config.Path == ":memory:" || strings.HasPrefix(config.Path, "file:") {
 		return invalid("invalid canonical SQLite path")
@@ -154,8 +157,15 @@ func openSQLiteConnection(ctx context.Context, path string, timeout time.Duratio
 		closeErr := errors.Join(conn.Close(), pool.Close())
 		lockErr := lock.Close()
 
-		return errors.Join(checkpointErr,
-			databaseError(cleanup, "close SQLite", closeErr), databaseError(cleanup, "release SQLite ownership", lockErr))
+		return errors.Join(
+			checkpointErr,
+			databaseError(
+				cleanup,
+				"close SQLite",
+				closeErr,
+			),
+			databaseError(cleanup, "release SQLite ownership", lockErr),
+		)
 	}), nil
 }
 

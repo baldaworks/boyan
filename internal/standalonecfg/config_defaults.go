@@ -11,6 +11,12 @@ func defaultApplicationConfig() Config {
 
 func setApplicationDefaults(loader *viper.Viper, cfg Config) {
 	loader.SetDefault("state_dir", cfg.StateDir)
+	loader.SetDefault("canonical.backend", cfg.Canonical.Backend)
+	loader.SetDefault("canonical.sqlite.path", cfg.Canonical.SQLite.Path)
+	loader.SetDefault("canonical.sqlite.busy_timeout", cfg.Canonical.SQLite.BusyTimeout)
+	loader.SetDefault("canonical.postgres.dsn_env", cfg.Canonical.Postgres.DSNEnv)
+	loader.SetDefault("canonical.postgres.connect_timeout", cfg.Canonical.Postgres.ConnectTimeout)
+	loader.SetDefault("canonical.postgres.allow_local_insecure", cfg.Canonical.Postgres.AllowLocalInsecure)
 	loader.SetDefault("log.level", cfg.Log.Level)
 	loader.SetDefault("http.listen", cfg.HTTP.Listen)
 	loader.SetDefault("http.request_timeout", cfg.HTTP.RequestTimeout)

@@ -1,5 +1,23 @@
 state_dir: ./.state/boyan
 
+# Authority is separate from the disposable state_dir/search projection.
+# Existing state_dir/badger files are never imported or removed automatically.
+canonical:
+  backend: sqlite
+  sqlite:
+    path: '' # Default: state_dir/canonical/canonical.sqlite
+    busy_timeout: 1s
+# For PostgreSQL, omit sqlite settings and use:
+# canonical:
+#   backend: postgres
+#   postgres:
+#     dsn_env: BOYAN_POSTGRES_DSN
+#     connect_timeout: 5s
+#     allow_local_insecure: false
+# Supply the DSN through that environment secret. Remote connections require
+# sslmode=verify-full with trusted roots. Explicit local sslmode=disable also
+# requires allow_local_insecure: true. Search remains local SQLite.
+
 log:
   level: info
 
@@ -21,6 +39,7 @@ derivation:
         codex_acp:
           model: memory-fast
 
+# Deprecated compatibility settings; no SQL value-log GC action.
 maintenance:
   value_log_gc_interval: 6h
   discard_ratio: 0.5

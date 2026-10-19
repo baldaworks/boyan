@@ -16,11 +16,16 @@ func (f serveRunnerFunc) Run(ctx context.Context) error {
 	return f(ctx)
 }
 
+//nolint:funlen // End-to-end CLI composition asserts all original flags plus canonical selection.
 func TestServeCommandUsesPublicHostPath(t *testing.T) {
 	const configYAML = `
 state_dir: /from-config/state
 http:
   listen: 127.0.0.1:8686
+canonical:
+  backend: postgres
+  postgres:
+    dsn_env: CLI_CANONICAL_DSN
 derivation:
   provider: memory
   working_dir: /from-config/work
@@ -114,6 +119,10 @@ func assertServeHostConfig(t *testing.T, received boyan.Config, constructorCalls
 
 	if received.HTTP.Listen != "127.0.0.1:9999" {
 		t.Fatalf("received.HTTP.Listen = %q, want 127.0.0.1:9999", received.HTTP.Listen)
+	}
+
+	if received.Canonical.Backend != "postgres" || received.Canonical.Postgres.DSNEnv != "CLI_CANONICAL_DSN" {
+		t.Fatal("CLI canonical selection did not reach the public host boundary")
 	}
 
 	if received.Derivation.Provider != "memory" ||

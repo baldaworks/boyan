@@ -11,6 +11,7 @@ import (
 	"github.com/baldaworks/boyan/internal/standaloneruntime"
 	"github.com/baldaworks/boyan/mcp"
 	memory "github.com/baldaworks/boyan/pkg/memory"
+	canonicalsqlite "github.com/baldaworks/boyan/store/sqlite"
 )
 
 type hostRuntime interface {
@@ -66,6 +67,12 @@ func New(ctx context.Context, config Config) (*Host, error) {
 	}
 
 	runtimeConfig := standaloneRuntimeConfig(normalized)
+
+	runtimeConfig.Canonical, err = normalized.resolveCanonical(ctxOrBackground(ctx))
+	if err != nil {
+		return nil, err
+	}
+
 	if normalized.Embeddings.Enabled {
 		settings := normalized.Embeddings
 
@@ -76,10 +83,13 @@ func New(ctx context.Context, config Config) (*Host, error) {
 			return nil, ErrInvalidEmbeddingsConfig
 		}
 
-		runtimeConfig.Embeddings = standaloneruntime.EmbeddingsConfig{Provider: provider, ModelSpace: semanticcore.ModelSpace{
-			Model: settings.Model, Revision: settings.Revision, Dimensions: settings.Dimensions,
-			QueryPrefix: settings.QueryPrefix, PassagePrefix: settings.PassagePrefix,
-		}}
+		runtimeConfig.Embeddings = standaloneruntime.EmbeddingsConfig{
+			Provider: provider,
+			ModelSpace: semanticcore.ModelSpace{
+				Model: settings.Model, Revision: settings.Revision, Dimensions: settings.Dimensions,
+				QueryPrefix: settings.QueryPrefix, PassagePrefix: settings.PassagePrefix,
+			},
+		}
 	}
 
 	runtime, err := standaloneruntime.New(runtimeConfig)
@@ -286,6 +296,13 @@ func (host *Host) ForgetScope(ctx context.Context, command memory.ForgetScopeCom
 func standaloneRuntimeConfig(config Config) standaloneruntime.Config {
 	return standaloneruntime.Config{
 		StateDir: config.StateDir,
+		Canonical: standaloneruntime.CanonicalConfig{
+			Backend: config.Canonical.Backend,
+			SQLite: canonicalsqlite.Config{
+				Path:        config.Canonical.SQLite.Path,
+				BusyTimeout: config.Canonical.SQLite.BusyTimeout,
+			},
+		},
 		Log: standaloneruntime.LogConfig{
 			Level: config.Log.Level,
 		},
@@ -307,4 +324,12 @@ func standaloneRuntimeConfig(config Config) standaloneruntime.Config {
 			DiscardRatio:       config.Maintenance.DiscardRatio,
 		},
 	}
+}
+
+func ctxOrBackground(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+
+	return ctx
 }
