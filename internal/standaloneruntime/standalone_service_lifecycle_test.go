@@ -9,19 +9,21 @@ import (
 )
 
 func TestRuntimeFailedStartReleasesStorage(t *testing.T) {
+	forEachSQLRuntimeConfig(t, testRuntimeFailedStartReleasesStorage)
+}
+
+func testRuntimeFailedStartReleasesStorage(t *testing.T, cfg Config) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	requireNoError(t, err, "%v")
 
 	defer listener.Close()
 
-	cfg := testStandaloneConfig(t)
 	cfg.HTTP.Listen = listener.Addr().String()
 
 	first, err := New(cfg)
 	requireNoError(t, err, "%v")
 
-	defer first.service.store.Close()
-	defer first.service.index.Close()
+	defer first.Stop(context.Background())
 
 	if err := first.Start(context.Background()); err == nil {
 		t.Fatal("Start on occupied address succeeded")
@@ -34,8 +36,7 @@ func TestRuntimeFailedStartReleasesStorage(t *testing.T) {
 	second, err := New(cfg)
 	requireNoError(t, err, "reopen after failed Start: %v")
 
-	defer second.service.store.Close()
-	defer second.service.index.Close()
+	defer second.Stop(context.Background())
 }
 
 func TestRuntimeWaitBroadcast(t *testing.T) {

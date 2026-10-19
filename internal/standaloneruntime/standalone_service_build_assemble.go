@@ -18,11 +18,11 @@ func assembleStandaloneService(
 	shutdownContext, cancelOperations := context.WithCancel(context.Background())
 
 	return &standaloneService{
+		stateLock:        storage.stateLock,
 		cfg:              cfg,
 		logger:           logger,
 		state:            inputs.layout,
 		store:            storage.store,
-		maintenance:      storage.maintenance,
 		reader:           storage.reader,
 		index:            storage.index,
 		applier:          storage.applier,

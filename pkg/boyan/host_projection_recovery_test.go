@@ -10,7 +10,7 @@ import (
 	core "github.com/baldaworks/boyan/internal/canonicalcore"
 	hostapi "github.com/baldaworks/boyan/pkg/boyan"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
+	b "github.com/baldaworks/boyan/store/sqlite"
 )
 
 func TestPublicHostRecoversProjectionBeforeReady(t *testing.T) {
@@ -52,10 +52,12 @@ func prepareStartupProjection(
 	t.Helper()
 
 	if mode == "never-created" {
-		store, err := b.Open(filepath.Join(config.StateDir, "badger"))
+		store, err := b.Open(t.Context(), b.Config{Path: filepath.Join(config.StateDir, "canonical", "canonical.sqlite")})
 
 		requireNoError(t, err, "store: %v")
 		defer func() { requireNoError(t, store.Close(), "store close: %v") }()
+
+		requireNoError(t, store.PrepareSourcePrivacy(t.Context()), "prepare fixture: %v")
 
 		processor, err := core.NewCanonicalTurnProcessor(
 			store, integrationExtractor{}, m.PolicyRegistry{Version: "policy-v1"},
@@ -74,7 +76,7 @@ func prepareStartupProjection(
 		return outcome
 	}
 
-	store, err := b.Open(filepath.Join(config.StateDir, "badger"))
+	store, err := b.Open(t.Context(), b.Config{Path: filepath.Join(config.StateDir, "canonical", "canonical.sqlite")})
 	requireNoError(t, err, "store: %v")
 	manifest, found, err := store.LoadActiveProjectionManifest(context.Background(), turn.Scope, "sqlite")
 	requireNoError(t, err, "manifest: %v")
@@ -97,7 +99,7 @@ func assertStartupCanonicalUnchanged(
 ) {
 	t.Helper()
 
-	store, err := b.Open(filepath.Join(config.StateDir, "badger"))
+	store, err := b.Open(t.Context(), b.Config{Path: filepath.Join(config.StateDir, "canonical", "canonical.sqlite")})
 
 	requireNoError(t, err, "reopen: %v")
 	defer func() { requireNoError(t, store.Close(), "store close: %v") }()

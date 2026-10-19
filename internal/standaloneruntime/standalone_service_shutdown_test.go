@@ -16,7 +16,11 @@ import (
 )
 
 func TestRuntimeShutdownTimeoutRetainsResources(t *testing.T) {
-	runtime, err := New(testStandaloneConfig(t))
+	forEachSQLRuntimeConfig(t, testRuntimeShutdownTimeoutRetainsResources)
+}
+
+func testRuntimeShutdownTimeoutRetainsResources(t *testing.T, cfg Config) {
+	runtime, err := New(cfg)
 	requireNoError(t, err, "%v")
 
 	entered, release := make(chan struct{}), make(chan struct{})
@@ -72,7 +76,11 @@ func TestRuntimeShutdownTimeoutRetainsResources(t *testing.T) {
 }
 
 func TestRuntimeShutdownDrainsEmbeddedOperation(t *testing.T) {
-	runtime, err := New(testStandaloneConfig(t))
+	forEachSQLRuntimeConfig(t, testRuntimeShutdownDrainsEmbeddedOperation)
+}
+
+func testRuntimeShutdownDrainsEmbeddedOperation(t *testing.T, cfg Config) {
+	runtime, err := New(cfg)
 	requireNoError(t, err, "%v")
 	requireNoError(t, runtime.Start(context.Background()), "%v")
 

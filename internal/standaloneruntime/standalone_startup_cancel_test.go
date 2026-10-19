@@ -25,7 +25,11 @@ func (s *blockedStartupScopeStore) ListCanonicalScopeStates(
 }
 
 func TestStopCancelsBlockedProjectionStartup(t *testing.T) {
-	runtime, err := New(testStandaloneConfig(t))
+	forEachSQLRuntimeConfig(t, testStopCancelsBlockedProjectionStartup)
+}
+
+func testStopCancelsBlockedProjectionStartup(t *testing.T, cfg Config) {
+	runtime, err := New(cfg)
 	requireNoError(t, err, "%v")
 
 	pager := &blockedStartupScopeStore{CanonicalStore: runtime.service.store, entered: make(chan struct{})}

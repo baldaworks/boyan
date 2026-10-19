@@ -17,7 +17,8 @@ func (s *standaloneService) stopComponents(ctx context.Context) error {
 	recordStopError(&firstErr, s.projection.Close(ctx))
 	recordStopError(&firstErr, s.invoker.Close(ctx))
 	recordStopError(&firstErr, s.index.Close())
-	recordStopError(&firstErr, s.maintenance.Close(ctx))
+	recordStopError(&firstErr, s.store.Close())
+	recordStopError(&firstErr, s.stateLock.Close())
 
 	return firstErr
 }

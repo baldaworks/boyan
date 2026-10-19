@@ -9,13 +9,19 @@ import (
 )
 
 func TestStandaloneStartupResumesPendingEraseBeforeProjection(t *testing.T) {
-	runtime, err := New(testStandaloneConfig(t))
+	forEachSQLRuntimeConfig(t, testStandaloneStartupResumesPendingEraseBeforeProjection)
+}
+
+func testStandaloneStartupResumesPendingEraseBeforeProjection(t *testing.T, cfg Config) {
+	runtime, err := New(cfg)
 	requireNoError(t, err, "runtime: %v")
 
 	defer runtime.Stop(context.Background())
 
 	scope := m.Scope{Key: "test:pending-erase", Kind: m.ScopeKindPersonal}
-	_, err = runtime.service.store.BeginScopeErase(context.Background(), m.ScopeEraseRequest{
+
+	requireNoError(t, runtime.service.store.PrepareSourcePrivacy(t.Context()), "prepare fixture: %v")
+	_, err = runtimeStore(t, runtime).BeginScopeErase(context.Background(), m.ScopeEraseRequest{
 		Scope: scope, OperationID: "pending-erase", Fingerprint: "pending-erase-fingerprint", ForgottenAt: time.Now().UTC(),
 	})
 	requireNoError(t, err, "begin erase: %v")

@@ -56,6 +56,12 @@ func (s *Store) RestorePreflight(ctx context.Context) error {
 	return s.canonicalOwner().RestorePreflight(ctx)
 }
 
+// CheckReadiness verifies the pinned session, ownership and durable serving
+// fences. A lost session poisons the owner; it is never reconnected here.
+func (s *Store) CheckReadiness(ctx context.Context) error {
+	return s.canonicalOwner().SourcePrivacyReady(ctx)
+}
+
 // Close rejects new work, cancels/drains admitted work and closes the session,
 // releasing its lock. Repeated and concurrent calls share the cleanup result.
 func (s *Store) Close() error { return s.canonicalOwner().Close() }

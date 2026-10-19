@@ -27,6 +27,7 @@ func denialSeedPopulation(t *testing.T, r *Runtime, scope memory.Scope, id strin
 	memory.ForgetSourceCommand, []memory.MemoryRevision,
 ) {
 	t.Helper()
+	requireNoError(t, r.service.store.PrepareSourcePrivacy(t.Context()), "prepare fixture: %v")
 
 	at := time.Now().UTC().Add(-time.Hour)
 	turn, err := memory.NewTurn(scope,
@@ -51,6 +52,7 @@ func denialSeedPopulation(t *testing.T, r *Runtime, scope memory.Scope, id strin
 
 	source := denialPayload("denial-source-"+id, data)
 	message := denialPayload("denial-message-"+id, []byte(turn.Messages[0].Text))
+	assistant := denialPayload("denial-assistant-"+id, []byte(turn.Messages[1].Text))
 	evidence, err := memory.NewEvidenceRef(sourceID, turn.Messages[0].MessageID, memory.MessageRoleUser,
 		turn.Messages[0].Text, 0, uint32(len(turn.Messages[0].Text)), memory.AssertionModeUser)
 	requireNoError(t, err, "evidence: %v")
@@ -70,8 +72,10 @@ func denialSeedPopulation(t *testing.T, r *Runtime, scope memory.Scope, id strin
 			mutation.Sources = []memory.CanonicalSourceRecord{{Scope: scope, SourceID: sourceID, Payload: source.Ref,
 				Sensitivity: memory.SensitivityStandard, Retention: memory.RetentionClassStandard}}
 			mutation.Messages = []memory.MessageRecord{{MessageID: turn.Messages[0].MessageID,
-				SourceID: sourceID, Role: memory.MessageRoleUser, Payload: message.Ref}}
-			mutation.Payloads = []memory.CanonicalPayload{source, message}
+				SourceID: sourceID, Role: memory.MessageRoleUser, Payload: message.Ref},
+				{MessageID: turn.Messages[1].MessageID, SourceID: sourceID,
+					Role: memory.MessageRoleAssistant, Payload: assistant.Ref}}
+			mutation.Payloads = []memory.CanonicalPayload{source, message, assistant}
 		}
 
 		for i := offset; i < min(offset+100, count); i++ {

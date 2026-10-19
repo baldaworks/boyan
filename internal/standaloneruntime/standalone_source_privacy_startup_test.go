@@ -2,15 +2,13 @@ package standaloneruntime //nolint:testpackage // Tests private startup readines
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/baldaworks/boyan/internal/canonicalsql"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	canonicalbadger "github.com/baldaworks/boyan/store/badger"
-	"github.com/dgraph-io/badger/v4"
 )
 
 func TestRuntimePreparesOldSourcePrivacyBeforeServing(t *testing.T) {
@@ -57,17 +55,14 @@ func TestCanceledRuntimeStartupDoesNotPrepareOldSourcePrivacy(t *testing.T) {
 		t.Fatal("canceled startup became ready")
 	}
 
-	key, _ := m.TupleKey(0x53, 1, "source-privacy-ready")
-	store, openErr := canonicalbadger.OpenCanonicalStore(runtime.service.state.CanonicalDir)
-	requireNoError(t, openErr, "reopen: %v")
-	t.Cleanup(func() { _ = store.Close() })
+	_, connection := openRuntimeCanonicalSQL(t, runtime.service.cfg)
 
-	err = store.DB().View(func(txn *badger.Txn) error {
-		_, err := txn.Get(key)
+	err = connection.View(t.Context(), func(tx *canonicalsql.Tx) error {
+		_, err := tx.Get(t.Context(), canonicalsql.Key{Family: canonicalsql.SourcePrivacyReady})
 
 		return err
 	})
-	if !errors.Is(err, badger.ErrKeyNotFound) {
+	if code, _, _ := m.ClassifyError(err); code != m.CodeNotFound {
 		t.Fatalf("canceled startup published privacy readiness: %v", err)
 	}
 }
@@ -76,17 +71,18 @@ func markRuntimePrivacyUnprepared(t *testing.T, runtime *Runtime) {
 	t.Helper()
 
 	scope := m.Scope{Key: "test:old-startup", Kind: m.ScopeKindPersonal}
-	key, _ := m.TupleKey(0x53, 1, "revision", scope.Key, string(scope.Kind), "opaque-old")
-	payload, err := m.MarshalRecordEnvelope("revision", []byte(`{"old":"opaque"}`))
+	key := canonicalsql.Key{Family: canonicalsql.ScopeState, Scope: scope}
+	payload, err := canonicalsql.Encode(canonicalsql.ScopeState,
+		m.ScopeState{SchemaVersion: m.CanonicalSchemaVersionV1, Scope: scope})
 	requireNoError(t, err, "envelope: %v")
 
-	marker, _ := m.TupleKey(0x53, 1, "source-privacy-ready")
-	err = runtime.service.store.DB().Update(func(txn *badger.Txn) error {
-		if err := txn.Set(key, payload); err != nil {
+	_, connection := openRuntimeCanonicalSQL(t, runtime.service.cfg)
+	err = connection.Update(t.Context(), func(tx *canonicalsql.Tx) error {
+		if err := tx.Put(t.Context(), key, payload); err != nil {
 			return err
 		}
 
-		return txn.Delete(marker)
+		return tx.Delete(t.Context(), canonicalsql.Key{Family: canonicalsql.SourcePrivacyReady})
 	})
 	requireNoError(t, err, "old fixture: %v")
 }

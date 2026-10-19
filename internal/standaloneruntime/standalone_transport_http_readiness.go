@@ -26,19 +26,12 @@ func (c readinessChecker) CheckReadiness(ctx context.Context) error {
 }
 
 type standaloneReadinessReporter struct {
-	maintenance readinessErrorReporter
-	service     *standaloneService
+	service *standaloneService
 }
 
 func (reporter *standaloneReadinessReporter) LastError() error {
 	if reporter == nil || reporter.service == nil || !reporter.service.ready() {
 		return memory.PermanentError(memory.CodeUnavailable, "Boyan service is not ready", nil)
-	}
-
-	if reporter.maintenance != nil {
-		if err := reporter.maintenance.LastError(); err != nil {
-			return err
-		}
 	}
 
 	return nil

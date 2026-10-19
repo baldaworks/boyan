@@ -13,7 +13,7 @@ import (
 	transport "github.com/baldaworks/boyan/mcp"
 	hostapi "github.com/baldaworks/boyan/pkg/boyan"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
+	b "github.com/baldaworks/boyan/store/sqlite"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -97,17 +97,19 @@ func TestPublicHostAndMCPNativeMemoryLifecycle(t *testing.T) {
 func persistIntegrationTurn(t *testing.T, config hostapi.Config, turn m.Turn) m.CanonicalMutationOutcome {
 	t.Helper()
 
-	store, err := b.Open(filepath.Join(config.StateDir, "badger"))
+	store, err := b.Open(t.Context(), b.Config{Path: filepath.Join(config.StateDir, "canonical", "canonical.sqlite")})
 
 	requireNoError(t, err, "store: %v")
 	defer func() { requireNoError(t, store.Close(), "store close: %v") }()
+
+	requireNoError(t, store.PrepareSourcePrivacy(t.Context()), "prepare fixture: %v")
 
 	processor, err := core.NewCanonicalTurnProcessor(store, integrationExtractor{}, m.PolicyRegistry{Version: "policy-v1"})
 	requireNoError(t, err, "processor: %v")
 	outcome, err := processor.ProcessTurn(context.Background(), turn, m.LegacyDerivationRef())
 	requireNoError(t, err, "deterministic native ingest: %v")
-	reader, err := b.NewCanonicalReader(store)
-	requireNoError(t, err, "reader: %v")
+
+	reader := b.NewCanonicalReader(store)
 	indexer, err := index.Open(t.Context(), config.StateDir, index.Options{})
 
 	requireNoError(t, err, "index: %v")

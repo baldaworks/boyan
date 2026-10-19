@@ -1,8 +1,10 @@
 package standaloneruntime
 
 import (
+	"context"
 	"errors"
 	stdhttp "net/http"
+	"time"
 )
 
 func (s *standaloneService) beginStart() bool {
@@ -63,9 +65,17 @@ func (s *standaloneService) startedState() bool {
 
 func (s *standaloneService) ready() bool {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	ready := s.started && !s.closing && s.serving == nil
+	s.mu.Unlock()
 
-	return s.started && !s.closing && s.serving == nil
+	if !ready {
+		return false
+	}
+
+	ctx, cancel := context.WithTimeout(s.shutdownContext, time.Second)
+	defer cancel()
+
+	return s.store.CheckReadiness(ctx) == nil
 }
 
 func (s *standaloneService) completeStop(err error) {

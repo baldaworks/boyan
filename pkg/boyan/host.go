@@ -92,7 +92,7 @@ func New(ctx context.Context, config Config) (*Host, error) {
 		}
 	}
 
-	runtime, err := standaloneruntime.New(runtimeConfig)
+	runtime, err := standaloneruntime.NewContext(ctxOrBackground(ctx), runtimeConfig)
 	if err != nil {
 		return nil, err
 	}

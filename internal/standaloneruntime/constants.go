@@ -1,7 +1,7 @@
 package standaloneruntime
 
 const (
-	boyanCanonicalDirName  = "badger"
+	boyanCanonicalDirName  = "canonical"
 	boyanProjectionDirName = "search"
 	boyanProjectionID      = "sqlite"
 )

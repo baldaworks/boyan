@@ -11,14 +11,13 @@ import (
 	"github.com/baldaworks/boyan/internal/projection"
 	"github.com/baldaworks/boyan/internal/semanticprojection"
 	"github.com/baldaworks/boyan/pkg/memory"
-	"github.com/baldaworks/boyan/store/badger"
 )
 
 const semanticScopePageSize = 128
 
 type semanticRuntime struct {
 	manager       *semanticprojection.Manager
-	canonical     *badger.CanonicalStore
+	canonical     memory.CanonicalScopeStatePager
 	provider      *semanticHealthProvider
 	startup       sync.WaitGroup
 	repairing     atomic.Bool

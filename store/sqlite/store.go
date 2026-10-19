@@ -46,6 +46,12 @@ func (s *Store) RestorePreflight(ctx context.Context) error {
 	return s.canonicalOwner().RestorePreflight(ctx)
 }
 
+// CheckReadiness verifies current ownership and durable serving fences without
+// repeating startup's full integrity scan.
+func (s *Store) CheckReadiness(ctx context.Context) error {
+	return s.canonicalOwner().SourcePrivacyReady(ctx)
+}
+
 // Close rejects admissions, cancels/drains active operations, checkpoints WAL
 // and releases ownership. It is safe to call repeatedly or concurrently.
 func (s *Store) Close() error { return s.canonicalOwner().Close() }

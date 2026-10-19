@@ -18,12 +18,25 @@ type Runtime struct {
 
 // New constructs one standalone Boyan runtime without running its process loop.
 func New(cfg Config) (*Runtime, error) {
+	return NewContext(context.Background(), cfg)
+}
+
+// NewContext constructs storage with the caller's bounded startup context.
+func NewContext(ctx context.Context, cfg Config) (*Runtime, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	logger, err := newLogger(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	service, err := newStandaloneService(cfg, logger)
+	service, err := newStandaloneService(ctx, cfg, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +52,7 @@ func Run(ctx context.Context, cfg Config) error {
 		ctx = context.Background()
 	}
 
-	runtime, err := New(cfg)
+	runtime, err := NewContext(ctx, cfg)
 	if err != nil {
 		return err
 	}

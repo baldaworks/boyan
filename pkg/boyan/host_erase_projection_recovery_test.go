@@ -2,7 +2,6 @@ package boyan_test
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,8 +9,7 @@ import (
 
 	hostapi "github.com/baldaworks/boyan/pkg/boyan"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
-	db "github.com/dgraph-io/badger/v4"
+	b "github.com/baldaworks/boyan/store/sqlite"
 )
 
 func TestPublicHostFinishesEraseBeforeRebuildingLostIndex(t *testing.T) {
@@ -46,7 +44,7 @@ func interruptStartupErase(t *testing.T, config hostapi.Config, turn m.Turn,
 ) (m.ScopeEraseRequest, []m.PayloadRef, m.RevisionRef) {
 	t.Helper()
 
-	store, err := b.Open(filepath.Join(config.StateDir, "badger"))
+	store, err := b.Open(t.Context(), b.Config{Path: filepath.Join(config.StateDir, "canonical", "canonical.sqlite")})
 
 	requireNoError(t, err, "store: %v")
 	defer func() { requireNoError(t, store.Close(), "store close: %v") }()
@@ -104,7 +102,7 @@ func assertStartupEraseComplete(t *testing.T, config hostapi.Config, request m.S
 ) {
 	t.Helper()
 
-	store, err := b.Open(filepath.Join(config.StateDir, "badger"))
+	store, err := b.Open(t.Context(), b.Config{Path: filepath.Join(config.StateDir, "canonical", "canonical.sqlite")})
 
 	requireNoError(t, err, "store: %v")
 	defer func() { requireNoError(t, store.Close(), "store close: %v") }()
@@ -118,7 +116,7 @@ func assertStartupEraseComplete(t *testing.T, config hostapi.Config, request m.S
 
 	for _, ref := range refs {
 		_, err := store.LoadPayload(context.Background(), ref)
-		if !errors.Is(err, db.ErrKeyNotFound) {
+		if code, _, _ := m.ClassifyError(err); code != m.CodeNotFound {
 			t.Fatalf("startup retained target payload %s", ref.ID)
 		}
 	}

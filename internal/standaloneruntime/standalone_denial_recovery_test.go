@@ -96,6 +96,12 @@ func TestStandaloneDenialInterruptedJoinSameSQLRestart(t *testing.T) {
 			}
 
 			_, later := denialSeedPopulation(t, r, first.Scope, "restart-later", 1, false)
+
+			control, controlErr := r.service.reader.LoadRecallRecords(t.Context(), first.Scope, []string{later[0].RevisionID})
+			if controlErr != nil || len(control) != 1 {
+				t.Fatalf("eligible canonical control before restart: %+v %v", control, controlErr)
+			}
+
 			requireNoError(t, db.Close(), "close inspection: %v")
 			requireNoError(t, r.Stop(context.Background()), "interrupt stop: %v")
 
@@ -145,7 +151,7 @@ func TestStandaloneDenialPendingJournalRecovery(t *testing.T) {
 			r, cfg, _, first := denialFixture(t)
 			command := denialCommand(first.Scope)
 			request := denialEraseRequest(t, r, command)
-			journal, err := r.service.store.BeginScopeErase(t.Context(), request)
+			journal, err := runtimeStore(t, r).BeginScopeErase(t.Context(), request)
 			requireNoError(t, err, "pending begin: %v")
 
 			for attempts := 0; journal.Stage != stage && attempts < 100; attempts++ {
@@ -220,11 +226,11 @@ func TestStandaloneDenialLogicalRestoreFreshSQL(t *testing.T) {
 	requireNoError(t, err, "erase before logical export: %v")
 
 	var archive bytes.Buffer
-	requireNoError(t, r.service.store.ExportCanonicalLogical(t.Context(), &archive), "export: %v")
+	requireNoError(t, runtimeStore(t, r).ExportCanonicalLogical(t.Context(), &archive), "export: %v")
 	fresh, err := New(testStandaloneConfig(t))
 	requireNoError(t, err, "fresh SQL: %v")
 	t.Cleanup(func() { _ = fresh.Stop(context.Background()) })
-	requireNoError(t, fresh.service.store.ImportCanonicalLogical(t.Context(), &archive), "logical restore: %v")
+	requireNoError(t, runtimeStore(t, fresh).ImportCanonicalLogical(t.Context(), &archive), "logical restore: %v")
 	startSQLComponents(t, fresh)
 	replay, err := fresh.ForgetScope(t.Context(), command)
 	requireNoError(t, err, "restored replay: %v")

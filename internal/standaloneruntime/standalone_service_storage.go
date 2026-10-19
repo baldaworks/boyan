@@ -4,16 +4,17 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gofrs/flock"
+
 	"github.com/baldaworks/boyan/index/sqlite"
 	projection "github.com/baldaworks/boyan/internal/projection"
 	"github.com/baldaworks/boyan/pkg/memory"
-	"github.com/baldaworks/boyan/store/badger"
 )
 
 type standaloneStorage struct {
-	store            *badger.CanonicalStore
-	maintenance      *badger.CanonicalMaintenance
-	reader           *badger.CanonicalReader
+	stateLock        *flock.Flock
+	store            standaloneCanonicalStore
+	reader           standaloneCanonicalReader
 	index            *sqlite.Store
 	applier          *sqlite.SQLiteCanonicalApplier
 	projection       *projection.ProjectionRuntime
@@ -22,8 +23,8 @@ type standaloneStorage struct {
 	semantic         *semanticRuntime
 }
 
-//nolint:funlen // Required lexical ownership precedes the isolated optional graph.
 func openStandaloneStorage(
+	ctx context.Context,
 	layout stateLayout,
 	cfg Config,
 	cleanups *standaloneCleanupStack,
@@ -31,27 +32,21 @@ func openStandaloneStorage(
 	*standaloneStorage,
 	error,
 ) {
-	store, err := badger.OpenCanonicalStore(layout.CanonicalDir)
+	lock, err := lockStandaloneState(layout)
+	if err != nil {
+		return nil, err
+	}
+
+	cleanups.Add(func() { _ = lock.Close() })
+
+	store, reader, err := openStandaloneCanonical(ctx, layout, cfg.Canonical)
 	if err != nil {
 		return nil, fmt.Errorf("open Boyan canonical store: %w", err)
 	}
 
 	cleanups.Add(func() { _ = store.Close() })
 
-	maintenance, err := badger.NewCanonicalMaintenance(store, badger.CanonicalMaintenanceConfig{
-		ValueLogGCInterval: cfg.Maintenance.ValueLogGCInterval,
-		DiscardRatio:       cfg.Maintenance.DiscardRatio,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	reader, err := badger.NewCanonicalReader(store)
-	if err != nil {
-		return nil, err
-	}
-
-	index, err := sqlite.Open(context.Background(), layout.Root,
+	index, err := sqlite.Open(ctx, layout.Root,
 		sqlite.Options{EmbeddingsEnabled: cfg.Embeddings.Provider != nil})
 	if err != nil {
 		return nil, fmt.Errorf("open Boyan SQLite projection: %w", err)
@@ -70,8 +65,8 @@ func openStandaloneStorage(
 	}
 
 	storage := &standaloneStorage{
+		stateLock:        lock,
 		store:            store,
-		maintenance:      maintenance,
 		reader:           reader,
 		index:            index,
 		applier:          applier,

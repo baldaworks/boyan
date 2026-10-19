@@ -11,7 +11,7 @@ import (
 	"github.com/baldaworks/boyan/internal/projection"
 	"github.com/baldaworks/boyan/pkg/boyan"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
+	canonical "github.com/baldaworks/boyan/store/sqlite"
 	agentconfig "github.com/normahq/runtime/v2/agentconfig"
 	runtimeconfig "github.com/normahq/runtime/v2/appconfig"
 )
@@ -98,10 +98,13 @@ func config(t *testing.T, endpoint string, dimensions int) boyan.Config {
 func seed(t *testing.T, cfg boyan.Config, docs []document) map[string]string {
 	t.Helper()
 
-	store, err := b.Open(filepath.Join(cfg.StateDir, "badger"))
+	store, err := canonical.Open(t.Context(), canonical.Config{
+		Path: filepath.Join(cfg.StateDir, "canonical", "canonical.sqlite")})
 
 	check(t, err)
 	defer func() { check(t, store.Close()) }()
+
+	check(t, store.PrepareSourcePrivacy(t.Context()))
 
 	ids := make(map[string]string)
 
@@ -141,8 +144,7 @@ func seed(t *testing.T, cfg boyan.Config, docs []document) map[string]string {
 		}
 	}
 
-	reader, err := b.NewCanonicalReader(store)
-	check(t, err)
+	reader := canonical.NewCanonicalReader(store)
 	idx, err := index.Open(t.Context(), cfg.StateDir, index.Options{})
 
 	check(t, err)

@@ -1,10 +1,14 @@
 package standaloneruntime
 
 import (
+	"context"
+	"os"
+	"path/filepath"
+
 	"github.com/rs/zerolog"
 )
 
-func newStandaloneService(cfg Config, logger zerolog.Logger) (_ *standaloneService, err error) {
+func newStandaloneService(ctx context.Context, cfg Config, logger zerolog.Logger) (_ *standaloneService, err error) {
 	inputs, err := prepareStandaloneBuild(cfg)
 	if err != nil {
 		return nil, err
@@ -18,9 +22,15 @@ func newStandaloneService(cfg Config, logger zerolog.Logger) (_ *standaloneServi
 		}
 	}()
 
-	storage, err := openStandaloneStorage(inputs.layout, cfg, &cleanups)
+	storage, err := openStandaloneStorage(ctx, inputs.layout, cfg, &cleanups)
 	if err != nil {
 		return nil, err
+	}
+
+	oldPath := filepath.Join(inputs.layout.Root, "badger")
+	if _, err := os.Stat(oldPath); err == nil {
+		logger.Info().Str("old_state_dir", oldPath).
+			Msg("Existing Badger state is preserved; SQL state is separate and old identities are not imported")
 	}
 
 	services, err := buildStandaloneAppServices(cfg, inputs.workingDir, storage, &cleanups)
@@ -28,7 +38,7 @@ func newStandaloneService(cfg Config, logger zerolog.Logger) (_ *standaloneServi
 		return nil, err
 	}
 
-	readiness := &standaloneReadinessReporter{maintenance: storage.maintenance}
+	readiness := &standaloneReadinessReporter{}
 
 	server, err := newHTTPServer(
 		standaloneHTTPConfig{

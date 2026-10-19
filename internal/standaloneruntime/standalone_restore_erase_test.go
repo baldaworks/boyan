@@ -3,29 +3,26 @@ package standaloneruntime //nolint:testpackage // Exercises actual restart with 
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/baldaworks/boyan/internal/canonicalcore"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
+	b "github.com/baldaworks/boyan/store/archive"
 )
 
 func TestStandaloneLoadingRestoreDoesNotAdvanceErase(t *testing.T) {
-	ctx := context.Background()
-	full, prefix, original := standalonePendingEraseArchive(t)
-	cfg := testStandaloneConfig(t)
-	dir := filepath.Join(cfg.StateDir, "badger")
-	destination, err := b.OpenCanonicalStore(dir)
-	requireNoError(t, err, "open: %v")
+	forEachSQLRuntimeConfig(t, testStandaloneLoadingRestoreDoesNotAdvanceErase)
+}
 
-	_, err = destination.ImportCanonicalLogicalWithOptions(ctx, bytes.NewReader(prefix),
+func testStandaloneLoadingRestoreDoesNotAdvanceErase(t *testing.T, cfg Config) {
+	ctx := context.Background()
+	full, prefix, original := standalonePendingEraseArchive(t, cfg.Canonical.Backend)
+	destination := openFixtureSQLStore(t, cfg)
+	requireNoError(t, destination.ImportCanonicalLogical(ctx, bytes.NewReader(full)), "baseline pending journal: %v")
+
+	_, err := destination.ImportCanonicalLogicalWithOptions(ctx, bytes.NewReader(prefix),
 		b.CanonicalLogicalImportOptions{BatchSize: 1})
 	if err == nil {
 		t.Fatal("partial import succeeded")
@@ -46,8 +43,7 @@ func TestStandaloneLoadingRestoreDoesNotAdvanceErase(t *testing.T) {
 
 	requireNoError(t, runtime.Stop(ctx), "stop: %v")
 
-	destination, err = b.OpenCanonicalStore(dir)
-	requireNoError(t, err, "reopen: %v")
+	destination = openFixtureSQLStore(t, cfg)
 	// Complete retry must preserve the imported prepared journal, then permit normal recovery.
 	requireNoError(t, destination.ImportCanonicalLogical(ctx, bytes.NewReader(full)), "full retry after startup: %v")
 	journal, found, err := destination.LoadScopeErase(ctx, original.Scope, original.OperationID)
@@ -84,12 +80,12 @@ func assertStandaloneRecoveredErase(t *testing.T, runtime *Runtime, original m.S
 	}
 }
 
-func standalonePendingEraseArchive(t *testing.T) ([]byte, []byte, m.ScopeEraseJournal) {
+func standalonePendingEraseArchive(t *testing.T, backend string) ([]byte, []byte, m.ScopeEraseJournal) {
 	t.Helper()
 
 	ctx := context.Background()
-	source, err := b.OpenCanonicalStore(t.TempDir())
-	requireNoError(t, err, "source: %v")
+	source := openFixtureSQLStore(t, sqlRuntimeConfig(t, backend))
+	requireNoError(t, source.PrepareSourcePrivacy(t.Context()), "prepare source: %v")
 
 	defer source.Close()
 
@@ -113,8 +109,7 @@ func standalonePendingEraseArchive(t *testing.T) ([]byte, []byte, m.ScopeEraseJo
 	var full bytes.Buffer
 	requireNoError(t, source.ExportCanonicalLogical(ctx, &full), "export: %v")
 	fullBytes, prefix := reorderStandaloneEraseArchive(t, full.Bytes())
-	fresh, err := b.OpenCanonicalStore(t.TempDir())
-	requireNoError(t, err, "control: %v")
+	fresh := openFixtureSQLStore(t, sqlRuntimeConfig(t, backend))
 
 	defer fresh.Close()
 
@@ -125,43 +120,17 @@ func standalonePendingEraseArchive(t *testing.T) ([]byte, []byte, m.ScopeEraseJo
 
 func reorderStandaloneEraseArchive(t *testing.T, encoded []byte) ([]byte, []byte) {
 	t.Helper()
+	// SQL archives require stamp order and validate the whole stream before
+	// replay. Retain its exact native order and interrupt before the footer.
+	trimmed := bytes.TrimSuffix(encoded, []byte{'\n'})
+	end := bytes.LastIndexByte(trimmed, '\n') + 1
 
-	var full bytes.Buffer
-
-	lines := bytes.Split(bytes.TrimSpace(encoded), []byte{'\n'})
-
-	var first, rest [][]byte
-
-	for _, line := range lines[1 : len(lines)-1] {
-		var record b.CanonicalLogicalExportRecord
-		requireNoError(t, json.Unmarshal(line, &record), "record: %v")
-
-		switch record.RecordType {
-		case "erase-journal", "erase-fence", "erase-guard", "scope":
-			first = append(first, line)
-		default:
-			rest = append(rest, line)
-		}
-	}
-
-	body := append(bytes.Join(append(first, rest...), []byte{'\n'}), '\n')
-	digest := sha256.Sum256(body)
-	footer, err := json.Marshal(b.CanonicalLogicalExportFooter{SchemaVersion: "boyan-logical-export/v1", Kind: "footer",
-		RecordCount: uint64(len(first) + len(rest)), SHA256: hex.EncodeToString(digest[:])})
-	requireNoError(t, err, "footer: %v")
-	full.Reset()
-	full.Write(lines[0])
-	full.WriteByte('\n')
-	full.Write(body)
-	full.Write(footer)
-	full.WriteByte('\n')
-
-	prefix := append(append(append([]byte{}, lines[0]...), '\n'), append(bytes.Join(first, []byte{'\n'}), '\n')...)
-	if !bytes.HasPrefix(full.Bytes(), prefix) {
+	prefix := append([]byte(nil), encoded[:end]...)
+	if end == 0 || !bytes.HasPrefix(encoded, prefix) {
 		t.Fatal("interrupted stream is not exact prefix")
 	}
 
-	return full.Bytes(), prefix
+	return encoded, prefix
 }
 
 type restoreStartupExtractor struct{}
@@ -184,17 +153,21 @@ func (restoreStartupExtractor) ExtractCanonicalSemantics(
 }
 
 func TestStandaloneValidatedRestoreResumesBeforeErase(t *testing.T) {
+	forEachSQLRuntimeConfig(t, testStandaloneValidatedRestoreResumesBeforeErase)
+}
+
+func testStandaloneValidatedRestoreResumesBeforeErase(t *testing.T, cfg Config) {
 	ctx := context.Background()
-	full, _, original := standalonePendingEraseArchive(t)
-	cfg := testStandaloneConfig(t)
-	dir := filepath.Join(cfg.StateDir, "badger")
-	destination, err := b.OpenCanonicalStore(dir)
-	requireNoError(t, err, "open: %v")
-	requireNoError(t, destination.ImportCanonicalLogical(ctx, bytes.NewReader(full)), "restore: %v")
+	full, _, original := standalonePendingEraseArchive(t, cfg.Canonical.Backend)
+	destination := openFixtureSQLStore(t, cfg)
+
+	removeFault := failRuntimePrivacyPreparation(t, cfg)
+	if err := destination.ImportCanonicalLogical(ctx, bytes.NewReader(full)); err == nil {
+		t.Fatal("validated preparation fault ignored")
+	}
+
+	removeFault()
 	requireNoError(t, destination.Close(), "close: %v")
-	// Simulate the durable phase after archive validation and before readiness publication.
-	err = os.WriteFile(filepath.Join(dir, ".boyan-restore-privacy"), []byte("v1 validated\n"), 0o600)
-	requireNoError(t, err, "fence: %v")
 
 	runtime, err := New(cfg)
 	requireNoError(t, err, "new: %v")

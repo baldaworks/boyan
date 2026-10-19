@@ -14,7 +14,7 @@ import (
 	"github.com/baldaworks/boyan/internal/canonicalcore"
 	hostapi "github.com/baldaworks/boyan/pkg/boyan"
 	"github.com/baldaworks/boyan/pkg/memory"
-	"github.com/baldaworks/boyan/store/badger"
+	canonical "github.com/baldaworks/boyan/store/sqlite"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -41,8 +41,11 @@ func (hostDenialExtractor) ExtractCanonicalSemantics(
 func TestHostDenialCompletionErrors(t *testing.T) {
 	cfg := testHostConfig(t)
 	scope := memory.Scope{Kind: memory.ScopeKindPersonal, Key: "denial:host"}
-	store, err := badger.OpenCanonicalStore(filepath.Join(cfg.StateDir, "badger"))
+	store, err := canonical.Open(t.Context(), canonical.Config{
+		Path: filepath.Join(cfg.StateDir, "canonical", "canonical.sqlite")})
 	requireNoError(t, err, "seed store: %v")
+	requireNoError(t, store.PrepareSourcePrivacy(t.Context()), "prepare fixture: %v")
+
 	turn, err := memory.NewTurn(scope,
 		memory.ConversationRef{ConversationID: "host-denial", AgentConversationID: "agent"},
 		"first", time.Now().UTC().Add(-time.Hour), "Bishkek home", "OK")

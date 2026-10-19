@@ -10,7 +10,7 @@ import (
 
 	"github.com/baldaworks/boyan/internal/canonicalcore"
 	"github.com/baldaworks/boyan/pkg/memory"
-	canonical "github.com/baldaworks/boyan/store/badger"
+	canonical "github.com/baldaworks/boyan/store/sqlite"
 )
 
 // A disposable rebuild, canonical replay, or archive restore must never turn a
@@ -43,7 +43,7 @@ func TestSQLiteRuntimeDeniedReplayRestoreAndErase(t *testing.T) {
 	}
 	// Deliberately leave the actual SQL rows stale: canonical hydration is the
 	// text barrier before any projection synchronization/retirement can run.
-	err = runtime.service.store.DenySource(t.Context(), turn.Scope, turn.SourceID, time.Now().UTC())
+	err = runtimeStore(t, runtime).DenySource(t.Context(), turn.Scope, turn.SourceID, time.Now().UTC())
 	requireNoError(t, err, "deny: %v")
 	assertSQLPrivacyEmpty(t, runtime, request)
 	requireNoError(t, runtime.Stop(t.Context()), "stop: %v")
@@ -66,12 +66,13 @@ func TestSQLiteRuntimeDeniedReplayRestoreAndErase(t *testing.T) {
 	assertSQLPrivacyEmpty(t, runtime, request)
 
 	var archive bytes.Buffer
-	requireNoError(t, runtime.service.store.ExportCanonicalLogical(t.Context(), &archive), "export denied state: %v")
+	requireNoError(t, runtimeStore(t, runtime).ExportCanonicalLogical(t.Context(), &archive), "export denied state: %v")
 	requireNoError(t, runtime.Stop(t.Context()), "stop before restore: %v")
 
 	restoredProvider := &lifecycleEmbeddingProvider{}
 	restoredConfig := enabledLifecycleConfig(t, restoredProvider)
-	restored, err := canonical.OpenCanonicalStore(filepath.Join(restoredConfig.StateDir, "badger"))
+	restored, err := canonical.Open(t.Context(), canonical.Config{
+		Path: filepath.Join(restoredConfig.StateDir, "canonical", "canonical.sqlite")})
 	requireNoError(t, err, "restore store: %v")
 	requireNoError(t, restored.ImportCanonicalLogical(t.Context(), bytes.NewReader(archive.Bytes())), "restore: %v")
 	requireNoError(t, restored.Close(), "close restore: %v")

@@ -77,6 +77,7 @@ func seedSemanticTurn(t *testing.T, runtime *Runtime, id string) memory.Turn {
 
 func seedSemanticScopeTurn(t *testing.T, runtime *Runtime, scope memory.Scope, id string) memory.Turn {
 	t.Helper()
+	requireNoError(t, runtime.service.store.PrepareSourcePrivacy(t.Context()), "prepare fixture: %v")
 
 	conversation := memory.ConversationRef{ConversationID: "conversation", AgentConversationID: "agent"}
 	turn, err := memory.NewTurn(scope, conversation,
