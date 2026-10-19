@@ -13,8 +13,17 @@ func loadProofRevision(ctx context.Context, tx *Tx, scope memory.Scope, id strin
 		return memory.MemoryRevision{}, err
 	}
 
+	data, err := tx.Get(ctx, key)
+	if err != nil {
+		return memory.MemoryRevision{}, err
+	}
+
+	return decodeProofRevision(key, data)
+}
+
+func decodeProofRevision(key Key, data []byte) (memory.MemoryRevision, error) {
 	var revision memory.MemoryRevision
-	if err := getPrivacyRecord(ctx, tx, key, Revision, &revision); err != nil {
+	if err := decodePrivacyRecord(key, Revision, data, &revision); err != nil {
 		return revision, err
 	}
 
@@ -31,12 +40,21 @@ func loadProofItem(ctx context.Context, tx *Tx, scope memory.Scope, id string) (
 		return memory.MemoryItem{}, err
 	}
 
+	data, err := tx.Get(ctx, key)
+	if err != nil {
+		return memory.MemoryItem{}, err
+	}
+
+	return decodeProofItem(key, data)
+}
+
+func decodeProofItem(key Key, data []byte) (memory.MemoryItem, error) {
 	var item memory.MemoryItem
-	if err := getPrivacyRecord(ctx, tx, key, Item, &item); err != nil {
+	if err := decodePrivacyRecord(key, Item, data, &item); err != nil {
 		return item, err
 	}
 
-	if err := item.Validate(); err != nil || item.Scope != scope || item.ItemID != id {
+	if err := item.Validate(); err != nil || item.Scope != key.Scope || item.ItemID != string(key.Parts[0]) {
 		return item, proofStoreFailure("invalid canonical item", err)
 	}
 

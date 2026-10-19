@@ -75,6 +75,10 @@ func getPrivacyRecord(ctx context.Context, tx *Tx, key Key, family Family, targe
 		return err
 	}
 
+	return decodePrivacyRecord(key, family, data, target)
+}
+
+func decodePrivacyRecord(key Key, family Family, data []byte, target any) error {
 	if key.Family != family {
 		return invalidSourcePrivacy()
 	}

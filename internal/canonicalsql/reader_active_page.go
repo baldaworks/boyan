@@ -47,7 +47,7 @@ func (tx *Tx) activeHeadPage(ctx context.Context, request memory.ActiveHeadScanR
 	}
 
 	if tx.connection.pg != nil {
-		if err := tx.checkPageIdentities(ctx, Head, def, page); err != nil {
+		if err := tx.checkActiveHeadIdentities(ctx, page); err != nil {
 			return nil, err
 		}
 	}

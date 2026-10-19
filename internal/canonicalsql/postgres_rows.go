@@ -86,50 +86,70 @@ func pgSelection(f Family, def familyDef) string {
 	return strings.Join(cols, ",") + "," + valueSelection(f)
 }
 
+type physicalRowScan struct {
+	id      *int64
+	values  [][]byte
+	derived [][]byte
+	extra   [][]byte
+	encoded []byte
+	size    *int
+}
+
+func newPhysicalRowScan(f Family, def familyDef) *physicalRowScan {
+	return &physicalRowScan{values: make([][]byte, len(def.columns())),
+		derived: make([][]byte, len(derivedColumns(f, def))), extra: make([][]byte, len(extraColumns(f)))}
+}
+
+func (s *physicalRowScan) destinations() []any {
+	dest := []any{&s.id}
+	for i := range s.values {
+		dest = append(dest, &s.values[i])
+	}
+
+	for i := range s.derived {
+		dest = append(dest, &s.derived[i])
+	}
+
+	dest = append(dest, &s.encoded, &s.size)
+	for i := range s.extra {
+		dest = append(dest, &s.extra[i])
+	}
+
+	return dest
+}
+
 func scanPhysical(r rows, f Family, def familyDef) (physicalRow, error) {
+	s := newPhysicalRowScan(f, def)
+
+	if err := r.Scan(s.destinations()...); err != nil {
+		return physicalRow{}, err
+	}
+
+	return s.decode(f, def)
+}
+
+func (s *physicalRowScan) decode(f Family, def familyDef) (physicalRow, error) {
 	var result physicalRow
-
-	values := make([][]byte, len(def.columns()))
-	derived := make([][]byte, len(derivedColumns(f, def)))
-	extra := make([][]byte, len(extraColumns(f)))
-
-	var (
-		encoded []byte
-		size    int
-	)
-
-	dest := []any{&result.id}
-	for i := range values {
-		dest = append(dest, &values[i])
+	if s.id == nil || s.size == nil {
+		return result, corruptRow()
 	}
 
-	for i := range derived {
-		dest = append(dest, &derived[i])
-	}
+	result.id = *s.id
 
-	dest = append(dest, &encoded, &size)
-	for i := range extra {
-		dest = append(dest, &extra[i])
-	}
-
-	if err := r.Scan(dest...); err != nil {
-		return result, err
-	}
-
-	key, err := keyFromValues(f, def, values)
+	key, err := keyFromValues(f, def, s.values)
 	if err != nil {
 		return result, err
 	}
 
-	for i, expected := range derivedValues(f, def, values, extra) {
-		if !bytes.Equal(expected, derived[i]) {
+	for i, expected := range derivedValues(f, def, s.values, s.extra) {
+		if !bytes.Equal(expected, s.derived[i]) {
 			return result, corruptRow()
 		}
 	}
 
-	encoded, err = validateStoredValue(key, encoded, size, extra)
+	encoded, err := validateStoredValue(key, s.encoded, *s.size, s.extra)
 	if err != nil {
-		if size > MaxEnvelopeBytes {
+		if *s.size > MaxEnvelopeBytes {
 			return result, limitError()
 		}
 
@@ -143,51 +163,89 @@ func scanPhysical(r rows, f Family, def familyDef) (physicalRow, error) {
 
 // Native HASH is deliberately nonunique. Always recheck full original bytes,
 // validate raw/derived/envelope bindings, and reject a second exact match.
-func (tx *Tx) resolveRow(ctx context.Context, key Key, def familyDef, values [][]byte) (*physicalRow, error) {
-	r, err := tx.q.query(ctx, "SELECT "+pgSelection(key.Family, def)+" FROM "+tx.connection.table(def.table)+
-		" WHERE logical_key=$1 LIMIT 2", stampKey(values))
+func (tx *Tx) resolvePoint(ctx context.Context, key Key, def familyDef, values [][]byte) (
+	*physicalRow, *physicalStamp, error,
+) {
+	r, err := tx.q.query(ctx, tx.pointStatement(key.Family, def), stampKey(values), []byte(key.Family))
 	if err != nil {
-		return nil, tx.fail(databaseError(ctx, "resolve row", err))
+		return nil, nil, tx.fail(databaseError(ctx, "resolve row", err))
 	}
 	defer r.Close()
 
-	var result *physicalRow
+	var (
+		result *physicalRow
+		stamp  *physicalStamp
+	)
+
 	for r.Next() {
-		if result != nil {
-			return nil, tx.fail(corruptRow())
-		}
-
-		row, err := scanPhysical(r, key.Family, def)
+		result, stamp, err = scanPointRecord(r, key, def, result, stamp)
 		if err != nil {
-			return nil, tx.fail(rowError(ctx, err))
+			return nil, nil, tx.fail(rowError(ctx, err))
 		}
-
-		_, stored, err := row.Key.values()
-		if err != nil || !bytes.Equal(stampKey(stored), stampKey(values)) {
-			return nil, tx.fail(corruptRow())
-		}
-
-		result = &row
 	}
 
 	if err := r.Err(); err != nil {
-		return nil, tx.fail(databaseError(ctx, "resolve row", err))
+		return nil, nil, tx.fail(databaseError(ctx, "resolve row", err))
 	}
 
 	if err := r.Close(); err != nil {
-		return nil, tx.fail(databaseError(ctx, "close rows", err))
+		return nil, nil, tx.fail(databaseError(ctx, "close rows", err))
 	}
 
-	return result, nil
+	return result, stamp, nil
+}
+
+func scanPointRecord(r rows, key Key, def familyDef, row *physicalRow, stamp *physicalStamp) (
+	*physicalRow, *physicalStamp, error,
+) {
+	s := newPhysicalRowScan(key.Family, def)
+
+	var (
+		probe    int
+		id       *int64
+		sequence []byte
+		deleted  *bool
+	)
+
+	dest := append([]any{&probe}, s.destinations()...)
+	dest = append(dest, &id, &sequence, &deleted)
+
+	if err := r.Scan(dest...); err != nil {
+		return nil, nil, err
+	}
+
+	if probe == 0 {
+		if row != nil {
+			return nil, nil, corruptRow()
+		}
+
+		decoded, err := s.decode(key.Family, def)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		_, stored, _ := decoded.Key.values()
+
+		_, values, _ := key.values()
+		if !bytes.Equal(stampKey(stored), stampKey(values)) {
+			return nil, nil, corruptRow()
+		}
+
+		return &decoded, stamp, nil
+	}
+
+	if probe != 1 || stamp != nil {
+		return nil, nil, corruptRow()
+	}
+
+	decoded, err := decodePointStamp(id, sequence, deleted)
+
+	return row, decoded, err
 }
 
 func (tx *Tx) pgGet(ctx context.Context, key Key, def familyDef, values [][]byte) ([]byte, error) {
-	row, err := tx.resolveRow(ctx, key, def, values)
+	row, _, err := tx.resolvePoint(ctx, key, def, values)
 	if err != nil {
-		return nil, err
-	}
-
-	if _, err := tx.resolveStamp(ctx, key.Family, stampKey(values)); err != nil {
 		return nil, err
 	}
 
@@ -202,12 +260,7 @@ func (tx *Tx) pgPut(
 	ctx context.Context, key Key, def familyDef, values [][]byte, encoded []byte, extra [][]byte,
 	expected *uint64, cas bool,
 ) error {
-	row, err := tx.resolveRow(ctx, key, def, values)
-	if err != nil {
-		return err
-	}
-
-	stamp, err := tx.resolveStamp(ctx, key.Family, stampKey(values))
+	row, stamp, err := tx.resolvePoint(ctx, key, def, values)
 	if err != nil {
 		return err
 	}
@@ -232,12 +285,7 @@ func (tx *Tx) pgPut(
 }
 
 func (tx *Tx) pgDelete(ctx context.Context, key Key, def familyDef, values [][]byte) error {
-	row, err := tx.resolveRow(ctx, key, def, values)
-	if err != nil {
-		return err
-	}
-
-	stamp, err := tx.resolveStamp(ctx, key.Family, stampKey(values))
+	row, stamp, err := tx.resolvePoint(ctx, key, def, values)
 	if err != nil {
 		return err
 	}

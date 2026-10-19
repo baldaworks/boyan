@@ -68,36 +68,48 @@ func (o *Owner) ScanActiveMemory(ctx context.Context,
 	var active []memory.ActiveCanonicalMemory
 
 	err := o.View(ctx, func(ctx context.Context, tx *Tx) error {
-		heads, err := scanReaderHeads(ctx, tx, memory.ActiveHeadScanRequest(request))
-		if err != nil {
-			return err
-		}
+		var err error
 
-		active = make([]memory.ActiveCanonicalMemory, 0, len(heads))
-		for _, head := range heads {
-			item, err := loadProofItem(ctx, tx, request.Scope, head.ItemID)
-			if err != nil {
-				return err
-			}
+		active, err = scanActiveMemoryTx(ctx, tx, request)
 
-			revision, err := loadProofRevision(ctx, tx, request.Scope, head.RevisionID)
-			if err != nil {
-				return err
-			}
-
-			if revision.ItemID != item.ItemID || revision.RevisionID != head.RevisionID {
-				return corruptRow()
-			}
-
-			active = append(active, memory.ActiveCanonicalMemory{Item: item, RevisionID: revision.RevisionID,
-				Revision: revision.Revision,
-				Evidence: append([]memory.EvidenceRef(nil), revision.Evidence...)})
-		}
-
-		return nil
+		return err
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	return active, nil
+}
+
+func scanActiveMemoryTx(ctx context.Context, tx *Tx,
+	request memory.ActiveMemoryScanRequest) ([]memory.ActiveCanonicalMemory, error) {
+	heads, err := scanReaderHeads(ctx, tx, memory.ActiveHeadScanRequest(request))
+	if err != nil {
+		return nil, err
+	}
+
+	if tx.connection.pg != nil {
+		return tx.postgresActiveMemory(ctx, request.Scope, heads)
+	}
+
+	active := make([]memory.ActiveCanonicalMemory, 0, len(heads))
+	for _, head := range heads {
+		item, err := loadProofItem(ctx, tx, request.Scope, head.ItemID)
+		if err != nil {
+			return nil, err
+		}
+
+		revision, err := loadProofRevision(ctx, tx, request.Scope, head.RevisionID)
+		if err != nil {
+			return nil, err
+		}
+
+		if revision.ItemID != item.ItemID || revision.RevisionID != head.RevisionID {
+			return nil, corruptRow()
+		}
+
+		active = append(active, memory.ActiveCanonicalMemory{Item: item, RevisionID: revision.RevisionID,
+			Revision: revision.Revision, Evidence: append([]memory.EvidenceRef(nil), revision.Evidence...)})
 	}
 
 	return active, nil

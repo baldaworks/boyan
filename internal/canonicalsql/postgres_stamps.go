@@ -2,12 +2,41 @@ package canonicalsql
 
 import (
 	"context"
+	"strings"
 )
 
 type physicalStamp struct {
 	id       int64
 	sequence []byte
 	deleted  bool
+}
+
+// Independent probes bound physical rows and stamps without multiplying either.
+// Ordered tags preserve row-validation precedence over stamp corruption.
+func (tx *Tx) pointStatement(f Family, def familyDef) string {
+	// Physical row ID, bounded envelope and its original size accompany columns.
+	columns := len(def.columns()) + len(derivedColumns(f, def)) + len(extraColumns(f)) +
+		len([]string{"row_id", "envelope", "size"})
+
+	return "WITH row_probe AS MATERIALIZED (SELECT " + pgSelection(f, def) + " FROM " +
+		tx.connection.table(def.table) + " WHERE logical_key=$1 LIMIT 2), " +
+		"stamp_probe AS MATERIALIZED (SELECT stamp_id," +
+		"CASE WHEN length(last_seq)=8 THEN last_seq ELSE NULL END AS last_seq,deleted FROM " +
+		tx.connection.table("row_stamp") + " WHERE family=$2 AND binary_key=$1 LIMIT 2) " +
+		"SELECT 0 AS probe,r.*,NULL::bigint,NULL::bytea,NULL::boolean FROM row_probe r UNION ALL SELECT 1," +
+		strings.Repeat("NULL,", columns) + "s.stamp_id,s.last_seq,s.deleted FROM stamp_probe s ORDER BY 1"
+}
+
+func decodePointStamp(id *int64, sequence []byte, deleted *bool) (*physicalStamp, error) {
+	if id == nil || deleted == nil {
+		return nil, corruptRow()
+	}
+
+	if _, err := DecodeUint64(sequence); err != nil {
+		return nil, corruptRow()
+	}
+
+	return &physicalStamp{id: *id, sequence: sequence, deleted: *deleted}, nil
 }
 
 func (tx *Tx) resolveStamp(ctx context.Context, family Family, key []byte) (*physicalStamp, error) {

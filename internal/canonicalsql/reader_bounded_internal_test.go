@@ -50,14 +50,39 @@ type readerWorkRows struct {
 	family   Family
 }
 
+// Observe transferred native values, not command tuple counts: point metadata
+// and absence markers carry a NULL envelope. SQLite has no metadata tuples.
+func observedEnvelopeRow(r rows) (envelope, point bool) {
+	native, ok := r.(pgRows)
+	if !ok {
+		return true, false
+	}
+
+	values := native.RawValues()
+	for i, field := range native.FieldDescriptions() {
+		if field.Name == "probe" {
+			point = true
+		}
+
+		if (field.Name == "envelope" || field.Name == "case") && values[i] != nil {
+			envelope = true
+		}
+	}
+
+	return envelope, point
+}
+
 func (r *readerWorkRows) Next() bool {
 	next := r.rows.Next()
 	if next && r.envelope {
-		r.owner.envelopes++
-	}
+		envelope, point := observedEnvelopeRow(r.rows)
+		if envelope {
+			r.owner.envelopes++
+		}
 
-	if next && r.family != "" {
-		r.owner.pageRows[r.family]++
+		if envelope && !point && r.family != "" {
+			r.owner.pageRows[r.family]++
+		}
 	}
 
 	return next

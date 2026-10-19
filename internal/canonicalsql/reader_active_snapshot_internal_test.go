@@ -18,18 +18,6 @@ type activeSnapshotProbe struct {
 	afterHead func()
 }
 
-type activeSnapshotStatement struct{}
-
-func (*activeSnapshotProbe) TraceQueryStart(ctx context.Context, _ *pgx.Conn,
-	data pgx.TraceQueryStartData) context.Context {
-	return context.WithValue(ctx, activeSnapshotStatement{}, data.SQL)
-}
-
-func (p *activeSnapshotProbe) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryEndData) {
-	statement, _ := ctx.Value(activeSnapshotStatement{}).(string)
-	p.finish(statement, int(data.CommandTag.RowsAffected()))
-}
-
 func (p *activeSnapshotProbe) finish(statement string, count int) {
 	if !strings.Contains(statement, "envelope") {
 		return
@@ -77,7 +65,9 @@ type activeSnapshotRows struct {
 func (r *activeSnapshotRows) Next() bool {
 	next := r.rows.Next()
 	if next {
-		r.count++
+		if envelope, _ := observedEnvelopeRow(r.rows); envelope {
+			r.count++
+		}
 	}
 
 	return next
@@ -93,7 +83,7 @@ func (r *activeSnapshotRows) Close() error {
 	return err
 }
 
-func openActiveSnapshotOwner(t *testing.T, db *canonicalsqltest.Database, probe *activeSnapshotProbe) *Owner {
+func openActiveSnapshotOwner(t *testing.T, db *canonicalsqltest.Database) *Owner {
 	t.Helper()
 
 	if db.SQLite != nil {
@@ -108,13 +98,10 @@ func openActiveSnapshotOwner(t *testing.T, db *canonicalsqltest.Database, probe 
 			}
 		})
 
-		owner.connection.q = activeSnapshotQuery{base: owner.connection.q, probe: probe}
-
 		return owner
 	}
 
 	config := db.Postgres.Config()
-	config.Tracer = probe
 
 	native, err := pgx.ConnectConfig(t.Context(), config)
 	if err != nil {
@@ -147,7 +134,7 @@ func TestActiveMemorySnapshotAndRelatedHydrationBound(t *testing.T) {
 	canonicalsqltest.ForEach(t, func(t *testing.T, db *canonicalsqltest.Database) {
 		writer := testConnection(t, db)
 		probe := &activeSnapshotProbe{}
-		owner := openActiveSnapshotOwner(t, db, probe)
+		owner := openActiveSnapshotOwner(t, db)
 		scope := testScope()
 		seedActivePage(t, owner, scope, []string{"z", "aa", "zz"})
 
@@ -156,7 +143,17 @@ func TestActiveMemorySnapshotAndRelatedHydrationBound(t *testing.T) {
 			updateActiveSnapshotItem(t, writer, scope)
 		}
 
-		page, err := owner.ScanActiveMemory(t.Context(), memory.ActiveMemoryScanRequest{Scope: scope, Limit: 1})
+		var page []memory.ActiveCanonicalMemory
+
+		err := owner.View(t.Context(), func(ctx context.Context, tx *Tx) error {
+			tx.q = activeSnapshotQuery{base: tx.q, probe: probe}
+
+			var err error
+
+			page, err = scanActiveMemoryTx(ctx, tx, memory.ActiveMemoryScanRequest{Scope: scope, Limit: 1})
+
+			return err
+		})
 		assertActiveSnapshotPage(t, page, err, "key")
 
 		if probe.afterHead != nil || probe.heads != 1 || probe.envelopes != 3 {
