@@ -194,7 +194,7 @@ func (o *Owner) ImportCanonicalLogicalWithOptions(ctx context.Context, source io
 
 		return file, header, summary.SHA256, err
 	}
-	if err := o.restoreCanonical(ctx, source, batch, stage, options.Progress); err != nil {
+	if err := o.restoreCanonical(ctx, source, batch, logicalRestoreFormat, stage, options.Progress); err != nil {
 		return archive.CanonicalLogicalExportSummary{}, err
 	}
 

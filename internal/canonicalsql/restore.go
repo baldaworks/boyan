@@ -19,8 +19,15 @@ func (o *Owner) RestoreCanonicalBackup(
 	source io.Reader,
 	pending int,
 ) (result error) {
-	return o.restoreCanonical(ctx, source, pending, stageRestore, nil)
+	return o.restoreCanonical(ctx, source, pending, nativeRestoreFormat, stageRestore, nil)
 }
+
+type restoreFormat uint8
+
+const (
+	nativeRestoreFormat restoreFormat = iota
+	logicalRestoreFormat
+)
 
 type restoreStager func(context.Context, io.Reader, bool) (*os.File, archive.BackupHeader, string, error)
 
@@ -32,6 +39,7 @@ func (o *Owner) restoreCanonical(
 	ctx context.Context,
 	source io.Reader,
 	pending int,
+	format restoreFormat,
 	stage restoreStager,
 	progress func(archive.CanonicalLogicalImportProgress) error,
 ) (result error) {
@@ -95,6 +103,16 @@ func (o *Owner) restoreCanonical(
 
 		if err := tx.validateRestoreErase(ctx); err != nil {
 			return err
+		}
+
+		// Fresh logical import cannot acquire payload authority while a live
+		// destination erase owns it. Existing loading retries and native recovery
+		// retain their original admission; incoming pending journals are validated
+		// later against the staged artifact, not rejected by this destination guard.
+		if format == logicalRestoreFormat {
+			if err := checkScopeErasePayloadGuard(ctx, tx); err != nil {
+				return err
+			}
 		}
 
 		if err := tx.verifyCanonicalIntegrity(ctx, archivePageSize); err != nil {
