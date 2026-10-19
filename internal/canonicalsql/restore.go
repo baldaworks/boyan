@@ -104,7 +104,7 @@ func (o *Owner) restoreCanonical(
 		return tx.writeRestoreControl(
 			ctx,
 			"restore_control",
-			restoreControl{Version: 1, Phase: "loading"},
+			restoreControl{Version: restoreControlVersion, Phase: "loading"},
 		)
 	})
 	if err != nil {
@@ -122,19 +122,20 @@ func (o *Owner) restoreCanonical(
 		return err
 	}
 
-	if err := o.validateRestoreInput(admitted, spool); err != nil {
+	control, err := o.prepareRestoreSource(admitted, spool, header, digest, previous, chain)
+	if err != nil {
 		return err
 	}
 
-	control := restoreControl{Version: 1, Phase: "loading", Header: &header, Digest: digest}
+	if err := o.validateRestoreInput(admitted, spool, control.PendingGeneration); err != nil {
+		return o.retireRejectedRestore(admitted, previous, control, chain, err)
+	}
 
-	if err := o.restoreTransaction(admitted, true, func(ctx context.Context, tx *Tx) error {
-		return tx.writeRestoreControl(ctx, "restore_control", control)
-	}); err != nil {
+	if err := o.replayRestoreCapabilities(admitted, spool, pending); err != nil {
 		return err
 	}
 
-	if err := o.replayRestoreProgress(admitted, spool, pending, progress); err != nil {
+	if err := o.replayRestoreProgress(admitted, spool, pending, progress, control.PendingGeneration); err != nil {
 		return err
 	}
 
@@ -175,6 +176,10 @@ func validateRestoreChain(
 	digest string,
 	previous, chain *restoreControl,
 ) error {
+	if previous != nil && previous.Version == 1 && previous.Header != nil {
+		return invalid("legacy partial canonical restore lacks source provenance")
+	}
+
 	if previous != nil && previous.Header != nil &&
 		(*previous.Header != h || previous.Digest != digest) {
 		return invalid("complete matching canonical restore retry required")
@@ -198,12 +203,17 @@ func validateRestoreChain(
 		return invalid("canonical restore lineage or cursor mismatch")
 	}
 
+	if h.Mode == "incremental" && (chain.Version != 2 || chain.ActiveGeneration == "") {
+		return invalid("canonical restore source provenance missing; complete full base required")
+	}
+
 	return nil
 }
 
 //nolint:cyclop // Durable progress runs only after each successful bounded transaction.
 func (o *Owner) replayRestoreProgress(ctx context.Context, source io.Reader, pending int,
 	progress func(archive.CanonicalLogicalImportProgress) error,
+	generation string,
 ) error {
 	var imported uint64
 
@@ -230,7 +240,7 @@ func (o *Owner) replayRestoreProgress(ctx context.Context, source io.Reader, pen
 					return err
 				}
 
-				if err := tx.mergeRestoreRecord(ctx, key, record); err != nil {
+				if err := tx.mergeRestoreRecord(ctx, key, record, generation); err != nil {
 					return err
 				}
 
@@ -256,8 +266,17 @@ func (o *Owner) replayRestoreProgress(ctx context.Context, source io.Reader, pen
 	}
 }
 
+//nolint:cyclop // Recheck lineage and integrity on both sides of privacy preparation before atomic publication.
 func (o *Owner) finishRestore(ctx context.Context, control restoreControl) error {
+	if control.Version != 2 || control.SourceState != "ready" || control.Phase != "validated" {
+		return ownerUnavailable()
+	}
+
 	if err := o.restoreTransaction(ctx, false, func(ctx context.Context, tx *Tx) error {
+		if err := tx.validateRestoreSourceLineage(ctx, control); err != nil {
+			return err
+		}
+
 		if err := tx.validateRestoreErase(ctx); err != nil {
 			return err
 		}
@@ -273,7 +292,11 @@ func (o *Owner) finishRestore(ctx context.Context, control restoreControl) error
 		return err
 	}
 
-	return o.restoreTransaction(ctx, true, func(ctx context.Context, tx *Tx) error {
+	err := o.restoreTransaction(ctx, true, func(ctx context.Context, tx *Tx) error {
+		if err := tx.validateRestoreSourceLineage(ctx, control); err != nil {
+			return err
+		}
+
 		if err := tx.validateRestoreErase(ctx); err != nil {
 			return err
 		}
@@ -283,6 +306,9 @@ func (o *Owner) finishRestore(ctx context.Context, control restoreControl) error
 		}
 
 		control.Phase = "complete"
+		control.ActiveGeneration = control.PendingGeneration
+
+		control.PendingGeneration = ""
 		if err := tx.writeRestoreControl(ctx, "restore_chain", control); err != nil {
 			return err
 		}
@@ -294,6 +320,13 @@ func (o *Owner) finishRestore(ctx context.Context, control restoreControl) error
 
 		return databaseError(ctx, "finish canonical restore", err)
 	})
+	if err != nil {
+		return err
+	}
+	// Authority is already atomically published. Failed cleanup may safely lag.
+	_ = o.collectRestoreSources(ctx)
+
+	return nil
 }
 
 type validatedRestoreKey struct{}
@@ -305,9 +338,21 @@ var errRestoreValidationRollback = errors.New("canonical restore validation roll
 // space can grow with input; resident application memory stays page bounded.
 // Only the subsequent replay commits maxPendingWrites-sized transactions.
 //
-//nolint:cyclop // Both artifact passes and all binding checks share one rollback-only transaction.
-func (o *Owner) validateRestoreInput(ctx context.Context, spool io.ReadSeeker) error {
-	err := o.restoreTransaction(ctx, true, func(ctx context.Context, tx *Tx) error {
+//nolint:cyclop,gocognit,funlen // All artifact passes and binding checks share one rollback-only transaction.
+func (o *Owner) validateRestoreInput(ctx context.Context, spool io.ReadSeeker, generation string) error {
+	var technicalFailure bool
+
+	spool = restoreValidationStream{ReadSeeker: spool, failed: &technicalFailure}
+
+	err := o.restoreValidationTransaction(ctx, &technicalFailure, func(ctx context.Context, tx *Tx) error {
+		if err := tx.restoreCapabilityStream(ctx, spool, 0); err != nil && !errors.Is(err, io.EOF) {
+			return err
+		}
+
+		if _, err := spool.Seek(0, io.SeekStart); err != nil {
+			return err
+		}
+
 		for {
 			data, err := readRestoreFrame(ctx, spool)
 			if errors.Is(err, io.EOF) {
@@ -323,7 +368,7 @@ func (o *Owner) validateRestoreInput(ctx context.Context, spool io.ReadSeeker) e
 				return err
 			}
 
-			if err := tx.mergeRestoreRecord(ctx, key, record); err != nil {
+			if err := tx.mergeRestoreRecord(ctx, key, record, generation); err != nil {
 				return err
 			}
 			// No normal domain operation occurs inside this validation pass.

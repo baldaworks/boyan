@@ -285,6 +285,10 @@ func decodeRestoreRecord(data []byte) (archive.BackupRecord, Key, error) {
 		Deleted:    wire.Deleted,
 		Envelope:   value,
 	}
+	if key.Family == BoundaryCapability && string(key.Parts[0]) != boundaryCapabilityID {
+		return record, key, invalidCanonicalProof()
+	}
+
 	if wire.Deleted {
 		if len(value) != 0 {
 			return record, key, invalid("canonical tombstone carries value")

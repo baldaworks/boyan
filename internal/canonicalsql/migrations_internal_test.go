@@ -27,7 +27,7 @@ func TestMigrationRejectsFutureAndChecksumWithoutWrites(t *testing.T) {
 				if fault == "checksum" {
 					rawExec(t, c, "UPDATE "+c.table("schema_migration")+" SET checksum='wrong'")
 				} else {
-					rawExec(t, c, "INSERT INTO "+c.table("schema_migration")+" (version,checksum) VALUES(3,'future')")
+					rawExec(t, c, "INSERT INTO "+c.table("schema_migration")+" (version,checksum) VALUES(4,'future')")
 				}
 
 				assertCode(t, c.Migrate(t.Context()), memory.CodeInvalidDerived)

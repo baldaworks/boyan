@@ -46,6 +46,10 @@ func TestRestoreValidationRollbackAllFamilies(t *testing.T) {
 
 		for _, shape := range expectedShapes {
 			k := familyFixtureKey(t, shape.family)
+			if k.Family == BoundaryCapability {
+				// Capability tombstones address the same supported marker ID as live rows.
+				k.Parts = [][]byte{[]byte(boundaryCapabilityID)}
+			}
 
 			_, parts, err := k.values()
 			if err != nil {
@@ -67,7 +71,7 @@ func TestRestoreValidationRollbackAllFamilies(t *testing.T) {
 			}
 		}
 
-		if err := o.validateRestoreInput(ctx, bytes.NewReader(records.Bytes())); err != nil {
+		if err := o.validateRestoreInput(ctx, bytes.NewReader(records.Bytes()), ""); err != nil {
 			t.Fatal(err)
 		}
 
@@ -110,7 +114,7 @@ func TestRestoreValidationRollbackAllFamilies(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if err := o.validateRestoreInput(ctx, bytes.NewReader(records.Bytes())); err == nil {
+		if err := o.validateRestoreInput(ctx, bytes.NewReader(records.Bytes()), ""); err == nil {
 			t.Fatal("orphan binding validated")
 		}
 

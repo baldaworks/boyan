@@ -9,7 +9,7 @@ import (
 )
 
 //nolint:cyclop // Fixed-family authority gates precede ordinary replay writes.
-func (tx *Tx) mergeRestoreRecord(ctx context.Context, key Key, record archive.BackupRecord) error {
+func (tx *Tx) mergeRestoreRecord(ctx context.Context, key Key, record archive.BackupRecord, generation string) error {
 	// Copied readiness is never authority; validated reconstruction publishes it.
 	if key.Family == SourcePrivacyReady || key.Family == BoundaryCapability || key.Family == EraseGuard {
 		return nil
@@ -42,6 +42,10 @@ func (tx *Tx) mergeRestoreRecord(ctx context.Context, key Key, record archive.Ba
 
 	if found {
 		return tx.mergeExistingRestoreRecord(ctx, key, current, record.Envelope)
+	}
+
+	if err := tx.checkRestoreOperationSource(ctx, key, generation); err != nil {
+		return err
 	}
 
 	if key.Family == ErasedBlob {

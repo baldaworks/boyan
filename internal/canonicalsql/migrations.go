@@ -21,16 +21,24 @@ var sqliteRestoreDDL string
 //go:embed 002_postgres.sql
 var postgresRestoreDDL string
 
+//go:embed 003_sqlite.sql
+var sqliteRestoreSourceDDL string
+
+//go:embed 003_postgres.sql
+var postgresRestoreSourceDDL string
+
 const storeIdentityBytes = 16
 
 // Migration revision 2 adds private recovery bookkeeping. It does not change
 // the canonical record representation or store_meta's archive schema version 1.
 const restoreMigrationVersion = 2
 
+const restoreSourceMigrationVersion = 3
+
 // Migrate applies the embedded initial additive schema transactionally. The
 // owner must hold exclusive store ownership. Unknown history is never repaired.
 //
-//nolint:cyclop // Both known additive migrations share the atomic ownership transaction.
+//nolint:cyclop // All three additive migrations share the atomic ownership transaction.
 func (c *Connection) Migrate(ctx context.Context) error {
 	return c.run(ctx, true, false, func(tx *Tx) error {
 		ddl := sqliteDDL
@@ -48,18 +56,23 @@ func (c *Connection) Migrate(ctx context.Context) error {
 			return databaseError(ctx, "migration history", err)
 		}
 
-		digest := sha256.Sum256([]byte(ddl))
-		checksum := hex.EncodeToString(digest[:])
+		checksum := migrationChecksum(ddl)
 
 		restoreDDL := sqliteRestoreDDL
 		if c.pg != nil {
 			restoreDDL = postgresRestoreDDL
 		}
 
-		restoreDigest := sha256.Sum256([]byte(restoreDDL))
-		restoreChecksum := hex.EncodeToString(restoreDigest[:])
+		restoreChecksum := migrationChecksum(restoreDDL)
 
-		applied, err := c.checkMigration(ctx, tx.q, []string{checksum, restoreChecksum})
+		sourceDDL := sqliteRestoreSourceDDL
+		if c.pg != nil {
+			sourceDDL = postgresRestoreSourceDDL
+		}
+
+		sourceChecksum := migrationChecksum(sourceDDL)
+
+		applied, err := c.checkMigration(ctx, tx.q, []string{checksum, restoreChecksum, sourceChecksum})
 		if err != nil {
 			return err
 		}
@@ -73,18 +86,36 @@ func (c *Connection) Migrate(ctx context.Context) error {
 		}
 
 		if applied < restoreMigrationVersion {
-			if err := applyDDL(ctx, tx.q, restoreDDL); err != nil {
+			if err := tx.applyAdditiveMigration(ctx, restoreDDL, restoreChecksum, restoreMigrationVersion); err != nil {
 				return err
 			}
+		}
 
-			if _, err := tx.q.exec(ctx, "INSERT INTO "+c.table("schema_migration")+
-				" (version,checksum) VALUES(2,$1)", restoreChecksum); err != nil {
-				return databaseError(ctx, "record restore migration", err)
+		if applied < restoreSourceMigrationVersion {
+			if err := tx.applyAdditiveMigration(ctx, sourceDDL, sourceChecksum, restoreSourceMigrationVersion); err != nil {
+				return err
 			}
 		}
 
 		return tx.CheckIntegrity(ctx)
 	})
+}
+
+func migrationChecksum(ddl string) string {
+	digest := sha256.Sum256([]byte(ddl))
+
+	return hex.EncodeToString(digest[:])
+}
+
+func (tx *Tx) applyAdditiveMigration(ctx context.Context, ddl, checksum string, version int) error {
+	if err := applyDDL(ctx, tx.q, ddl); err != nil {
+		return err
+	}
+
+	_, err := tx.q.exec(ctx, "INSERT INTO "+tx.connection.table("schema_migration")+
+		" (version,checksum) VALUES($1,$2)", version, checksum)
+
+	return databaseError(ctx, "record additive migration", err)
 }
 
 func (c *Connection) checkMigration(ctx context.Context, q query, checksums []string) (int, error) {
