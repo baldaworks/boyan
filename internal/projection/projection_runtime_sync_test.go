@@ -3,13 +3,12 @@ package projection //nolint:testpackage // Exercises shared private test fixture
 import (
 	"context"
 	"errors"
-	"path/filepath"
+
 	"sync"
 	"testing"
 	"time"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
-	"github.com/baldaworks/boyan/store/badger"
 )
 
 type scanTrackingStore struct {
@@ -66,16 +65,7 @@ func TestProjectionSyncResumesCommittedProgress(t *testing.T) {
 		root := t.TempDir()
 
 		store, reader := func() (projectionTestOwner, memory.RecallCanonicalReader) {
-			if newCanonical != nil {
-				return newCanonical(t)
-			}
-
-			store, err := badger.OpenCanonicalStore(filepath.Join(root, "canonical"))
-			requireNoError(t, err, "%v")
-			reader, err := badger.NewCanonicalReader(store)
-			requireNoError(t, err, "%v")
-
-			return store, reader
+			return newCanonical(t)
 		}()
 		defer store.Close()
 
@@ -144,17 +134,7 @@ func TestProjectionSyncRecoversDirtyAfterRestart(t *testing.T) {
 		root := t.TempDir()
 
 		store, reader := func() (projectionTestOwner, memory.RecallCanonicalReader) {
-			if newCanonical != nil {
-				return newCanonical(t)
-			}
-
-			store, err := badger.OpenCanonicalStore(filepath.Join(root, "canonical"))
-			requireNoError(t, err, "%v")
-
-			reader, err := badger.NewCanonicalReader(store)
-			requireNoError(t, err, "%v")
-
-			return store, reader
+			return newCanonical(t)
 		}()
 		defer store.Close()
 
@@ -221,16 +201,9 @@ func (a *replayOnlyApplier) Commit(context.Context, memory.Scope, string) error 
 func TestProjectionSyncSupportsReplayOnlyApplier(t *testing.T) {
 	runProjectionAuthorities(t, func(t *testing.T, newCanonical projectionOwnerFactory) {
 		store := func() projectionTestOwner {
-			if newCanonical != nil {
-				owner, _ := newCanonical(t)
+			owner, _ := newCanonical(t)
 
-				return owner
-			}
-
-			store, err := badger.OpenCanonicalStore(t.TempDir())
-			requireNoError(t, err, "%v")
-
-			return store
+			return owner
 		}()
 
 		defer store.Close()

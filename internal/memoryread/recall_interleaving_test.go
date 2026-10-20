@@ -11,7 +11,6 @@ import (
 	read "github.com/baldaworks/boyan/internal/memoryread"
 	projection "github.com/baldaworks/boyan/internal/projection"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
 )
 
 type interleavingExtractor struct{}
@@ -56,26 +55,11 @@ func (p *interleavingProjection) SearchRecallConsistent(
 	return p.Store.SearchRecallConsistent(ctx, r)
 }
 
-//nolint:funlen // Real canonical ingest, SQL publication and the interleaving hook share one fixture.
 func newInterleavingRecall(t *testing.T, newCanonical recallOwnerFactory) (*read.RecallService, m.RecallRequest) {
 	t.Helper()
 
 	store, reader := func() (recallOwner, m.RecallCanonicalReader) {
-		if newCanonical != nil {
-			return newCanonical(t)
-		}
-
-		store, err := b.OpenCanonicalStore(t.TempDir())
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		reader, err := b.NewCanonicalReader(store)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		return store, reader
+		return newCanonical(t)
 	}()
 
 	t.Cleanup(func() { _ = store.Close() })

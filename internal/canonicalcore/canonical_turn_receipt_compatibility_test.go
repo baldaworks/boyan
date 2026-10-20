@@ -17,7 +17,6 @@ import (
 	"github.com/baldaworks/boyan/internal/httpingest"
 	ordered "github.com/baldaworks/boyan/internal/orderedingest"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
 )
 
 type turnReceiptFixture struct {
@@ -66,12 +65,7 @@ func (f *turnReceiptFixture) open(t *testing.T) {
 
 	var err error
 
-	if f.factory != nil {
-		f.store, _ = f.factory(t, f.path)
-	} else {
-		f.store, err = b.Open(f.path)
-		requireNoError(t, err, "open: %v")
-	}
+	f.store, _ = f.factory(t, f.path)
 
 	processor, err := core.NewCanonicalTurnProcessor(f.store, canonicalExtractorFunc(
 		func(ctx context.Context, request m.CanonicalExtractionRequest) ([]m.SemanticCandidate, error) {

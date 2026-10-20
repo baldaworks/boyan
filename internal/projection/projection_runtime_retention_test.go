@@ -9,7 +9,6 @@ import (
 
 	index "github.com/baldaworks/boyan/index/sqlite"
 	memory "github.com/baldaworks/boyan/pkg/memory"
-	"github.com/baldaworks/boyan/store/badger"
 )
 
 func TestProjectionRetainsActiveAndPrevious(t *testing.T) {
@@ -17,16 +16,7 @@ func TestProjectionRetainsActiveAndPrevious(t *testing.T) {
 		root := t.TempDir()
 
 		store, reader := func() (projectionTestOwner, memory.RecallCanonicalReader) {
-			if newCanonical != nil {
-				return newCanonical(t)
-			}
-
-			store, err := badger.OpenCanonicalStore(filepath.Join(root, "canonical"))
-			requireNoError(t, err, "%v")
-			reader, err := badger.NewCanonicalReader(store)
-			requireNoError(t, err, "%v")
-
-			return store, reader
+			return newCanonical(t)
 		}()
 		defer store.Close()
 
@@ -79,16 +69,7 @@ func TestProjectionRecoversMissingActiveIndex(t *testing.T) {
 		root := t.TempDir()
 
 		store, reader := func() (projectionTestOwner, memory.RecallCanonicalReader) {
-			if newCanonical != nil {
-				return newCanonical(t)
-			}
-
-			store, err := badger.OpenCanonicalStore(filepath.Join(root, "canonical"))
-			requireNoError(t, err, "%v")
-			reader, err := badger.NewCanonicalReader(store)
-			requireNoError(t, err, "%v")
-
-			return store, reader
+			return newCanonical(t)
 		}()
 		defer store.Close()
 
@@ -128,16 +109,7 @@ func TestProjectionStartupReconcilesBeforePruning(t *testing.T) {
 		root := t.TempDir()
 
 		store, reader := func() (projectionTestOwner, memory.RecallCanonicalReader) {
-			if newCanonical != nil {
-				return newCanonical(t)
-			}
-
-			store, err := badger.OpenCanonicalStore(filepath.Join(root, "canonical"))
-			requireNoError(t, err, "%v")
-			reader, err := badger.NewCanonicalReader(store)
-			requireNoError(t, err, "%v")
-
-			return store, reader
+			return newCanonical(t)
 		}()
 		defer store.Close()
 

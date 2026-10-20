@@ -3,12 +3,11 @@ package projection //nolint:testpackage // Exercises the real coordinator and Ba
 import (
 	"context"
 	"fmt"
-	"path/filepath"
+
 	"testing"
 	"time"
 
 	"github.com/baldaworks/boyan/pkg/memory"
-	"github.com/baldaworks/boyan/store/badger"
 )
 
 func TestProjectionRetentionUsesPublicationOrder(t *testing.T) {
@@ -71,16 +70,7 @@ func retentionClockRuntime(
 	t.Helper()
 	root := t.TempDir()
 	store, reader := func() (projectionTestOwner, memory.RecallCanonicalReader) {
-		if newCanonical != nil {
-			return newCanonical(t)
-		}
-
-		store, err := badger.OpenCanonicalStore(filepath.Join(root, "canonical"))
-		requireNoError(t, err, "%v")
-		reader, err := badger.NewCanonicalReader(store)
-		requireNoError(t, err, "%v")
-
-		return store, reader
+		return newCanonical(t)
 	}()
 
 	t.Cleanup(func() { requireNoError(t, store.Close(), "%v") })

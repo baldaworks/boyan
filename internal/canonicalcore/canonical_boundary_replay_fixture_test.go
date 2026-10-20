@@ -11,7 +11,6 @@ import (
 	ordered "github.com/baldaworks/boyan/internal/orderedingest"
 	derive "github.com/baldaworks/boyan/internal/structuredderive"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
 )
 
 type boundaryReplayFixture struct {
@@ -54,16 +53,7 @@ func (f *boundaryReplayFixture) open(t *testing.T) {
 
 	var err error
 
-	if f.factory != nil {
-		store, reader = f.factory(t, f.path)
-	} else {
-		legacy, openErr := b.Open(f.path)
-		requireNoError(t, openErr, "open: %v")
-
-		store = legacy
-		reader, err = b.NewCanonicalReader(legacy)
-		requireNoError(t, err, "reader: %v")
-	}
+	store, reader = f.factory(t, f.path)
 
 	f.store = store
 	adapter, err := ops.NewCanonicalBoundaryStore(store, reader)

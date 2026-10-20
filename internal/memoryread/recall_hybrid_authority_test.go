@@ -8,7 +8,6 @@ import (
 	core "github.com/baldaworks/boyan/internal/canonicalcore"
 	read "github.com/baldaworks/boyan/internal/memoryread"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
 )
 
 type authorityExtractor struct{}
@@ -46,21 +45,7 @@ func TestSemanticOnlyCanonicalAuthorityDuringChanges(t *testing.T) {
 				ctx := context.Background()
 
 				store, reader := func() (recallOwner, m.RecallCanonicalReader) {
-					if newCanonical != nil {
-						return newCanonical(t)
-					}
-
-					store, err := b.OpenCanonicalStore(t.TempDir())
-					if err != nil {
-						t.Fatal(err)
-					}
-
-					reader, err := b.NewCanonicalReader(store)
-					if err != nil {
-						t.Fatal(err)
-					}
-
-					return store, reader
+					return newCanonical(t)
 				}()
 
 				t.Cleanup(func() { _ = store.Close() })

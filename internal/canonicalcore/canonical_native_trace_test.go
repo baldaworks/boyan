@@ -8,7 +8,6 @@ import (
 	core "github.com/baldaworks/boyan/internal/canonicalcore"
 	forgetops "github.com/baldaworks/boyan/internal/forgetops"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
 )
 
 func nativeFlow(t *testing.T, factory coreFactory) (coreReader,
@@ -24,16 +23,7 @@ func nativeFlow(t *testing.T, factory coreFactory) (coreReader,
 
 	var err error
 
-	if factory != nil {
-		store, reader = factory(t, t.TempDir())
-	} else {
-		legacy, openErr := b.Open(t.TempDir())
-		requireNoError(t, openErr, "open: %v")
-
-		store = legacy
-		reader, err = b.NewCanonicalReader(legacy)
-		requireNoError(t, err, "reader: %v")
-	}
+	store, reader = factory(t, t.TempDir())
 
 	t.Cleanup(func() { requireNoError(t, store.Close(), "close: %v") })
 

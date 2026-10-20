@@ -6,7 +6,6 @@ import (
 	"time"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
-	"github.com/baldaworks/boyan/store/badger"
 )
 
 type startupScopePager struct {
@@ -40,16 +39,9 @@ func TestProjectionStartSynchronouslyPagesDurableScopes(t *testing.T) {
 	runProjectionAuthorities(t, func(t *testing.T, newCanonical projectionOwnerFactory) {
 		ctx := context.Background()
 		store := func() projectionTestOwner {
-			if newCanonical != nil {
-				owner, _ := newCanonical(t)
+			owner, _ := newCanonical(t)
 
-				return owner
-			}
-
-			store, err := badger.OpenCanonicalStore(t.TempDir())
-			requireNoError(t, err, "%v")
-
-			return store
+			return owner
 		}()
 
 		t.Cleanup(func() { _ = store.Close() })
@@ -104,16 +96,9 @@ func (s *blockingStartupPager) ListCanonicalScopeStates(
 func TestProjectionCloseDrainsCanceledStartupEnumeration(t *testing.T) {
 	runProjectionAuthorities(t, func(t *testing.T, newCanonical projectionOwnerFactory) {
 		store := func() projectionTestOwner {
-			if newCanonical != nil {
-				owner, _ := newCanonical(t)
+			owner, _ := newCanonical(t)
 
-				return owner
-			}
-
-			store, err := badger.OpenCanonicalStore(t.TempDir())
-			requireNoError(t, err, "%v")
-
-			return store
+			return owner
 		}()
 
 		t.Cleanup(func() { _ = store.Close() })
@@ -177,16 +162,9 @@ func (*resumableStartupApplier) ResumeProjection(context.Context, memory.Scope, 
 func TestProjectionStartPropagatesCheckpointFailure(t *testing.T) {
 	runProjectionAuthorities(t, func(t *testing.T, newCanonical projectionOwnerFactory) {
 		store := func() projectionTestOwner {
-			if newCanonical != nil {
-				owner, _ := newCanonical(t)
+			owner, _ := newCanonical(t)
 
-				return owner
-			}
-
-			store, err := badger.OpenCanonicalStore(t.TempDir())
-			requireNoError(t, err, "%v")
-
-			return store
+			return owner
 		}()
 
 		t.Cleanup(func() { _ = store.Close() })

@@ -11,7 +11,6 @@ import (
 	"github.com/baldaworks/boyan/internal/canonicalsql"
 	"github.com/baldaworks/boyan/internal/forgetops"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	"github.com/dgraph-io/badger/v4"
 )
 
 func TestBoundaryOldReceiptAfterForgetAndLaterTurn(t *testing.T) {
@@ -93,33 +92,18 @@ func deleteBoundaryReceipt(t *testing.T, f *boundaryReplayFixture, request m.Seq
 	t.Helper()
 
 	scope := request.Boundary.Scope
-	if f.factory != nil {
-		deleteCoreSQLRecord(
-			t,
-			f.store,
-			coreSQLKey(
-				canonicalsql.IngestSequence,
-				scope,
-				[]byte(request.ProducerID),
-				binary.BigEndian.AppendUint64(nil, request.ScopeSequence),
-			),
-			coreSQLKey(canonicalsql.IngestCursor, scope, []byte(request.ProducerID)),
-		)
 
-		return
-	}
+	deleteCoreSQLRecord(
+		t,
+		f.store,
+		coreSQLKey(
+			canonicalsql.IngestSequence,
+			scope,
+			[]byte(request.ProducerID),
+			binary.BigEndian.AppendUint64(nil, request.ScopeSequence),
+		),
+		coreSQLKey(canonicalsql.IngestCursor, scope, []byte(request.ProducerID)),
+	)
 
-	prefix, err := m.TupleKey(0x53, 1, "ingest-sequence", scope.Key, string(scope.Kind), request.ProducerID)
-	requireNoError(t, err, "receipt key: %v")
-
-	key := binary.BigEndian.AppendUint64(prefix, request.ScopeSequence)
-	cursor, err := m.TupleKey(0x53, 1, "ingest-cursor", scope.Key, string(scope.Kind), request.ProducerID)
-	requireNoError(t, err, "cursor key: %v")
-	requireNoError(t, f.store.(interface{ DB() *badger.DB }).DB().Update(func(txn *badger.Txn) error {
-		if err := txn.Delete(key); err != nil {
-			return err
-		}
-
-		return txn.Delete(cursor)
-	}), "lost receipt fixture: %v")
+	return
 }

@@ -11,7 +11,6 @@ import (
 	"github.com/baldaworks/boyan/internal/canonicalsqltest/storefixture"
 	"github.com/baldaworks/boyan/internal/forgetops"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
 	"github.com/baldaworks/boyan/store/postgres"
 	"github.com/baldaworks/boyan/store/sqlite"
 )
@@ -53,7 +52,6 @@ type coreReader interface {
 	LoadCanonicalBoundaryViewAt(ctx context.Context, scope m.Scope, at time.Time) (m.CanonicalBoundaryView, error)
 }
 
-// A nil factory selects the retained Badger constructor in each old fixture.
 // SQL factories cache only reopen constructors, never substitute an authority.
 type coreFactory func(*testing.T, string) (coreOwner, coreReader)
 
@@ -62,25 +60,13 @@ var coreDatabases sync.Map
 func openCoreAuthority(t *testing.T, path string, factory coreFactory) (coreOwner, coreReader) {
 	t.Helper()
 
-	if factory != nil {
-		return factory(t, path)
-	}
-
-	store, err := b.OpenCanonicalStore(path)
-	requireNoError(t, err, "open retained Badger authority: %v")
-
-	return store, readerForCoreOwner(t, store)
+	return factory(t, path)
 }
 
 func readerForCoreOwner(t *testing.T, store coreOwner) coreReader {
 	t.Helper()
 
 	switch owner := store.(type) {
-	case *b.CanonicalStore:
-		reader, err := b.NewCanonicalReader(owner)
-		requireNoError(t, err, "reader: %v")
-
-		return reader
 	case *sqlite.Store:
 		return sqlite.NewCanonicalReader(owner)
 	case *postgres.Store:
@@ -94,7 +80,6 @@ func readerForCoreOwner(t *testing.T, store coreOwner) coreReader {
 
 func runCoreAuthorities(t *testing.T, run func(*testing.T, coreFactory)) {
 	t.Helper()
-	t.Run("badger", func(t *testing.T) { run(t, nil) })
 
 	for _, backend := range []canonicalsqltest.Backend{canonicalsqltest.SQLite, canonicalsqltest.Postgres} {
 		t.Run(string(backend), func(t *testing.T) {

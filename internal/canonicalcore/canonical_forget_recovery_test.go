@@ -2,14 +2,12 @@ package canonicalcore_test
 
 import (
 	"context"
-	"encoding/json"
+
 	"testing"
 	"time"
 
 	"github.com/baldaworks/boyan/internal/forgetops"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
-	db "github.com/dgraph-io/badger/v4"
 )
 
 func TestScopeForgetResumesLegacyCrashWindows(t *testing.T) {
@@ -90,49 +88,7 @@ func commitLegacyScopeForget(t *testing.T, store coreOwner, turn m.Turn,
 func nativeFixturePayloadRefs(t *testing.T, store coreOwner) []m.PayloadRef {
 	t.Helper()
 
-	if _, legacy := store.(*b.CanonicalStore); !legacy {
-		return coreSQLPayloadRefs(t, store)
-	}
-
-	var refs []m.PayloadRef
-
-	err := store.(*b.CanonicalStore).DB().View(func(txn *db.Txn) error {
-		iterator := txn.NewIterator(db.DefaultIteratorOptions)
-		defer iterator.Close()
-
-		for iterator.Rewind(); iterator.Valid(); iterator.Next() {
-			encoded, err := iterator.Item().ValueCopy(nil)
-			if err != nil {
-				return err
-			}
-
-			envelope, err := m.UnmarshalRecordEnvelope(encoded)
-			if err != nil {
-				return err
-			}
-
-			switch envelope.RecordType {
-			case "source", "message", "revision":
-				var record struct {
-					Payload m.PayloadRef `json:"payload"`
-				}
-				if err := json.Unmarshal(envelope.Payload, &record); err != nil {
-					return err
-				}
-
-				refs = append(refs, record.Payload)
-			}
-		}
-
-		return nil
-	})
-	requireNoError(t, err, "fixture payload refs: %v")
-
-	if len(refs) == 0 {
-		t.Fatal("fixture has no payload refs")
-	}
-
-	return refs
+	return coreSQLPayloadRefs(t, store)
 }
 
 func requireNativePayloadsAbsent(t *testing.T, store coreOwner, refs []m.PayloadRef) {

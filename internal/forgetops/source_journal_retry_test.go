@@ -9,16 +9,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/baldaworks/boyan/internal/canonicalsqltest"
 	"github.com/baldaworks/boyan/internal/forgetops"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
 	db "github.com/dgraph-io/badger/v4"
 )
 
 // Resolving before journal replay fails here against the real payload-dependent
 // migration resolver, both in process and after reopening the same database.
 func TestSourceJournalRetryWithoutPayload(t *testing.T) {
-	store, command, source, directory := sourceJournalFixture(t, false)
+	runSourceJournalAuthorities(t, testSourceJournalRetryWithoutPayload)
+}
+
+func testSourceJournalRetryWithoutPayload(t *testing.T, backend canonicalsqltest.Backend) {
+	store, command, source, reopen := sourceJournalFixture(t, false, backend)
 	adapter := sourceJournalAdapter(t, store)
 	outcome, err := adapter.ForgetSource(context.Background(), command)
 	sourceJournalNoError(t, err)
@@ -51,7 +55,7 @@ func TestSourceJournalRetryWithoutPayload(t *testing.T) {
 	}
 
 	sourceJournalNoError(t, store.Close())
-	store, err = b.OpenCanonicalStore(directory)
+	store, err = reopen()
 	sourceJournalNoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 	replay, err = sourceJournalAdapter(t, store).ForgetSource(context.Background(), command)
@@ -65,7 +69,11 @@ func TestSourceJournalRetryWithoutPayload(t *testing.T) {
 // Returning a persisted Outcome without running the journal would leave the
 // canonical fence and unfinished scrub behind.
 func TestSourceJournalRetryFinishesPendingOutcome(t *testing.T) {
-	store, command, source, _ := sourceJournalFixture(t, false)
+	runSourceJournalAuthorities(t, testSourceJournalRetryFinishesPendingOutcome)
+}
+
+func testSourceJournalRetryFinishesPendingOutcome(t *testing.T, backend canonicalsqltest.Backend) {
+	store, command, source, _ := sourceJournalFixture(t, false, backend)
 	request := sourceJournalRequest(t, command, source.SourceID, 1)
 	_, err := store.BeginScopeErase(context.Background(), request)
 	sourceJournalNoError(t, err)
@@ -105,8 +113,8 @@ func TestSourceJournalRetryFinishesPendingOutcome(t *testing.T) {
 
 // Build through canonical mutation; the legacy SourceRef maps to an explicit
 // nonnative SourceID, never a guess.
-func sourceJournalFixture(t *testing.T, native bool) (
-	*b.CanonicalStore, m.ForgetSourceCommand, m.CanonicalSourceRecord, string,
+func sourceJournalFixture(t *testing.T, native bool, backend canonicalsqltest.Backend) (
+	*sourceJournalStore, m.ForgetSourceCommand, m.CanonicalSourceRecord, func() (*sourceJournalStore, error),
 ) {
 	t.Helper()
 
@@ -135,9 +143,7 @@ func sourceJournalFixture(t *testing.T, native bool) (
 		source.SourceID = m.TurnSourceID(command.Source.ExportID)
 	}
 
-	directory := t.TempDir()
-	store, err := b.OpenCanonicalStore(directory)
-	sourceJournalNoError(t, err)
+	store, reopen := openSourceJournalStore(t, backend)
 	t.Cleanup(func() { _ = store.Close() })
 
 	_, err = store.ApplyCanonicalMutation(context.Background(), m.CanonicalMutation{
@@ -157,7 +163,7 @@ func sourceJournalFixture(t *testing.T, native bool) (
 		t.Fatalf("imported source resolved to %q, want %q", resolved, source.SourceID)
 	}
 
-	return store, command, source, directory
+	return store, command, source, reopen
 }
 
 func sourceJournalRequest(
@@ -173,7 +179,7 @@ func sourceJournalRequest(
 		Fingerprint: m.CanonicalForgetFingerprint(operationID, command.Source.Scope, m.ForgetKindSource, command.Source, "")}
 }
 
-func sourceJournalAdapter(t *testing.T, store *b.CanonicalStore) *forgetops.CanonicalForgetAdapter {
+func sourceJournalAdapter(t *testing.T, store *sourceJournalStore) *forgetops.CanonicalForgetAdapter {
 	t.Helper()
 
 	adapter, err := forgetops.NewCanonicalForgetAdapter(store)
@@ -182,7 +188,7 @@ func sourceJournalAdapter(t *testing.T, store *b.CanonicalStore) *forgetops.Cano
 	return adapter
 }
 
-func sourceJournalLoad(t *testing.T, store *b.CanonicalStore, command m.ForgetSourceCommand) m.ScopeEraseJournal {
+func sourceJournalLoad(t *testing.T, store *sourceJournalStore, command m.ForgetSourceCommand) m.ScopeEraseJournal {
 	t.Helper()
 	request := sourceJournalRequest(t, command, "unused", 0)
 	journal, found, err := store.LoadScopeErase(context.Background(), command.Source.Scope, request.OperationID)
@@ -195,7 +201,7 @@ func sourceJournalLoad(t *testing.T, store *b.CanonicalStore, command m.ForgetSo
 	return journal
 }
 
-func sourceJournalPayloadAbsent(t *testing.T, store *b.CanonicalStore, ref m.PayloadRef) {
+func sourceJournalPayloadAbsent(t *testing.T, store *sourceJournalStore, ref m.PayloadRef) {
 	t.Helper()
 
 	if _, err := store.LoadPayload(context.Background(), ref); err == nil {
@@ -203,11 +209,15 @@ func sourceJournalPayloadAbsent(t *testing.T, store *b.CanonicalStore, ref m.Pay
 	}
 }
 
-func sourceJournalBytes(t *testing.T, store *b.CanonicalStore) map[string]string {
+func sourceJournalBytes(t *testing.T, store *sourceJournalStore) map[string]string {
 	t.Helper()
 
+	if store.database != nil {
+		return sourceJournalSQLBytes(t, store.database)
+	}
+
 	result := make(map[string]string)
-	err := store.DB().View(func(txn *db.Txn) error {
+	err := store.legacy.DB().View(func(txn *db.Txn) error {
 		iterator := txn.NewIterator(db.DefaultIteratorOptions)
 		defer iterator.Close()
 
@@ -245,10 +255,10 @@ func sourceJournalIdentity(t *testing.T, journal m.ScopeEraseJournal, sourceID s
 	}
 }
 
-func sourceJournalStructurePresent(t *testing.T, store *b.CanonicalStore, source m.CanonicalSourceRecord) {
+func sourceJournalStructurePresent(t *testing.T, store *sourceJournalStore, source m.CanonicalSourceRecord) {
 	t.Helper()
 
-	for _, encoded := range sourceJournalBytes(t, store) {
+	for _, encoded := range sourceJournalEnvelopes(t, store) {
 		envelope, err := m.UnmarshalRecordEnvelope([]byte(encoded))
 		sourceJournalNoError(t, err)
 

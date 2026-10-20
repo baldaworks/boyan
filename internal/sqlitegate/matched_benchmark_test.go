@@ -21,10 +21,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/baldaworks/boyan/internal/canonicalsqltest/storefixture"
 	"github.com/baldaworks/boyan/internal/memoryread"
 	core "github.com/baldaworks/boyan/internal/semantic"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	canonical "github.com/baldaworks/boyan/store/badger"
 )
 
 var matchedAt = time.Date(2026, 8, 11, 9, 0, 0, 0, time.UTC)
@@ -34,7 +34,7 @@ type matchedCorpus struct {
 	scope        m.Scope
 	revisions    []m.MemoryRevision
 	records      []m.RecallRecord
-	canonical    *canonical.CanonicalStore
+	canonical    matchedCanonicalOwner
 	reader       *countedCanonical
 	root         string
 	seq          uint64
@@ -43,9 +43,9 @@ type matchedCorpus struct {
 
 // Instrumentation delegates every call to real Badger. No metadata is rewritten.
 type countedCanonical struct {
-	*canonical.CanonicalReader
+	m.RecallCanonicalReader
 
-	store                                                          *canonical.CanonicalStore
+	store                                                          matchedCanonicalOwner
 	loads, ids, maxIDs, revisionDenials, sourceDenials, structures uint64
 	scopeReads, manifestReads                                      uint64
 }
@@ -55,7 +55,7 @@ func (r *countedCanonical) LoadRecallRecords(ctx context.Context, scope m.Scope,
 	r.ids += uint64(len(ids))
 	r.maxIDs = max(r.maxIDs, uint64(len(ids)))
 
-	return r.CanonicalReader.LoadRecallRecords(ctx, scope, ids)
+	return r.RecallCanonicalReader.LoadRecallRecords(ctx, scope, ids)
 }
 func (r *countedCanonical) IsRevisionDenied(ctx context.Context, scope m.Scope, id string) (bool, error) {
 	r.revisionDenials++
@@ -190,24 +190,19 @@ func payloadFor(id string, data []byte) m.CanonicalPayload {
 	return m.CanonicalPayload{Ref: m.PayloadRef{ID: id, Digest: hex.EncodeToString(sum[:]), ByteSize: uint32(len(data))}, Data: data}
 }
 
-func seedMatchedCorpus(ctx context.Context, name string, count int) (*matchedCorpus, error) {
+func seedMatchedCorpus(ctx context.Context, name string, count int, factories ...matchedCanonicalFactory) (*matchedCorpus, error) {
 	dir, err := os.MkdirTemp("", "boyan-task19-"+name+"-")
 	if err != nil {
 		return nil, err
 	}
 
-	store, err := canonical.OpenCanonicalStore(filepath.Join(dir, "badger"))
-	if err != nil {
-		return nil, err
-	}
-
-	reader, err := canonical.NewCanonicalReader(store)
+	store, reader, err := openMatchedCanonical(ctx, dir, factories)
 	if err != nil {
 		return nil, err
 	}
 
 	c := &matchedCorpus{name: name, scope: m.Scope{Key: "baseline:v1", Kind: m.ScopeKindGroup}, canonical: store, root: dir}
-	c.reader = &countedCanonical{CanonicalReader: reader, store: store}
+	c.reader = &countedCanonical{RecallCanonicalReader: reader, store: store}
 	controls := lexicalControls()
 	category := m.AtomCategoryDecision
 
@@ -216,9 +211,21 @@ func seedMatchedCorpus(ctx context.Context, name string, count int) (*matchedCor
 		c.conversation = strings.Repeat("c", 2097153)
 	}
 
-	sourceData, _ := json.Marshal(map[string]any{"export_id": "baseline-export", "conversation_id": c.conversation, "agent_conversation_id": "baseline-agent", "source_turn_id": "baseline-turn", "completed_at": matchedAt, "terminal_status": "completed"})
+	sourceHeader := map[string]any{"export_id": "baseline-export", "conversation_id": c.conversation, "agent_conversation_id": "baseline-agent", "source_turn_id": "baseline-turn", "completed_at": matchedAt, "terminal_status": "completed"}
+	// Preserve the historical benchmark bytes. The native correctness fixtures
+	// use the supported source status and bind evidence before canonical writes.
+	if len(factories) != 0 {
+		sourceHeader["terminal_status"] = m.TurnTerminalStatusSuccess
+	}
+
+	sourceData, _ := json.Marshal(sourceHeader)
 	sourcePayload := payloadFor("baseline-source-payload", sourceData)
 	messagePayload := payloadFor("baseline-message-payload", []byte("baseline evidence"))
+
+	evidenceDigest := ""
+	if len(factories) != 0 {
+		evidenceDigest = messagePayload.Ref.Digest
+	}
 
 	var pending m.CanonicalMutation
 
@@ -239,7 +246,7 @@ func seedMatchedCorpus(ctx context.Context, name string, count int) (*matchedCor
 
 		payload := payloadFor("payload-"+id, encoded)
 
-		revision := m.MemoryRevision{SchemaVersion: m.MemorySchemaVersion, RevisionID: id, ItemID: id, Revision: 1, Temporal: m.Temporal{ObservedAt: matchedAt}, Sensitivity: m.SensitivityStandard, Retention: m.RetentionClassStandard, Payload: payload.Ref, Evidence: []m.EvidenceRef{{SourceID: "baseline-source", MessageID: "baseline-message", Role: m.MessageRoleUser, StartByte: 0, EndByte: 8, AssertionMode: m.AssertionModeUser}}}
+		revision := m.MemoryRevision{SchemaVersion: m.MemorySchemaVersion, RevisionID: id, ItemID: id, Revision: 1, Temporal: m.Temporal{ObservedAt: matchedAt}, Sensitivity: m.SensitivityStandard, Retention: m.RetentionClassStandard, Payload: payload.Ref, Evidence: []m.EvidenceRef{{SourceID: "baseline-source", MessageID: "baseline-message", Role: m.MessageRoleUser, StartByte: 0, EndByte: 8, AssertionMode: m.AssertionModeUser, TextDigest: evidenceDigest}}}
 		if len(pending.Revisions) == 0 {
 			pending = m.CanonicalMutation{SchemaVersion: m.CanonicalSchemaVersionV1, Scope: c.scope, ExpectedScopeVersion: c.seq, Operation: m.OperationRecord{OperationID: "batch-" + id, Fingerprint: "fp-batch-" + id, CommittedAt: matchedAt}}
 		}
@@ -337,7 +344,18 @@ func logMatchedInputs(tb testing.TB, c *matchedCorpus) {
 }
 
 func TestMatchedCanonicalInputs(t *testing.T) {
-	c, b := matchedFixture(t, "small")
+	t.Run("badger", func(t *testing.T) {
+		c, backend := matchedFixture(t, "small")
+		testMatchedCanonicalInputs(t, c, backend)
+	})
+	storefixture.ForEach(t, func(t *testing.T, fixture *storefixture.Fixture) {
+		c, backend := matchedSQLFixture(t, "small", fixture)
+		testMatchedCanonicalInputs(t, c, backend)
+	})
+}
+
+func testMatchedCanonicalInputs(t *testing.T, c *matchedCorpus, b matchedBackend) {
+	t.Helper()
 
 	service, err := memoryread.NewRecallService(c.reader, b.lexical())
 	if err != nil {
@@ -376,7 +394,18 @@ func TestMatchedCanonicalInputs(t *testing.T) {
 }
 
 func TestMatchedDenseOracle(t *testing.T) {
-	c, backend := matchedFixture(t, "semantic8192")
+	t.Run("badger", func(t *testing.T) {
+		c, backend := matchedFixture(t, "semantic8192")
+		testMatchedDenseOracle(t, c, backend)
+	})
+	storefixture.ForEach(t, func(t *testing.T, fixture *storefixture.Fixture) {
+		c, backend := matchedSQLFixture(t, "semantic8192", fixture)
+		testMatchedDenseOracle(t, c, backend)
+	})
+}
+
+func testMatchedDenseOracle(t *testing.T, c *matchedCorpus, backend matchedBackend) {
+	t.Helper()
 
 	got, err := backend.dense(t.Context())
 	if err != nil {

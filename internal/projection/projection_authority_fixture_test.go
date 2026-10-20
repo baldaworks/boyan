@@ -22,7 +22,6 @@ type projectionOwnerFactory func(*testing.T) (projectionTestOwner, memory.Recall
 
 func runProjectionAuthorities(t *testing.T, run func(*testing.T, projectionOwnerFactory)) {
 	t.Helper()
-	t.Run("badger", func(t *testing.T) { run(t, nil) })
 
 	for _, backend := range []canonicalsqltest.Backend{canonicalsqltest.SQLite, canonicalsqltest.Postgres} {
 		t.Run(string(backend), func(t *testing.T) {

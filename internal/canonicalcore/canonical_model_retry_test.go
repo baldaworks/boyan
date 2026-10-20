@@ -10,7 +10,6 @@ import (
 	core "github.com/baldaworks/boyan/internal/canonicalcore"
 	derive "github.com/baldaworks/boyan/internal/structuredderive"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
 )
 
 type modelRetryInvoker struct {
@@ -28,19 +27,8 @@ func (*modelRetryInvoker) Close(context.Context) error { return nil }
 func newModelRetryStore(t *testing.T, factory coreFactory) (coreOwner, coreReader) {
 	t.Helper()
 
-	if factory != nil {
-		store, reader := factory(t, t.TempDir())
-		t.Cleanup(func() { requireNoError(t, store.Close(), "close: %v") })
-
-		return store, reader
-	}
-
-	store, err := b.Open(t.TempDir())
-	requireNoError(t, err, "open: %v")
+	store, reader := factory(t, t.TempDir())
 	t.Cleanup(func() { requireNoError(t, store.Close(), "close: %v") })
-
-	reader, err := b.NewCanonicalReader(store)
-	requireNoError(t, err, "reader: %v")
 
 	return store, reader
 }

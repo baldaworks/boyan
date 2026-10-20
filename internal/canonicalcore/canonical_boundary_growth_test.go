@@ -10,7 +10,6 @@ import (
 	core "github.com/baldaworks/boyan/internal/canonicalcore"
 	derive "github.com/baldaworks/boyan/internal/structuredderive"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
 )
 
 type boundaryInvoker struct {
@@ -43,16 +42,7 @@ func TestNativeBoundarySynthesisBeyondSearchPage(t *testing.T) {
 
 		var err error
 
-		if factory != nil {
-			store, reader = factory(t, t.TempDir())
-		} else {
-			legacy, openErr := b.Open(t.TempDir())
-			requireNoError(t, openErr, "store: %v")
-
-			store = legacy
-			reader, err = b.NewCanonicalReader(legacy)
-			requireNoError(t, err, "reader: %v")
-		}
+		store, reader = factory(t, t.TempDir())
 
 		t.Cleanup(func() { requireNoError(t, store.Close(), "close: %v") })
 

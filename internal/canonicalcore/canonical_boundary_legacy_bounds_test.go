@@ -2,7 +2,7 @@ package canonicalcore_test
 
 import (
 	"context"
-	"encoding/json"
+
 	"fmt"
 	"testing"
 	"time"
@@ -10,7 +10,6 @@ import (
 	core "github.com/baldaworks/boyan/internal/canonicalcore"
 	"github.com/baldaworks/boyan/internal/canonicalsql"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	badger "github.com/dgraph-io/badger/v4"
 )
 
 func TestLegacyBoundaryBoundsResolveBeforeModelAdmission(t *testing.T) {
@@ -32,11 +31,7 @@ func TestLegacyBoundaryBoundsResolveBeforeModelAdmission(t *testing.T) {
 					supersedeLegacyAncestor(t, f)
 				}
 
-				if factory != nil {
-					unproveSQLLegacyBounds(t, f, outcome, mode)
-				} else {
-					unproveBadgerLegacyBounds(t, f, outcome, mode)
-				}
+				unproveSQLLegacyBounds(t, f, outcome, mode)
 
 				reader := f.reader
 
@@ -156,76 +151,6 @@ func supersedeLegacyAncestor(t *testing.T, f *inheritanceFixture) {
 	requireNoError(t, err, "updated native: %v")
 	_, err = processor.ProcessTurn(context.Background(), turn, testProcessorDerivation())
 	requireNoError(t, err, "supersede native ancestor: %v")
-}
-
-func unproveBadgerLegacyBounds(t *testing.T, f *inheritanceFixture, outcome m.BoundaryOutcome, mode string) {
-	t.Helper()
-
-	prefix, err := m.TupleKey(0x53, 1, "revision", f.export.Scope.Key, string(f.export.Scope.Kind))
-	requireNoError(t, err, "revision prefix: %v")
-	err = f.store.(interface{ DB() *badger.DB }).DB().Update(func(txn *badger.Txn) error {
-		iterator := txn.NewIterator(badger.DefaultIteratorOptions)
-		defer iterator.Close()
-
-		for iterator.Seek(prefix); iterator.ValidForPrefix(prefix); iterator.Next() {
-			item := iterator.Item()
-
-			data, err := item.ValueCopy(nil)
-			if err != nil {
-				return err
-			}
-
-			envelope, err := m.UnmarshalRecordEnvelope(data)
-			if err != nil {
-				return err
-			}
-
-			var revision m.MemoryRevision
-			if err := json.Unmarshal(envelope.Payload, &revision); err != nil {
-				return err
-			}
-
-			revision = unprovedLegacyRevision(revision, outcome.Scenarios.Revisions[0].RevisionID,
-				outcome.Profile.Revisions[0].RevisionID, mode)
-			if err := putBadgerLegacyRevision(txn, f.export.Scope, revision); err != nil {
-				return err
-			}
-
-			if mode == "budget" && revision.RevisionID == outcome.Scenarios.Revisions[0].RevisionID {
-				for n := range m.MaxSourcesPerRevision + 2 {
-					ancestor := revision
-					ancestor.RevisionID = fmt.Sprintf("legacy-budget-%04d", n)
-
-					ancestor.Parents = []string{fmt.Sprintf("legacy-budget-%04d", n+1)}
-					if err := putBadgerLegacyRevision(txn, f.export.Scope, ancestor); err != nil {
-						return err
-					}
-				}
-			}
-		}
-
-		return nil
-	})
-	requireNoError(t, err, "hostile legacy Badger revision fixture: %v")
-}
-
-func putBadgerLegacyRevision(txn *badger.Txn, scope m.Scope, revision m.MemoryRevision) error {
-	key, err := m.TupleKey(0x53, 1, "revision", scope.Key, string(scope.Kind), revision.RevisionID)
-	if err != nil {
-		return err
-	}
-
-	payload, err := json.Marshal(revision)
-	if err != nil {
-		return err
-	}
-
-	data, err := m.MarshalRecordEnvelope("revision", payload)
-	if err != nil {
-		return err
-	}
-
-	return txn.Set(key, data)
 }
 
 func legacyFixtureInvalid(mode string) bool {

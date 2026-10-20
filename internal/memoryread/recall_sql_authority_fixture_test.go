@@ -26,7 +26,6 @@ type recallOwnerFactory func(*testing.T) (recallOwner, m.RecallCanonicalReader)
 
 func runRecallAuthorities(t *testing.T, run func(*testing.T, recallOwnerFactory)) {
 	t.Helper()
-	t.Run("badger", func(t *testing.T) { run(t, nil) })
 
 	for _, backend := range []canonicalsqltest.Backend{canonicalsqltest.SQLite, canonicalsqltest.Postgres} {
 		t.Run(string(backend), func(t *testing.T) {

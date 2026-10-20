@@ -32,6 +32,8 @@ type Tx struct {
 	writable   bool
 	active     bool
 	failed     error
+	readMemo   map[string]readMemoEntry
+	readBytes  int
 }
 
 // Update commits a callback atomically. Any failed primitive

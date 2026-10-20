@@ -11,7 +11,6 @@ import (
 
 	"github.com/baldaworks/boyan/internal/canonicalsql"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	"github.com/dgraph-io/badger/v4"
 )
 
 func TestTurnHTTPReceiptRejectsUnboundOrUnprovenReplay(t *testing.T) {
@@ -92,25 +91,18 @@ func prepareTurnReceiptRejection(t *testing.T, f *turnReceiptFixture, kind strin
 		deleteTurnReceiptRecord(t, f, "turn-certificate", f.turn.SourceID)
 		deleteTurnReceiptRecord(t, f, "message", f.turn.Messages[0].MessageID)
 	case "corrupt":
-		if f.factory != nil {
-			alterCoreSQLEnvelope(
-				t,
-				f.store,
-				"turn_certificate",
-				"scope_key=$2 AND scope_kind=$3 AND id=$4",
-				[]byte("corrupt"),
-				[]byte(f.turn.Scope.Key),
-				[]byte(f.turn.Scope.Kind),
-				[]byte(f.turn.SourceID),
-			)
+		alterCoreSQLEnvelope(
+			t,
+			f.store,
+			"turn_certificate",
+			"scope_key=$2 AND scope_kind=$3 AND id=$4",
+			[]byte("corrupt"),
+			[]byte(f.turn.Scope.Key),
+			[]byte(f.turn.Scope.Kind),
+			[]byte(f.turn.SourceID),
+		)
 
-			return
-		}
-
-		key := turnReceiptRecordKey(t, f, "turn-certificate", f.turn.SourceID)
-		requireNoError(t, f.store.(interface{ DB() *badger.DB }).DB().Update(func(txn *badger.Txn) error {
-			return txn.Set(key, []byte("corrupt"))
-		}), "corrupt: %v")
+		return
 	case "forgotten-proofless":
 		forgetTurnReceiptFixture(t, f)
 		deleteTurnReceiptRecord(t, f, "turn-certificate", f.turn.SourceID)
@@ -142,58 +134,27 @@ func writeTurnReceiptFixture(t *testing.T, f *turnReceiptFixture, record m.Inges
 	value, err := m.MarshalRecordEnvelope("ingest-sequence", payload)
 	requireNoError(t, err, "receipt envelope: %v")
 
-	if f.factory != nil {
-		alterCoreSQLEnvelope(
-			t,
-			f.store,
-			"ingest_sequence",
-			"scope_key=$2 AND scope_kind=$3 AND producer_id=$4 AND sequence_u64=$5",
-			value,
-			[]byte(
-				f.turn.Scope.Key,
-			),
-			[]byte(f.turn.Scope.Kind),
-			[]byte("old-producer"),
-			binary.BigEndian.AppendUint64(nil, 1),
-		)
-
-		return
-	}
-
-	prefix, err := m.TupleKey(0x53, 1, "ingest-sequence", f.turn.Scope.Key, string(f.turn.Scope.Kind), "old-producer")
-	requireNoError(t, err, "sequence key: %v")
-
-	key := binary.BigEndian.AppendUint64(prefix, 1)
-
-	requireNoError(
+	alterCoreSQLEnvelope(
 		t,
-		f.store.(interface{ DB() *badger.DB }).DB().Update(func(txn *badger.Txn) error { return txn.Set(key, value) }),
-		"alter receipt: %v",
+		f.store,
+		"ingest_sequence",
+		"scope_key=$2 AND scope_kind=$3 AND producer_id=$4 AND sequence_u64=$5",
+		value,
+		[]byte(
+			f.turn.Scope.Key,
+		),
+		[]byte(f.turn.Scope.Kind),
+		[]byte("old-producer"),
+		binary.BigEndian.AppendUint64(nil, 1),
 	)
-}
 
-func turnReceiptRecordKey(t *testing.T, f *turnReceiptFixture, kind, id string) []byte {
-	t.Helper()
-
-	key, err := m.TupleKey(0x53, 1, kind, f.turn.Scope.Key, string(f.turn.Scope.Kind), id)
-	requireNoError(t, err, "key: %v")
-
-	return key
+	return
 }
 
 func deleteTurnReceiptRecord(t *testing.T, f *turnReceiptFixture, kind, id string) {
 	t.Helper()
 
-	if f.factory != nil {
-		deleteCoreSQLRecord(t, f.store, coreSQLKey(canonicalsql.Family(kind), f.turn.Scope, []byte(id)))
+	deleteCoreSQLRecord(t, f.store, coreSQLKey(canonicalsql.Family(kind), f.turn.Scope, []byte(id)))
 
-		return
-	}
-
-	key := turnReceiptRecordKey(t, f, kind, id)
-	requireNoError(
-		t,
-		f.store.(interface{ DB() *badger.DB }).DB().Update(func(txn *badger.Txn) error { return txn.Delete(key) }),
-		"delete proof: %v",
-	)
+	return
 }

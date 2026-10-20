@@ -100,6 +100,14 @@ func (tx *Tx) Get(ctx context.Context, key Key) ([]byte, error) {
 		return nil, tx.fail(err)
 	}
 
+	if !tx.writable {
+		return tx.readSnapshotPoint(ctx, key, def, values)
+	}
+
+	return tx.getPoint(ctx, key, def, values)
+}
+
+func (tx *Tx) getPoint(ctx context.Context, key Key, def familyDef, values [][]byte) ([]byte, error) {
 	if tx.connection.pg != nil {
 		return tx.pgGet(ctx, key, def, values)
 	}

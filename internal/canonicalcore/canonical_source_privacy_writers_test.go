@@ -2,14 +2,12 @@ package canonicalcore_test
 
 import (
 	"context"
-	"encoding/json"
+
 	"testing"
 
 	core "github.com/baldaworks/boyan/internal/canonicalcore"
 	"github.com/baldaworks/boyan/internal/canonicalsql"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
-	"github.com/dgraph-io/badger/v4"
 )
 
 // These exercise real producers as well as the direct mutation regressions in
@@ -81,39 +79,14 @@ func TestSourcePrivacyBoundaryCompatibilityWritersAndReplay(t *testing.T) {
 func assertWriterPrivacy(t *testing.T, store coreOwner, scope m.Scope, sourceID, want string) {
 	t.Helper()
 
-	key, err := m.TupleKey(0x53, 1, "source-privacy", scope.Key, string(scope.Kind), sourceID)
-	requireNoError(t, err, "key: %v")
-
 	var authority struct {
 		State    string  `json:"state"`
 		Scope    m.Scope `json:"scope"`
 		SourceID string  `json:"source_id"`
 	}
 
-	if _, legacy := store.(*b.CanonicalStore); !legacy {
-		readCoreRecord(t, store, canonicalsql.Key{Family: canonicalsql.SourcePrivacy, Scope: scope,
-			Parts: [][]byte{[]byte(sourceID)}}, &authority)
-	} else {
-		err = store.(*b.CanonicalStore).DB().View(func(txn *badger.Txn) error {
-			item, readErr := txn.Get(key)
-			if readErr != nil {
-				return readErr
-			}
-
-			encoded, readErr := item.ValueCopy(nil)
-			if readErr != nil {
-				return readErr
-			}
-
-			envelope, readErr := m.UnmarshalRecordEnvelope(encoded)
-			if readErr != nil {
-				return readErr
-			}
-
-			return json.Unmarshal(envelope.Payload, &authority)
-		})
-		requireNoError(t, err, "authority: %v")
-	}
+	readCoreRecord(t, store, canonicalsql.Key{Family: canonicalsql.SourcePrivacy, Scope: scope,
+		Parts: [][]byte{[]byte(sourceID)}}, &authority)
 
 	if authority.State != want || authority.Scope != scope || authority.SourceID != sourceID {
 		t.Fatalf("authority=%+v, want %s", authority, want)

@@ -10,7 +10,6 @@ import (
 
 	"github.com/baldaworks/boyan/internal/canonicalsql"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	"github.com/dgraph-io/badger/v4"
 )
 
 func TestTurnReceiptLegacyProofStrength(t *testing.T) {
@@ -80,86 +79,15 @@ func replaceReceiptSourceWithFullTurn(t *testing.T, f *turnReceiptFixture) {
 	source.Payload.Digest = hex.EncodeToString(digest[:])
 	source.Payload.ByteSize = uint32(len(data))
 
-	if f.factory != nil {
-		var privacy map[string]json.RawMessage
-
-		privacyKey := coreSQLKey(canonicalsql.SourcePrivacy, f.turn.Scope, []byte(f.turn.SourceID))
-		readCoreRecord(t, f.store, privacyKey, &privacy)
-		privacy["payload"], err = json.Marshal(source.Payload)
-		requireNoError(t, err, "privacy payload: %v")
-		writeCoreSQLRecord(t, f.store, coreSQLKey(canonicalsql.Source, f.turn.Scope, []byte(f.turn.SourceID)), source)
-		writeCoreSQLRecord(t, f.store, privacyKey, privacy)
-		writeCoreSQLRecord(t, f.store, coreSQLKey(canonicalsql.Payload, m.Scope{}, []byte(source.Payload.ID)), data)
-
-		return
-	}
-
-	sourceKey := turnReceiptRecordKey(t, f, "source", f.turn.SourceID)
-	privacyKey := turnReceiptRecordKey(t, f, "source-privacy", f.turn.SourceID)
-	payloadKey, err := m.TupleKey(0x53, 1, "payload", "internal:payload", string(m.ScopeKindPersonal), source.Payload.ID)
-	requireNoError(t, err, "payload key: %v")
-	err = f.store.(interface{ DB() *badger.DB }).DB().Update(func(txn *badger.Txn) error {
-		privacy, err := receiptFixturePrivacy(txn, privacyKey)
-		if err != nil {
-			return err
-		}
-
-		privacy["payload"], err = json.Marshal(source.Payload)
-		if err != nil {
-			return err
-		}
-
-		for _, record := range []struct {
-			key   []byte
-			kind  string
-			value any
-		}{
-			{sourceKey, "source", source}, {privacyKey, "source-privacy", privacy}, {payloadKey, "payload", data},
-		} {
-			if err := putReceiptFixtureRecord(txn, record.key, record.kind, record.value); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
-	requireNoError(t, err, "full legacy source: %v")
-}
-
-func putReceiptFixtureRecord(txn *badger.Txn, key []byte, kind string, value any) error {
-	payload, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-
-	encoded, err := m.MarshalRecordEnvelope(kind, payload)
-	if err != nil {
-		return err
-	}
-
-	return txn.Set(key, encoded)
-}
-
-func receiptFixturePrivacy(txn *badger.Txn, key []byte) (map[string]json.RawMessage, error) {
-	item, err := txn.Get(key)
-	if err != nil {
-		return nil, err
-	}
-
-	encoded, err := item.ValueCopy(nil)
-	if err != nil {
-		return nil, err
-	}
-
-	envelope, err := m.UnmarshalRecordEnvelope(encoded)
-	if err != nil {
-		return nil, err
-	}
-
 	var privacy map[string]json.RawMessage
-	if err := json.Unmarshal(envelope.Payload, &privacy); err != nil {
-		return nil, err
-	}
 
-	return privacy, nil
+	privacyKey := coreSQLKey(canonicalsql.SourcePrivacy, f.turn.Scope, []byte(f.turn.SourceID))
+	readCoreRecord(t, f.store, privacyKey, &privacy)
+	privacy["payload"], err = json.Marshal(source.Payload)
+	requireNoError(t, err, "privacy payload: %v")
+	writeCoreSQLRecord(t, f.store, coreSQLKey(canonicalsql.Source, f.turn.Scope, []byte(f.turn.SourceID)), source)
+	writeCoreSQLRecord(t, f.store, privacyKey, privacy)
+	writeCoreSQLRecord(t, f.store, coreSQLKey(canonicalsql.Payload, m.Scope{}, []byte(source.Payload.ID)), data)
+
+	return
 }

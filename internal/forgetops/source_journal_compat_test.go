@@ -9,20 +9,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/baldaworks/boyan/internal/canonicalsqltest"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
 	db "github.com/dgraph-io/badger/v4"
 )
 
 func TestSourceJournalCompatibility(t *testing.T) {
-	t.Run("fresh", sourceJournalFreshCompatibility)
-	t.Run("mismatches", sourceJournalMismatchCompatibility)
-	t.Run("boundaries", sourceJournalBoundaryCompatibility)
-	t.Run("load-errors", sourceJournalLoadCompatibility)
-	t.Run("legacy", sourceJournalLegacyCompatibility)
+	runSourceJournalAuthorities(t, func(t *testing.T, backend canonicalsqltest.Backend) {
+		t.Run("fresh", func(t *testing.T) { sourceJournalFreshCompatibility(t, backend) })
+		t.Run("mismatches", func(t *testing.T) { sourceJournalMismatchCompatibility(t, backend) })
+		t.Run("boundaries", func(t *testing.T) { sourceJournalBoundaryCompatibility(t, backend) })
+		t.Run("load-errors", func(t *testing.T) { sourceJournalLoadCompatibility(t, backend) })
+		t.Run("legacy", func(t *testing.T) { sourceJournalLegacyCompatibility(t, backend) })
+	})
 }
 
-func sourceJournalFreshCompatibility(t *testing.T) {
+func sourceJournalFreshCompatibility(t *testing.T, backend canonicalsqltest.Backend) {
 	for _, native := range []bool{true, false} {
 		name := "migrated-current-runner"
 		if native {
@@ -30,7 +32,7 @@ func sourceJournalFreshCompatibility(t *testing.T) {
 		}
 
 		t.Run(name, func(t *testing.T) {
-			store, command, source, _ := sourceJournalFixture(t, native)
+			store, command, source, _ := sourceJournalFixture(t, native, backend)
 			request := sourceJournalRequest(t, command, source.SourceID, 1)
 			_, found, err := store.LoadScopeErase(context.Background(), request.Scope, request.OperationID)
 			sourceJournalNoError(t, err)
@@ -54,7 +56,7 @@ func sourceJournalFreshCompatibility(t *testing.T) {
 	}
 }
 
-func sourceJournalMismatchCompatibility(t *testing.T) {
+func sourceJournalMismatchCompatibility(t *testing.T, backend canonicalsqltest.Backend) {
 	for _, test := range []struct {
 		name   string
 		change func(*m.ScopeEraseJournal)
@@ -76,7 +78,7 @@ func sourceJournalMismatchCompatibility(t *testing.T) {
 		{name: "invalid-version", change: func(j *m.ScopeEraseJournal) { j.Version = 2 }, code: m.CodeStoreFailure},
 	} {
 		t.Run("reject-"+test.name, func(t *testing.T) {
-			store, command, _, _ := sourceJournalFixture(t, true)
+			store, command, _, _ := sourceJournalFixture(t, true, backend)
 			_, err := sourceJournalAdapter(t, store).ForgetSource(context.Background(), command)
 			sourceJournalNoError(t, err)
 			journal := sourceJournalLoad(t, store, command)
@@ -98,9 +100,9 @@ func sourceJournalMismatchCompatibility(t *testing.T) {
 	}
 }
 
-func sourceJournalBoundaryCompatibility(t *testing.T) {
+func sourceJournalBoundaryCompatibility(t *testing.T, backend canonicalsqltest.Backend) {
 	t.Run("missing-journal-normal-not-found", func(t *testing.T) {
-		store, command, _, _ := sourceJournalFixture(t, false)
+		store, command, _, _ := sourceJournalFixture(t, false, backend)
 		before := sourceJournalBytes(t, store)
 		command.Source.ExportID = "unknown-export"
 		_, err := sourceJournalAdapter(t, store).ForgetSource(context.Background(), command)
@@ -111,7 +113,7 @@ func sourceJournalBoundaryCompatibility(t *testing.T) {
 		}
 	})
 	t.Run("cancellation-with-existing-journal", func(t *testing.T) {
-		store, command, _, _ := sourceJournalFixture(t, false)
+		store, command, _, _ := sourceJournalFixture(t, false, backend)
 		_, err := sourceJournalAdapter(t, store).ForgetSource(context.Background(), command)
 		sourceJournalNoError(t, err)
 		before := sourceJournalBytes(t, store)
@@ -124,7 +126,7 @@ func sourceJournalBoundaryCompatibility(t *testing.T) {
 		}
 	})
 	t.Run("cancellation-before-mutation", func(t *testing.T) {
-		store, command, _, _ := sourceJournalFixture(t, false)
+		store, command, _, _ := sourceJournalFixture(t, false, backend)
 		before := sourceJournalBytes(t, store)
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -136,15 +138,10 @@ func sourceJournalBoundaryCompatibility(t *testing.T) {
 	})
 }
 
-func sourceJournalLoadCompatibility(t *testing.T) {
-	t.Run("closed-store-load-failure", func(t *testing.T) {
-		store, command, _, _ := sourceJournalFixture(t, true)
-		sourceJournalNoError(t, store.Close())
-		_, err := sourceJournalAdapter(t, store).ForgetSource(context.Background(), command)
-		sourceJournalError(t, err, m.CodeStoreFailure)
-	})
+func sourceJournalLoadCompatibility(t *testing.T, backend canonicalsqltest.Backend) {
+	t.Run("closed-store-load-failure", func(t *testing.T) { sourceJournalClosedLoad(t, backend) })
 	t.Run("invalid-command-before-load", func(t *testing.T) {
-		store, command, _, _ := sourceJournalFixture(t, true)
+		store, command, _, _ := sourceJournalFixture(t, true, backend)
 		before := sourceJournalBytes(t, store)
 		command.Source.ExportID = ""
 
@@ -154,7 +151,7 @@ func sourceJournalLoadCompatibility(t *testing.T) {
 		}
 	})
 	t.Run("corrupt-journal-load-failure", func(t *testing.T) {
-		store, command, _, _ := sourceJournalFixture(t, true)
+		store, command, _, _ := sourceJournalFixture(t, true, backend)
 		_, err := sourceJournalAdapter(t, store).ForgetSource(context.Background(), command)
 		sourceJournalNoError(t, err)
 		sourceJournalRewrite(t, store, "erase-journal", func([]byte) []byte { return []byte(`{"version":0}`) })
@@ -168,7 +165,7 @@ func sourceJournalLoadCompatibility(t *testing.T) {
 	})
 }
 
-func sourceJournalLegacyCompatibility(t *testing.T) {
+func sourceJournalLegacyCompatibility(t *testing.T, backend canonicalsqltest.Backend) {
 	for _, truncated := range []bool{false, true} {
 		name := "legacy-bounded-adoption"
 		if truncated {
@@ -176,7 +173,7 @@ func sourceJournalLegacyCompatibility(t *testing.T) {
 		}
 
 		t.Run(name, func(t *testing.T) {
-			store, command, source, _ := sourceJournalFixture(t, true)
+			store, command, source, _ := sourceJournalFixture(t, true, backend)
 			request := sourceJournalRequest(t, command, source.SourceID, 1)
 			sourceJournalNoError(t, store.DenySource(context.Background(), request.Scope, source.SourceID, command.ForgottenAt))
 			legacy, err := store.CommitCanonicalForget(context.Background(), m.CanonicalForgetCommitRequest{
@@ -227,12 +224,18 @@ func sourceJournalLegacyCompatibility(t *testing.T) {
 
 // Fault injection edits the actual persisted record at its discovered key; it
 // does not replace storage behavior or synthesize SourceID lookup results.
-func sourceJournalRewrite(t *testing.T, store *b.CanonicalStore, recordType string, change func([]byte) []byte) {
+func sourceJournalRewrite(t *testing.T, store *sourceJournalStore, recordType string, change func([]byte) []byte) {
 	t.Helper()
+
+	if store.database != nil {
+		sourceJournalSQLRewrite(t, store.database, recordType, change)
+
+		return
+	}
 
 	var key, value []byte
 
-	err := store.DB().View(func(txn *db.Txn) error {
+	err := store.legacy.DB().View(func(txn *db.Txn) error {
 		iterator := txn.NewIterator(db.DefaultIteratorOptions)
 		defer iterator.Close()
 
@@ -264,7 +267,7 @@ func sourceJournalRewrite(t *testing.T, store *b.CanonicalStore, recordType stri
 
 	encoded, err := m.MarshalRecordEnvelope(recordType, change(value))
 	sourceJournalNoError(t, err)
-	sourceJournalNoError(t, store.DB().Update(func(txn *db.Txn) error { return txn.Set(key, encoded) }))
+	sourceJournalNoError(t, store.legacy.DB().Update(func(txn *db.Txn) error { return txn.Set(key, encoded) }))
 }
 
 func sourceJournalError(t *testing.T, err error, code m.ErrorCode) {

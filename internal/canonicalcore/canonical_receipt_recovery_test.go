@@ -8,7 +8,6 @@ import (
 	core "github.com/baldaworks/boyan/internal/canonicalcore"
 	ordered "github.com/baldaworks/boyan/internal/orderedingest"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
 )
 
 type failingReceiptStore struct {
@@ -73,12 +72,7 @@ func testCommittedReceiptRecovery(t *testing.T, reopen bool, factory coreFactory
 
 	var err error
 
-	if factory != nil {
-		store, _ = factory(t, directory)
-	} else {
-		store, err = b.OpenCanonicalStore(directory)
-		requireNoError(t, err, "open store: %v")
-	}
+	store, _ = factory(t, directory)
 
 	calls := 0
 
@@ -112,12 +106,7 @@ func testCommittedReceiptRecovery(t *testing.T, reopen bool, factory coreFactory
 		requireNoError(t, runtime.Close(ctx), "close before reopen: %v")
 		requireNoError(t, store.Close(), "close before reopen: %v")
 
-		if factory != nil {
-			store, _ = factory(t, directory)
-		} else {
-			store, err = b.OpenCanonicalStore(directory)
-			requireNoError(t, err, "reopen: %v")
-		}
+		store, _ = factory(t, directory)
 
 		runtime = receiptRecoveryRuntime(t, store, 0, &calls)
 	}
