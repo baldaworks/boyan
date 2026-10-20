@@ -8,24 +8,27 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/baldaworks/boyan/internal/canonicalsql"
 	m "github.com/baldaworks/boyan/pkg/memory"
 	"github.com/dgraph-io/badger/v4"
 )
 
 func TestTurnReceiptLegacyProofStrength(t *testing.T) {
-	for _, full := range []bool{false, true} {
-		name := "lossy-native-header"
-		if full {
-			name = "full-raw-turn"
-		}
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		for _, full := range []bool{false, true} {
+			name := "lossy-native-header"
+			if full {
+				name = "full-raw-turn"
+			}
 
-		t.Run(name, func(t *testing.T) { testLegacyReceiptProofStrength(t, full) })
-	}
+			t.Run(name, func(t *testing.T) { testLegacyReceiptProofStrength(t, full, factory) })
+		}
+	})
 }
 
-func testLegacyReceiptProofStrength(t *testing.T, full bool) {
+func testLegacyReceiptProofStrength(t *testing.T, full bool, factory coreFactory) {
 	t.Helper()
-	f := newTurnReceiptFixture(t)
+	f := newTurnReceiptFixture(t, factory)
 
 	raw := legacyReceiptWireTurn(f.turn)
 	if response := f.post(t, raw); response.Code != http.StatusOK {
@@ -76,11 +79,26 @@ func replaceReceiptSourceWithFullTurn(t *testing.T, f *turnReceiptFixture) {
 	digest := sha256.Sum256(data)
 	source.Payload.Digest = hex.EncodeToString(digest[:])
 	source.Payload.ByteSize = uint32(len(data))
+
+	if f.factory != nil {
+		var privacy map[string]json.RawMessage
+
+		privacyKey := coreSQLKey(canonicalsql.SourcePrivacy, f.turn.Scope, []byte(f.turn.SourceID))
+		readCoreRecord(t, f.store, privacyKey, &privacy)
+		privacy["payload"], err = json.Marshal(source.Payload)
+		requireNoError(t, err, "privacy payload: %v")
+		writeCoreSQLRecord(t, f.store, coreSQLKey(canonicalsql.Source, f.turn.Scope, []byte(f.turn.SourceID)), source)
+		writeCoreSQLRecord(t, f.store, privacyKey, privacy)
+		writeCoreSQLRecord(t, f.store, coreSQLKey(canonicalsql.Payload, m.Scope{}, []byte(source.Payload.ID)), data)
+
+		return
+	}
+
 	sourceKey := turnReceiptRecordKey(t, f, "source", f.turn.SourceID)
 	privacyKey := turnReceiptRecordKey(t, f, "source-privacy", f.turn.SourceID)
 	payloadKey, err := m.TupleKey(0x53, 1, "payload", "internal:payload", string(m.ScopeKindPersonal), source.Payload.ID)
 	requireNoError(t, err, "payload key: %v")
-	err = f.store.DB().Update(func(txn *badger.Txn) error {
+	err = f.store.(interface{ DB() *badger.DB }).DB().Update(func(txn *badger.Txn) error {
 		privacy, err := receiptFixturePrivacy(txn, privacyKey)
 		if err != nil {
 			return err

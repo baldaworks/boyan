@@ -90,8 +90,14 @@ func assertTurnMutationReplay(t *testing.T, store mutationStore, probe mutationP
 		assertMutationCode(t, err, memory.CodeConflict)
 	case "changed-structural":
 		mutation.TurnIdentity = nil
+
+		replay, err := store.ApplyCanonicalMutation(t.Context(), mutation)
+		if err != nil || !reflect.DeepEqual(replay, outcome) {
+			t.Fatalf("unchanged raw certified replay=%+v %v", replay, err)
+		}
+
 		mutation.Messages[0].Role = memory.MessageRoleAssistant
-		_, err := store.ApplyCanonicalMutation(t.Context(), mutation)
+		_, err = store.ApplyCanonicalMutation(t.Context(), mutation)
 		assertMutationCode(t, err, memory.CodeConflict)
 	case "changed-input":
 		mutation.TurnIdentity.Turn.Messages[0].Text = "changed"

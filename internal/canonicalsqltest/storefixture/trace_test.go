@@ -45,6 +45,10 @@ func TestPublicTraceAndBoundary(t *testing.T) {
 
 		assertNativeTraceContent(t, got)
 
+		if err := got.Validate(10); err != nil {
+			t.Fatalf("successful Trace returned invalid DTO: %v", err)
+		}
+
 		view, err := r.LoadCanonicalBoundaryView(t.Context(), m.Scope)
 		if err != nil || len(view.Snapshot.Atoms) != 1 || view.Snapshot.Atoms[0].Text != "protected memory" ||
 			view.Snapshot.Version != 1 {

@@ -14,35 +14,37 @@ import (
 
 func TestBoundaryHTTPChangedDeliveryAfterRestart(t *testing.T) {
 	t.Parallel()
-	f := newBoundaryReplayFixture(t, false)
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		f := newBoundaryReplayFixture(t, false, factory)
 
-	status := postReplayBoundary(t, f, f.export, 1)
-	if status != http.StatusOK {
-		t.Fatalf("first status=%d", status)
-	}
-
-	f.restart(t)
-
-	for _, sequence := range []uint64{1, 2} {
-		changed := f.export
-
-		changed.Reason = m.BoundaryReasonReset
-		if status = postReplayBoundary(t, f, changed, sequence); status != http.StatusConflict {
-			t.Fatalf("changed sequence%d status=%d", sequence, status)
+		status := postReplayBoundary(t, f, f.export, 1)
+		if status != http.StatusOK {
+			t.Fatalf("first status=%d", status)
 		}
-	}
 
-	equivalent := f.export
-	equivalent.TransitionID = " \t" + equivalent.TransitionID + "\n"
+		f.restart(t)
 
-	equivalent.OccurredAt = equivalent.OccurredAt.In(time.FixedZone("offset", 6*60*60))
-	if status = postReplayBoundary(t, f, equivalent, 1); status != http.StatusOK {
-		t.Fatalf("equivalent same-sequence replay status=%d", status)
-	}
+		for _, sequence := range []uint64{1, 2} {
+			changed := f.export
 
-	if f.model.scenarioCalls != 1 || f.model.profileCalls != 1 {
-		t.Fatal("HTTP replay entered models")
-	}
+			changed.Reason = m.BoundaryReasonReset
+			if status = postReplayBoundary(t, f, changed, sequence); status != http.StatusConflict {
+				t.Fatalf("changed sequence%d status=%d", sequence, status)
+			}
+		}
+
+		equivalent := f.export
+		equivalent.TransitionID = " \t" + equivalent.TransitionID + "\n"
+
+		equivalent.OccurredAt = equivalent.OccurredAt.In(time.FixedZone("offset", 6*60*60))
+		if status = postReplayBoundary(t, f, equivalent, 1); status != http.StatusOK {
+			t.Fatalf("equivalent same-sequence replay status=%d", status)
+		}
+
+		if f.model.scenarioCalls != 1 || f.model.profileCalls != 1 {
+			t.Fatal("HTTP replay entered models")
+		}
+	})
 }
 
 func postReplayBoundary(t *testing.T, f *boundaryReplayFixture, export m.Boundary, sequence uint64) int {

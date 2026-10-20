@@ -12,7 +12,6 @@ import (
 	ops "github.com/baldaworks/boyan/internal/canonicalops"
 	derive "github.com/baldaworks/boyan/internal/structuredderive"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
 )
 
 type profileRetryInvoker struct {
@@ -71,48 +70,50 @@ func (*profileRetryInvoker) Close(context.Context) error { return nil }
 
 func TestMalformedProfilePreservesScenarioAndRetriesOnlyProfile(t *testing.T) {
 	t.Parallel()
-	reader, _, turn, native, store := nativeFlow(t)
-	adapter, err := ops.NewCanonicalBoundaryStore(store, reader)
-	requireNoError(t, err, "adapter: %v")
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		reader, _, turn, native, store := nativeFlow(t, factory)
+		adapter, err := ops.NewCanonicalBoundaryStore(store, reader)
+		requireNoError(t, err, "adapter: %v")
 
-	invoker := &profileRetryInvoker{invalidProfile: true}
-	deriver, err := derive.NewDeriver(invoker)
-	requireNoError(t, err, "deriver: %v")
-	processor, err := boundary.NewBoundaryProcessor(adapter, deriver, deriver, testProcessorDerivation())
-	requireNoError(t, err, "processor: %v")
-	export, err := m.NewBoundary(turn.Scope, turn.Conversation, "close", m.BoundaryReasonClose, time.Now().UTC())
-	requireNoError(t, err, "boundary: %v")
-	partial, err := processor.ProcessBoundary(context.Background(), export)
+		invoker := &profileRetryInvoker{invalidProfile: true}
+		deriver, err := derive.NewDeriver(invoker)
+		requireNoError(t, err, "deriver: %v")
+		processor, err := boundary.NewBoundaryProcessor(adapter, deriver, deriver, testProcessorDerivation())
+		requireNoError(t, err, "processor: %v")
+		export, err := m.NewBoundary(turn.Scope, turn.Conversation, "close", m.BoundaryReasonClose, time.Now().UTC())
+		requireNoError(t, err, "boundary: %v")
+		partial, err := processor.ProcessBoundary(context.Background(), export)
 
-	code, class, classified := m.ClassifyError(err)
-	if !classified || code != m.CodeInvalidDerived || class != m.ErrorClassPermanent {
-		t.Fatalf("malformed profile accepted or misclassified: %v", err)
-	}
+		code, class, classified := m.ClassifyError(err)
+		if !classified || code != m.CodeInvalidDerived || class != m.ErrorClassPermanent {
+			t.Fatalf("malformed profile accepted or misclassified: %v", err)
+		}
 
-	assertPartialModelStages(t, store, reader, export, partial, native)
+		assertPartialModelStages(t, store, reader, export, partial, native)
 
-	invoker.invalidProfile = false
-	retried, err := processor.ProcessBoundary(context.Background(), export)
-	requireNoError(t, err, "corrected same-boundary retry: %v")
+		invoker.invalidProfile = false
+		retried, err := processor.ProcessBoundary(context.Background(), export)
+		requireNoError(t, err, "corrected same-boundary retry: %v")
 
-	if invoker.scenarioCalls != 1 || invoker.profileCalls != 2 || len(retried.Profile.Revisions) != 1 {
-		t.Fatalf("retry did not finish only profile: calls=%d/%d outcome=%+v",
-			invoker.scenarioCalls, invoker.profileCalls, retried)
-	}
+		if invoker.scenarioCalls != 1 || invoker.profileCalls != 2 || len(retried.Profile.Revisions) != 1 {
+			t.Fatalf("retry did not finish only profile: calls=%d/%d outcome=%+v",
+				invoker.scenarioCalls, invoker.profileCalls, retried)
+		}
 
-	if !reflect.DeepEqual(retried.Scenarios, partial.Scenarios) {
-		t.Fatal("profile retry changed durable scenario outcome")
-	}
+		if !reflect.DeepEqual(retried.Scenarios, partial.Scenarios) {
+			t.Fatal("profile retry changed durable scenario outcome")
+		}
 
-	state, err := store.LoadScopeState(context.Background(), turn.Scope)
-	requireNoError(t, err, "retry state: %v")
+		state, err := store.LoadScopeState(context.Background(), turn.Scope)
+		requireNoError(t, err, "retry state: %v")
 
-	if state.Version != native.ScopeVersion+2 || state.ChangeSeq != native.ChangeSeq+2 {
-		t.Fatalf("retry counters = %+v; native = %+v", state, native)
-	}
+		if state.Version != native.ScopeVersion+2 || state.ChangeSeq != native.ChangeSeq+2 {
+			t.Fatalf("retry counters = %+v; native = %+v", state, native)
+		}
+	})
 }
 
-func assertPartialModelStages(t *testing.T, store *b.CanonicalStore, reader *b.CanonicalReader,
+func assertPartialModelStages(t *testing.T, store coreOwner, reader coreReader,
 	export m.Boundary, partial m.BoundaryOutcome, native m.CanonicalMutationOutcome) {
 	t.Helper()
 

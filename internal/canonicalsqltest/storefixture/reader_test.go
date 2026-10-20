@@ -58,7 +58,7 @@ func TestPublicReaderActiveRecallDerived(t *testing.T) {
 		}
 
 		assertPublicReaderHeads(t, active, mutation.Scope)
-		assertPublicReaderRecall(t, publicReader(t, f.Store), mutation.Scope)
+		assertPublicReaderRecall(t, publicReader(t, f.Store), mutation.Scope, mutation.Sources[0].SourceID)
 		assertPublicReaderEnumeration(t, active, mutation)
 	})
 }
@@ -77,12 +77,16 @@ func assertPublicReaderHeads(t *testing.T, active activeReaderStore, scope memor
 	}
 }
 
-func assertPublicReaderRecall(t *testing.T, reader sqlReader, scope memory.Scope) {
+func assertPublicReaderRecall(t *testing.T, reader sqlReader, scope memory.Scope, sourceID string) {
 	t.Helper()
 
 	recalled, err := reader.LoadRecallRecords(t.Context(), scope, []string{"missing", "revision"})
 	if err != nil || len(recalled) != 1 || recalled[0].Text != "protected memory" || recalled[0].ScopeChangeSeq != 1 {
 		t.Fatalf("recall=%+v err=%v", recalled, err)
+	}
+
+	if len(recalled[0].SourceIDs) != 1 || recalled[0].SourceIDs[0] != sourceID {
+		t.Fatalf("recall source IDs=%v want=%q", recalled[0].SourceIDs, sourceID)
 	}
 
 	derived, err := reader.SearchDerived(t.Context(), memory.DerivedSearchRequest{Scope: scope,

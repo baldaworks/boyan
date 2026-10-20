@@ -43,9 +43,11 @@ func TestPublicMutationCommitReplay(t *testing.T) {
 		}
 
 		replayed, err := store.CommitCanonicalOperation(t.Context(), request)
-		if err != nil || replayed.ScopeVersion != 1 {
+		if err != nil || !reflect.DeepEqual(replayed, outcome) {
 			t.Fatalf("stale replay: %+v %v", replayed, err)
 		}
+
+		assertEmptyOperationIdentity(t, store, request, outcome)
 
 		changes, err := store.ScanScopeChanges(t.Context(), scope, 0, 10)
 		if err != nil || len(changes) != 1 || changes[0].OperationID != "empty" {
@@ -54,6 +56,21 @@ func TestPublicMutationCommitReplay(t *testing.T) {
 
 		assertMutationReopen(t, fixture, scope)
 	})
+}
+
+func assertEmptyOperationIdentity(t *testing.T, store mutationStore,
+	request memory.CanonicalOperationCommitRequest, first memory.CanonicalMutationOutcome,
+) {
+	t.Helper()
+
+	stored, found, err := store.LoadCanonicalOperation(t.Context(), request.Scope, request.OperationID)
+	if err != nil || !found || stored.Fingerprint != request.Fingerprint || !reflect.DeepEqual(stored.Outcome, first) {
+		t.Fatalf("stored operation fingerprint/outcome: %+v found=%v err=%v", stored, found, err)
+	}
+
+	request.Fingerprint += "-conflict"
+	_, err = store.CommitCanonicalOperation(t.Context(), request)
+	assertMutationCode(t, err, memory.CodeConflict)
 }
 
 func assertMutationReopen(t *testing.T, fixture *storefixture.Fixture, scope memory.Scope) {

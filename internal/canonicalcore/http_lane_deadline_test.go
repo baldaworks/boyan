@@ -13,7 +13,6 @@ import (
 	"github.com/baldaworks/boyan/internal/httpingest"
 	ordered "github.com/baldaworks/boyan/internal/orderedingest"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
 )
 
 type deadlineCaptureIngestor struct {
@@ -30,49 +29,61 @@ func (a deadlineCaptureIngestor) IngestSequencedTurn(ctx context.Context,
 }
 
 func TestHTTPQueuedIngestDeadlineReturnsBeforeLivePredecessor(t *testing.T) {
-	runtime, store, second, firstDone := livePredecessorRuntime(t)
-	captured := make(chan context.Context, 1)
-	handler, err := httpingest.NewHandler(httpingest.Config{
-		Turns:      deadlineCaptureIngestor{runtime: runtime, contexts: captured},
-		Boundaries: runtime, RequestTimeout: 100 * time.Millisecond,
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		runtime, store, second, firstDone := livePredecessorRuntime(t, factory)
+		captured := make(chan context.Context, 1)
+		handler, err := httpingest.NewHandler(httpingest.Config{
+			Turns:      deadlineCaptureIngestor{runtime: runtime, contexts: captured},
+			Boundaries: runtime, RequestTimeout: 100 * time.Millisecond,
+		})
+		requireNoError(t, err, "NewHandler() = %v")
+		body, err := json.Marshal(m.IngestEnvelope[m.Turn]{
+			SchemaVersion: m.IngestHTTPSchemaVersionV1, ProducerID: "deadline", ScopeSequence: 2, Payload: second,
+		})
+		requireNoError(t, err, "Marshal() = %v")
+
+		request := httptest.NewRequest(http.MethodPost, "/v1/ingest/turns", bytes.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+
+		response := httptest.NewRecorder()
+		httpDone := make(chan struct{})
+
+		go func() { handler.ServeHTTP(response, request); close(httpDone) }()
+
+		processing := awaitIngestContext(t, captured)
+		awaitDeadlineSignal(t, processing.Done())
+		awaitDeadlineSignal(t, httpDone)
+
+		select {
+		case <-firstDone:
+			t.Fatal("predecessor returned before release")
+		default:
+		}
+
+		if response.Code != http.StatusGatewayTimeout {
+			t.Fatalf("response = %d %s", response.Code, response.Body)
+		}
+
+		if _, found, err := store.LoadIngestSequence(
+			context.Background(),
+			"deadline",
+			second.Scope,
+			2,
+		); err != nil ||
+			found {
+			t.Fatalf("canceled request receipt: found=%v err=%v", found, err)
+		}
 	})
-	requireNoError(t, err, "NewHandler() = %v")
-	body, err := json.Marshal(m.IngestEnvelope[m.Turn]{
-		SchemaVersion: m.IngestHTTPSchemaVersionV1, ProducerID: "deadline", ScopeSequence: 2, Payload: second,
-	})
-	requireNoError(t, err, "Marshal() = %v")
-
-	request := httptest.NewRequest(http.MethodPost, "/v1/ingest/turns", bytes.NewReader(body))
-	request.Header.Set("Content-Type", "application/json")
-
-	response := httptest.NewRecorder()
-	httpDone := make(chan struct{})
-
-	go func() { handler.ServeHTTP(response, request); close(httpDone) }()
-
-	processing := awaitIngestContext(t, captured)
-	awaitDeadlineSignal(t, processing.Done())
-	awaitDeadlineSignal(t, httpDone)
-
-	select {
-	case <-firstDone:
-		t.Fatal("predecessor returned before release")
-	default:
-	}
-
-	if response.Code != http.StatusGatewayTimeout {
-		t.Fatalf("response = %d %s", response.Code, response.Body)
-	}
-
-	if _, found, err := store.LoadIngestSequence(context.Background(), "deadline", second.Scope, 2); err != nil || found {
-		t.Fatalf("canceled request receipt: found=%v err=%v", found, err)
-	}
 }
 
-func livePredecessorRuntime(t *testing.T) (*ordered.SequencedIngestRuntime, *b.CanonicalStore, m.Turn, <-chan error) {
+func livePredecessorRuntime(
+	t *testing.T,
+	factory coreFactory,
+) (*ordered.SequencedIngestRuntime, coreOwner, m.Turn, <-chan error) {
 	t.Helper()
-	store, err := b.Open(t.TempDir())
-	requireNoError(t, err, "Open() = %v")
+
+	store, _ := openCoreAuthority(t, t.TempDir(), factory)
+
 	t.Cleanup(func() { _ = store.Close() })
 
 	started, release := make(chan struct{}), make(chan struct{})

@@ -87,6 +87,8 @@ func TestPublicProjectionGenerationLifecycle(t *testing.T) {
 			t.Fatalf("first=%+v %t %v", first, found, err)
 		}
 
+		assertExactActiveGeneration(t, s, m, first)
+
 		if err := s.MarkProjectionDirty(t.Context(), first); err != nil {
 			t.Fatal(err)
 		}
@@ -175,6 +177,17 @@ func TestPublicProjectionGenerationLifecycle(t *testing.T) {
 			t.Fatalf("metadata stamps=%+v", p.stamps(t))
 		}
 	})
+}
+
+func assertExactActiveGeneration(t *testing.T, store metadataStore, requested, active memory.ProjectionManifest) {
+	t.Helper()
+
+	exact, found, err := store.LoadProjectionManifest(
+		t.Context(), requested.Scope, requested.ProjectionID, requested.GenerationID,
+	)
+	if err != nil || !found || !reflect.DeepEqual(exact, active) {
+		t.Fatalf("active exact generation=%+v found=%t err=%v", exact, found, err)
+	}
 }
 
 func TestPublicProjectionActivationRollsBack(t *testing.T) {
@@ -306,5 +319,34 @@ func TestPublicProjectionActiveCorruptionFailsClosed(t *testing.T) {
 		p.write(t, key, map[string]string{"generation_id": m.GenerationID})
 		_, _, err := s.LoadActiveProjectionManifest(t.Context(), m.Scope, m.ProjectionID)
 		assertMutationCode(t, err, memory.CodeStoreFailure)
+	})
+}
+
+func TestPublicTimeCheckpointReopensExactly(t *testing.T) {
+	metadataFixture(t, func(t *testing.T, f *storefixture.Fixture, s metadataStore, _ mutationProbe) {
+		m := testManifest(t, "time")
+
+		want := memory.ScopeCheckpoint{SchemaVersion: memory.ScopeCheckpointSchemaVersion, Scope: m.Scope,
+			Kind: memory.ScopeCheckpointTime, CheckpointID: "time-checkpoint", ScopeVersion: 7, ChangeSeq: 9,
+			OccurredAt: m.UpdatedAt, UpdatedAt: m.UpdatedAt.Add(time.Second)}
+		if err := s.SaveScopeCheckpoint(t.Context(), want); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := f.Store.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		reopened, err := f.Open(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		t.Cleanup(func() { _ = reopened.Close() })
+
+		got, found, err := reopened.(metadataStore).LoadScopeCheckpoint(t.Context(), want.Scope, want.Kind)
+		if err != nil || !found || got != want {
+			t.Fatalf("time checkpoint=%+v found=%t err=%v want=%+v", got, found, err, want)
+		}
 	})
 }

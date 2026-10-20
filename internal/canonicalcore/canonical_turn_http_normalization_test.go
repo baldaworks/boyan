@@ -11,19 +11,23 @@ import (
 )
 
 func TestAudit5HTTPNormalizedTurnReplay(t *testing.T) {
-	testHTTPNormalizedTurnReplay(t, "offset")
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		testHTTPNormalizedTurnReplay(t, "offset", factory)
+	})
 }
 
 func TestHTTPNormalizedTurnReplayUsesCanonicalAuthority(t *testing.T) {
-	for _, kind := range []string{"status", "source", "messages", "combined-restart"} {
-		t.Run(kind, func(t *testing.T) { testHTTPNormalizedTurnReplay(t, kind) })
-	}
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		for _, kind := range []string{"status", "source", "messages", "combined-restart"} {
+			t.Run(kind, func(t *testing.T) { testHTTPNormalizedTurnReplay(t, kind, factory) })
+		}
+	})
 }
 
-func testHTTPNormalizedTurnReplay(t *testing.T, kind string) {
+func testHTTPNormalizedTurnReplay(t *testing.T, kind string, factory coreFactory) {
 	t.Helper()
 
-	f := newTurnReceiptFixture(t)
+	f := newTurnReceiptFixture(t, factory)
 	if response := f.post(t, f.turn); response.Code != http.StatusOK {
 		t.Fatalf("initial: %s", response.Body)
 	}
@@ -80,26 +84,28 @@ func equivalentHTTPReceiptTurn(turn m.Turn, kind string) m.Turn {
 }
 
 func TestHTTPChangedTurnRemainsRejected(t *testing.T) {
-	changes := map[string]func(*m.Turn){
-		"text":         func(turn *m.Turn) { turn.Messages[0].Text = "changed" },
-		"role":         func(turn *m.Turn) { turn.Messages[0].Role = m.MessageRoleAssistant },
-		"order":        func(turn *m.Turn) { turn.Messages[0], turn.Messages[1] = turn.Messages[1], turn.Messages[0] },
-		"instant":      func(turn *m.Turn) { turn.CompletedAt = turn.CompletedAt.Add(time.Nanosecond) },
-		"status":       func(turn *m.Turn) { turn.TerminalStatus = m.TurnTerminalStatusFailed },
-		"conversation": func(turn *m.Turn) { turn.Conversation.ConversationID = "different" },
-		"lineage":      func(turn *m.Turn) { turn.Conversation.LineageID = "different" },
-		"previous":     func(turn *m.Turn) { turn.Conversation.PreviousConversationID = "different" },
-		"agent":        func(turn *m.Turn) { turn.Conversation.AgentConversationID = "different" },
-	}
-	for name, change := range changes {
-		t.Run(name, func(t *testing.T) { testHTTPChangedTurn(t, change) })
-	}
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		changes := map[string]func(*m.Turn){
+			"text":         func(turn *m.Turn) { turn.Messages[0].Text = "changed" },
+			"role":         func(turn *m.Turn) { turn.Messages[0].Role = m.MessageRoleAssistant },
+			"order":        func(turn *m.Turn) { turn.Messages[0], turn.Messages[1] = turn.Messages[1], turn.Messages[0] },
+			"instant":      func(turn *m.Turn) { turn.CompletedAt = turn.CompletedAt.Add(time.Nanosecond) },
+			"status":       func(turn *m.Turn) { turn.TerminalStatus = m.TurnTerminalStatusFailed },
+			"conversation": func(turn *m.Turn) { turn.Conversation.ConversationID = "different" },
+			"lineage":      func(turn *m.Turn) { turn.Conversation.LineageID = "different" },
+			"previous":     func(turn *m.Turn) { turn.Conversation.PreviousConversationID = "different" },
+			"agent":        func(turn *m.Turn) { turn.Conversation.AgentConversationID = "different" },
+		}
+		for name, change := range changes {
+			t.Run(name, func(t *testing.T) { testHTTPChangedTurn(t, change, factory) })
+		}
+	})
 }
 
-func testHTTPChangedTurn(t *testing.T, change func(*m.Turn)) {
+func testHTTPChangedTurn(t *testing.T, change func(*m.Turn), factory coreFactory) {
 	t.Helper()
 
-	f := newTurnReceiptFixture(t)
+	f := newTurnReceiptFixture(t, factory)
 	if response := f.post(t, f.turn); response.Code != http.StatusOK {
 		t.Fatalf("initial: %s", response.Body)
 	}
@@ -131,24 +137,26 @@ func testHTTPChangedTurn(t *testing.T, change func(*m.Turn)) {
 }
 
 func TestHTTPExactScopeKindsKeepIndependentReceiptLanes(t *testing.T) {
-	f := newTurnReceiptFixture(t)
-	if response := f.post(t, f.turn); response.Code != http.StatusOK {
-		t.Fatalf("personal: %s", response.Body)
-	}
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		f := newTurnReceiptFixture(t, factory)
+		if response := f.post(t, f.turn); response.Code != http.StatusOK {
+			t.Fatalf("personal: %s", response.Body)
+		}
 
-	original := f.record(t)
-	other := f.turn
+		original := f.record(t)
+		other := f.turn
 
-	other.Scope.Kind = m.ScopeKindGroup
-	if response := f.post(t, other); response.Code != http.StatusOK {
-		t.Fatalf("group: %d %s", response.Code, response.Body)
-	}
+		other.Scope.Kind = m.ScopeKindGroup
+		if response := f.post(t, other); response.Code != http.StatusOK {
+			t.Fatalf("group: %d %s", response.Code, response.Body)
+		}
 
-	second, found, err := f.store.LoadIngestSequence(context.Background(), "old-producer", other.Scope, 1)
-	requireNoError(t, err, "group receipt: %v")
+		second, found, err := f.store.LoadIngestSequence(context.Background(), "old-producer", other.Scope, 1)
+		requireNoError(t, err, "group receipt: %v")
 
-	if !found || original.Fingerprint == second.Fingerprint || second.Outcome.Scope != other.Scope ||
-		!reflect.DeepEqual(original, f.record(t)) || f.calls != 2 || f.processCalls != 2 {
-		t.Fatal("exact scope lanes merged")
-	}
+		if !found || original.Fingerprint == second.Fingerprint || second.Outcome.Scope != other.Scope ||
+			!reflect.DeepEqual(original, f.record(t)) || f.calls != 2 || f.processCalls != 2 {
+			t.Fatal("exact scope lanes merged")
+		}
+	})
 }

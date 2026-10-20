@@ -32,6 +32,14 @@ func TestPublicIngestSequencePersistence(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		assertFirstIngestCursor(t, store, record)
+
+		if err := store.SaveIngestSequence(t.Context(), record); err != nil {
+			t.Fatal(err)
+		}
+
+		assertFirstIngestCursor(t, store, record)
+
 		if err := fixture.Store.Close(); err != nil {
 			t.Fatal(err)
 		}
@@ -44,12 +52,23 @@ func TestPublicIngestSequencePersistence(t *testing.T) {
 		t.Cleanup(func() { _ = reopened.Close() })
 
 		store = reopened.(memory.IngestSequenceStore)
+		assertFirstIngestCursor(t, store, record)
+
 		if err := store.SaveIngestSequence(t.Context(), record); err != nil {
 			t.Fatal(err)
 		}
 
 		assertIngestPersistence(t, store, record)
 	})
+}
+
+func assertFirstIngestCursor(t *testing.T, store memory.IngestSequenceStore, record memory.IngestSequenceRecord) {
+	t.Helper()
+
+	cursor, found, err := store.LoadLatestIngestSequence(t.Context(), record.ProducerID, record.Scope)
+	if err != nil || !found || cursor.Latest != 1 {
+		t.Fatalf("first cursor=%+v found=%t err=%v", cursor, found, err)
+	}
 }
 
 func assertIngestPersistence(t *testing.T, store memory.IngestSequenceStore, record memory.IngestSequenceRecord) {
@@ -59,6 +78,8 @@ func assertIngestPersistence(t *testing.T, store memory.IngestSequenceStore, rec
 	if err != nil || !found || !reflect.DeepEqual(got, record) {
 		t.Fatalf("receipt=%+v found=%t err=%v", got, found, err)
 	}
+
+	assertFirstIngestCursor(t, store, record)
 
 	if err := store.SaveIngestSequence(t.Context(), ingestRecord(2)); err != nil {
 		t.Fatal(err)

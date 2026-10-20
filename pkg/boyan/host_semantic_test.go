@@ -19,47 +19,49 @@ import (
 
 // These tests catch omission of the enabled runtime graph and default side effects.
 func TestHostSemanticLifecycle(t *testing.T) {
-	for _, enabled := range []bool{false, true} {
-		t.Run(map[bool]string{false: "disabled", true: "enabled"}[enabled], func(t *testing.T) {
-			cfg := testHostConfig(t)
-			if enabled {
-				cfg.Embeddings = validEmbeddingsConfig()
-				cfg.Embeddings.Endpoint = "http://127.0.0.1:1"
-				cfg.Embeddings.Dimensions = 2
-			}
+	forEachHostBackend(t, func(t *testing.T, backend string) {
+		for _, enabled := range []bool{false, true} {
+			t.Run(map[bool]string{false: "disabled", true: "enabled"}[enabled], func(t *testing.T) {
+				cfg := selectedHostConfig(t, backend)
+				if enabled {
+					cfg.Embeddings = validEmbeddingsConfig()
+					cfg.Embeddings.Endpoint = "http://127.0.0.1:1"
+					cfg.Embeddings.Dimensions = 2
+				}
 
-			host, err := boyan.New(context.Background(), cfg)
-			requireNoError(t, err, "new: %v")
-			t.Cleanup(func() { _ = host.Close() })
-			requireNoError(t, host.Start(context.Background()), "start: %v")
+				host, err := boyan.New(context.Background(), cfg)
+				requireNoError(t, err, "new: %v")
+				t.Cleanup(func() { _ = host.Close() })
+				requireNoError(t, host.Start(context.Background()), "start: %v")
 
-			if !host.Ready() {
-				t.Fatal("semantic availability blocked lexical readiness")
-			}
+				if !host.Ready() {
+					t.Fatal("semantic availability blocked lexical readiness")
+				}
 
-			_, err = os.Stat(filepath.Join(cfg.StateDir, "search", "search.sqlite"))
-			if err != nil {
-				t.Fatalf("shared search database: %v", err)
-			}
+				_, err = os.Stat(filepath.Join(cfg.StateDir, "search", "search.sqlite"))
+				if err != nil {
+					t.Fatalf("shared search database: %v", err)
+				}
 
-			rec := httptest.NewRecorder()
-			host.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+				rec := httptest.NewRecorder()
+				host.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 
-			if rec.Code != 200 {
-				t.Fatalf("readiness=%d", rec.Code)
-			}
+				if rec.Code != 200 {
+					t.Fatalf("readiness=%d", rec.Code)
+				}
 
-			if enabled && rec.Header().Get("X-Boyan-Semantic-State") == "" {
-				t.Fatal("missing semantic header")
-			}
+				if enabled && rec.Header().Get("X-Boyan-Semantic-State") == "" {
+					t.Fatal("missing semantic header")
+				}
 
-			if !enabled && rec.Header().Get("X-Boyan-Semantic-State") != "" {
-				t.Fatal("disabled graph changed readiness headers")
-			}
+				if !enabled && rec.Header().Get("X-Boyan-Semantic-State") != "" {
+					t.Fatal("disabled graph changed readiness headers")
+				}
 
-			requireNoError(t, host.Close(), "close: %v")
-		})
-	}
+				requireNoError(t, host.Close(), "close: %v")
+			})
+		}
+	})
 }
 
 // Blocking passage inference proves startup does not wait on the provider;
@@ -67,162 +69,164 @@ func TestHostSemanticLifecycle(t *testing.T) {
 //
 //nolint:cyclop,funlen,gocognit // One real lifecycle demonstrates the ordered repair/fallback/recovery transitions.
 func TestHostSemanticRepairFallbackRecoveryAndRestart(t *testing.T) {
-	cfg := testHostConfig(t)
-	turn, err := memory.NewTurn(memory.Scope{Kind: memory.ScopeKindPersonal, Key: "semantic:lifecycle"},
-		memory.ConversationRef{ConversationID: "conversation", AgentConversationID: "agent"},
-		"turn", time.Now().UTC().Add(-time.Hour), "Я живу в Бишкеке", "OK")
-	requireNoError(t, err, "turn: %v")
-	initial := persistIntegrationTurn(t, cfg, turn)
-	entered := make(chan struct{}, 1)
-	release := make(chan struct{})
+	forEachHostBackend(t, func(t *testing.T, backend string) {
+		cfg := selectedHostConfig(t, backend)
+		turn, err := memory.NewTurn(memory.Scope{Kind: memory.ScopeKindPersonal, Key: "semantic:lifecycle"},
+			memory.ConversationRef{ConversationID: "conversation", AgentConversationID: "agent"},
+			"turn", time.Now().UTC().Add(-time.Hour), "Я живу в Бишкеке", "OK")
+		requireNoError(t, err, "turn: %v")
+		initial := persistIntegrationTurn(t, cfg, turn)
+		entered := make(chan struct{}, 1)
+		release := make(chan struct{})
 
-	var mode atomic.Int32
+		var mode atomic.Int32
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer construction-secret" {
-			t.Error("credential was not resolved at construction")
-		}
-
-		var request struct {
-			Input []string `json:"input"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			t.Error(err)
-
-			return
-		}
-
-		if len(request.Input) > 0 && len(request.Input[0]) >= 9 && request.Input[0][:9] == "passage: " {
-			select {
-			case entered <- struct{}{}:
-			default:
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Authorization") != "Bearer construction-secret" {
+				t.Error("credential was not resolved at construction")
 			}
 
-			select {
-			case <-release:
-			case <-r.Context().Done():
+			var request struct {
+				Input []string `json:"input"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Error(err)
+
 				return
 			}
+
+			if len(request.Input) > 0 && len(request.Input[0]) >= 9 && request.Input[0][:9] == "passage: " {
+				select {
+				case entered <- struct{}{}:
+				default:
+				}
+
+				select {
+				case <-release:
+				case <-r.Context().Done():
+					return
+				}
+			}
+
+			switch mode.Load() {
+			case 1:
+				http.Error(w, "credential-secret upstream source text", http.StatusServiceUnavailable)
+
+				return
+			case 2:
+				_, _ = w.Write([]byte(`{"data":"private malformed prose"}`))
+
+				return
+			}
+
+			rows := make([]map[string]any, len(request.Input))
+			for i := range rows {
+				rows[i] = map[string]any{"index": i, "embedding": []float32{1, 0}}
+			}
+
+			_ = json.NewEncoder(w).Encode(map[string]any{"model": "intfloat/multilingual-e5-base", "data": rows})
+		}))
+		t.Cleanup(server.Close)
+
+		cfg.Embeddings = validEmbeddingsConfig()
+		cfg.Embeddings.Endpoint = server.URL
+		cfg.Embeddings.Dimensions = 2
+		cfg.Embeddings.APIKeyEnv = "BOYAN_SEMANTIC_LIFECYCLE_KEY"
+		t.Setenv(cfg.Embeddings.APIKeyEnv, "construction-secret")
+		host, err := boyan.New(context.Background(), cfg)
+		requireNoError(t, err, "new: %v")
+		t.Setenv(cfg.Embeddings.APIKeyEnv, "changed-after-construction")
+		t.Cleanup(func() { _ = host.Close() })
+		requireNoError(t, host.Start(context.Background()), "start: %v")
+
+		select {
+		case <-entered:
+		case <-time.After(3 * time.Second):
+			t.Fatal("startup repair not scheduled")
 		}
 
-		switch mode.Load() {
-		case 1:
-			http.Error(w, "credential-secret upstream source text", http.StatusServiceUnavailable)
-
-			return
-		case 2:
-			_, _ = w.Write([]byte(`{"data":"private malformed prose"}`))
-
-			return
+		if !host.Ready() {
+			t.Fatal("blocked inference disabled lexical readiness")
 		}
 
-		rows := make([]map[string]any, len(request.Input))
-		for i := range rows {
-			rows[i] = map[string]any{"index": i, "embedding": []float32{1, 0}}
+		assertSemanticHeader(t, host, "repairing")
+
+		request := memory.RecallRequest{Scope: turn.Scope, Query: "живу", Limit: 10}
+		response, err := host.Search(context.Background(), request)
+		requireNoError(t, err, "cold recall: %v")
+
+		if len(response.Results) != 1 || response.Retrieval == nil || response.Retrieval.Effective != "degraded" {
+			t.Fatalf("cold response: %+v", response)
 		}
 
-		_ = json.NewEncoder(w).Encode(map[string]any{"model": "intfloat/multilingual-e5-base", "data": rows})
-	}))
-	t.Cleanup(server.Close)
+		request.MinScopeChangeSeq = initial.ChangeSeq
+		_, err = host.Search(context.Background(), request)
 
-	cfg.Embeddings = validEmbeddingsConfig()
-	cfg.Embeddings.Endpoint = server.URL
-	cfg.Embeddings.Dimensions = 2
-	cfg.Embeddings.APIKeyEnv = "BOYAN_SEMANTIC_LIFECYCLE_KEY"
-	t.Setenv(cfg.Embeddings.APIKeyEnv, "construction-secret")
-	host, err := boyan.New(context.Background(), cfg)
-	requireNoError(t, err, "new: %v")
-	t.Setenv(cfg.Embeddings.APIKeyEnv, "changed-after-construction")
-	t.Cleanup(func() { _ = host.Close() })
-	requireNoError(t, host.Start(context.Background()), "start: %v")
+		code, _, _ := memory.ClassifyError(err)
+		if code != memory.CodeConflict {
+			t.Fatalf("cold minimum: %v", err)
+		}
 
-	select {
-	case <-entered:
-	case <-time.After(3 * time.Second):
-		t.Fatal("startup repair not scheduled")
-	}
+		request.MinScopeChangeSeq = 0
 
-	if !host.Ready() {
-		t.Fatal("blocked inference disabled lexical readiness")
-	}
+		close(release)
+		waitHostSemantic(t, host, turn.Scope, "hybrid-ready")
 
-	assertSemanticHeader(t, host, "repairing")
+		for _, failure := range []int32{1, 2, 0} {
+			mode.Store(failure)
 
-	request := memory.RecallRequest{Scope: turn.Scope, Query: "живу", Limit: 10}
-	response, err := host.Search(context.Background(), request)
-	requireNoError(t, err, "cold recall: %v")
+			response, err = host.Search(context.Background(), request)
+			requireNoError(t, err, "recall: %v")
 
-	if len(response.Results) != 1 || response.Retrieval == nil || response.Retrieval.Effective != "degraded" {
-		t.Fatalf("cold response: %+v", response)
-	}
+			want := "hybrid"
+			state := "hybrid-ready"
 
-	request.MinScopeChangeSeq = initial.ChangeSeq
-	_, err = host.Search(context.Background(), request)
+			if failure != 0 {
+				want = "degraded"
+				state = "degraded"
+			}
 
-	code, _, _ := memory.ClassifyError(err)
-	if code != memory.CodeConflict {
-		t.Fatalf("cold minimum: %v", err)
-	}
+			if len(response.Results) != 1 || response.Retrieval == nil || response.Retrieval.Effective != want {
+				t.Fatalf("mode %d response: %+v", failure, response)
+			}
 
-	request.MinScopeChangeSeq = 0
+			assertSemanticHeader(t, host, state)
+			status, statusErr := host.SemanticStatus(context.Background(), turn.Scope)
+			requireNoError(t, statusErr, "status: %v")
 
-	close(release)
-	waitHostSemantic(t, host, turn.Scope, "hybrid-ready")
+			encoded, _ := json.Marshal(status)
+			if bytes.Contains(encoded, []byte("private")) || bytes.Contains(encoded, []byte("credential")) ||
+				bytes.Contains(encoded, []byte("живу")) {
+				t.Fatalf("status leaked: %s", encoded)
+			}
+		}
 
-	for _, failure := range []int32{1, 2, 0} {
-		mode.Store(failure)
-
+		requireNoError(t, host.Close(), "close: %v")
+		t.Setenv(cfg.Embeddings.APIKeyEnv, "construction-secret")
+		host, err = boyan.New(context.Background(), cfg)
+		requireNoError(t, err, "restart: %v")
+		requireNoError(t, host.Start(context.Background()), "restart start: %v")
+		waitHostSemantic(t, host, turn.Scope, "hybrid-ready")
+		_, err = host.ForgetScope(context.Background(), memory.ForgetScopeCommand{
+			SchemaVersion: memory.DerivedSchemaVersionV1, Scope: turn.Scope,
+			RequestID: "forget-semantic", ForgottenAt: time.Now().UTC(),
+		})
+		requireNoError(t, err, "forget: %v")
 		response, err = host.Search(context.Background(), request)
-		requireNoError(t, err, "recall: %v")
+		requireNoError(t, err, "forgotten recall: %v")
 
-		want := "hybrid"
-		state := "hybrid-ready"
-
-		if failure != 0 {
-			want = "degraded"
-			state = "degraded"
+		if len(response.Results) != 0 {
+			t.Fatalf("forgotten text released: %+v", response)
 		}
 
-		if len(response.Results) != 1 || response.Retrieval == nil || response.Retrieval.Effective != want {
-			t.Fatalf("mode %d response: %+v", failure, response)
+		canceled, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, err = host.SemanticStatus(canceled, turn.Scope)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("canceled status: %v", err)
 		}
-
-		assertSemanticHeader(t, host, state)
-		status, statusErr := host.SemanticStatus(context.Background(), turn.Scope)
-		requireNoError(t, statusErr, "status: %v")
-
-		encoded, _ := json.Marshal(status)
-		if bytes.Contains(encoded, []byte("private")) || bytes.Contains(encoded, []byte("credential")) ||
-			bytes.Contains(encoded, []byte("живу")) {
-			t.Fatalf("status leaked: %s", encoded)
-		}
-	}
-
-	requireNoError(t, host.Close(), "close: %v")
-	t.Setenv(cfg.Embeddings.APIKeyEnv, "construction-secret")
-	host, err = boyan.New(context.Background(), cfg)
-	requireNoError(t, err, "restart: %v")
-	requireNoError(t, host.Start(context.Background()), "restart start: %v")
-	waitHostSemantic(t, host, turn.Scope, "hybrid-ready")
-	_, err = host.ForgetScope(context.Background(), memory.ForgetScopeCommand{
-		SchemaVersion: memory.DerivedSchemaVersionV1, Scope: turn.Scope,
-		RequestID: "forget-semantic", ForgottenAt: time.Now().UTC(),
 	})
-	requireNoError(t, err, "forget: %v")
-	response, err = host.Search(context.Background(), request)
-	requireNoError(t, err, "forgotten recall: %v")
-
-	if len(response.Results) != 0 {
-		t.Fatalf("forgotten text released: %+v", response)
-	}
-
-	canceled, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	_, err = host.SemanticStatus(canceled, turn.Scope)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("canceled status: %v", err)
-	}
 }
 
 func assertSemanticHeader(t *testing.T, host *boyan.Host, want string) {

@@ -25,8 +25,16 @@ func (i *modelRetryInvoker) Invoke(context.Context, derive.StructuredInvocation)
 }
 func (*modelRetryInvoker) Close(context.Context) error { return nil }
 
-func newModelRetryStore(t *testing.T) (*b.CanonicalStore, *b.CanonicalReader) {
+func newModelRetryStore(t *testing.T, factory coreFactory) (coreOwner, coreReader) {
 	t.Helper()
+
+	if factory != nil {
+		store, reader := factory(t, t.TempDir())
+		t.Cleanup(func() { requireNoError(t, store.Close(), "close: %v") })
+
+		return store, reader
+	}
+
 	store, err := b.Open(t.TempDir())
 	requireNoError(t, err, "open: %v")
 	t.Cleanup(func() { requireNoError(t, store.Close(), "close: %v") })
@@ -50,37 +58,38 @@ func modelRetryTurn(t *testing.T) m.Turn {
 
 func TestMalformedModelOutputCannotCommitAndCorrectedTurnCanRetry(t *testing.T) {
 	t.Parallel()
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		for _, raw := range []string{`{}`, `null`, `{"output":null}`, `{"output":[],"unexpected":"ignored"}`} {
+			t.Run(raw, func(t *testing.T) {
+				t.Parallel()
+				store, reader := newModelRetryStore(t, factory)
+				turn := modelRetryTurn(t)
+				invoker := &modelRetryInvoker{raw: raw}
+				deriver, err := derive.NewDeriver(invoker)
+				requireNoError(t, err, "deriver: %v")
+				processor, err := core.NewCanonicalTurnProcessor(store, deriver, m.PolicyRegistry{Version: "policy-v1"})
+				requireNoError(t, err, "processor: %v")
+				operationID, err := m.CanonicalSemanticOperationID(turn.ExportID, testProcessorDerivation())
+				requireNoError(t, err, "operation identity: %v")
+				_, err = processor.ProcessTurn(context.Background(), turn, testProcessorDerivation())
 
-	for _, raw := range []string{`{}`, `null`, `{"output":null}`, `{"output":[],"unexpected":"ignored"}`} {
-		t.Run(raw, func(t *testing.T) {
-			t.Parallel()
-			store, reader := newModelRetryStore(t)
-			turn := modelRetryTurn(t)
-			invoker := &modelRetryInvoker{raw: raw}
-			deriver, err := derive.NewDeriver(invoker)
-			requireNoError(t, err, "deriver: %v")
-			processor, err := core.NewCanonicalTurnProcessor(store, deriver, m.PolicyRegistry{Version: "policy-v1"})
-			requireNoError(t, err, "processor: %v")
-			operationID, err := m.CanonicalSemanticOperationID(turn.ExportID, testProcessorDerivation())
-			requireNoError(t, err, "operation identity: %v")
-			_, err = processor.ProcessTurn(context.Background(), turn, testProcessorDerivation())
+				code, class, ok := m.ClassifyError(err)
+				if !ok || code != m.CodeInvalidDerived || class != m.ErrorClassPermanent {
+					t.Errorf("malformed output error=%v; want permanent invalid_derived", err)
+				}
 
-			code, class, ok := m.ClassifyError(err)
-			if !ok || code != m.CodeInvalidDerived || class != m.ErrorClassPermanent {
-				t.Errorf("malformed output error=%v; want permanent invalid_derived", err)
-			}
+				assertRejectedTurnState(t, store, turn.Scope, operationID)
+				invoker.raw = correctedModelOutput(t, turn)
+				outcome, err := processor.ProcessTurn(context.Background(), turn, testProcessorDerivation())
+				requireNoError(t, err, "corrected same-operation retry: %v")
+				assertCorrectedTurnState(t, store, reader, turn, operationID, outcome)
 
-			assertRejectedTurnState(t, store, turn.Scope, operationID)
-			invoker.raw = correctedModelOutput(t, turn)
-			outcome, err := processor.ProcessTurn(context.Background(), turn, testProcessorDerivation())
-			requireNoError(t, err, "corrected same-operation retry: %v")
-			assertCorrectedTurnState(t, store, reader, turn, operationID, outcome)
-
-			if invoker.calls != 2 {
-				t.Errorf("model calls=%d, want failed call and corrected retry", invoker.calls)
-			}
-		})
-	}
+				if invoker.calls != 2 {
+					t.Errorf("model calls=%d, want failed call and corrected retry", invoker.calls)
+				}
+			})
+		}
+	})
 }
 
 func correctedModelOutput(t *testing.T, turn m.Turn) string {
@@ -96,7 +105,7 @@ func correctedModelOutput(t *testing.T, turn m.Turn) string {
 	return string(raw)
 }
 
-func assertRejectedTurnState(t *testing.T, store *b.CanonicalStore, scope m.Scope, operationID string) {
+func assertRejectedTurnState(t *testing.T, store coreOwner, scope m.Scope, operationID string) {
 	t.Helper()
 
 	state, err := store.LoadScopeState(context.Background(), scope)
@@ -128,7 +137,7 @@ func assertRejectedTurnState(t *testing.T, store *b.CanonicalStore, scope m.Scop
 	}
 }
 
-func assertCorrectedTurnState(t *testing.T, store *b.CanonicalStore, reader *b.CanonicalReader,
+func assertCorrectedTurnState(t *testing.T, store coreOwner, reader coreReader,
 	turn m.Turn, operationID string, outcome m.CanonicalMutationOutcome) {
 	t.Helper()
 
@@ -153,33 +162,35 @@ func assertCorrectedTurnState(t *testing.T, store *b.CanonicalStore, reader *b.C
 
 func TestExplicitEmptyModelOutputCommitsAndReplays(t *testing.T) {
 	t.Parallel()
-	store, _ := newModelRetryStore(t)
-	turn := modelRetryTurn(t)
-	invoker := &modelRetryInvoker{raw: `{"output":[]}`}
-	deriver, err := derive.NewDeriver(invoker)
-	requireNoError(t, err, "deriver: %v")
-	processor, err := core.NewCanonicalTurnProcessor(store, deriver, m.PolicyRegistry{Version: "policy-v1"})
-	requireNoError(t, err, "processor: %v")
-	outcome, err := processor.ProcessTurn(context.Background(), turn, testProcessorDerivation())
-	requireNoError(t, err, "explicit empty: %v")
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		store, _ := newModelRetryStore(t, factory)
+		turn := modelRetryTurn(t)
+		invoker := &modelRetryInvoker{raw: `{"output":[]}`}
+		deriver, err := derive.NewDeriver(invoker)
+		requireNoError(t, err, "deriver: %v")
+		processor, err := core.NewCanonicalTurnProcessor(store, deriver, m.PolicyRegistry{Version: "policy-v1"})
+		requireNoError(t, err, "processor: %v")
+		outcome, err := processor.ProcessTurn(context.Background(), turn, testProcessorDerivation())
+		requireNoError(t, err, "explicit empty: %v")
 
-	if outcome.ScopeVersion != 1 || outcome.ChangeSeq != 1 || len(outcome.RevisionIDs) != 0 {
-		t.Fatalf("empty output outcome=%+v", outcome)
-	}
+		if outcome.ScopeVersion != 1 || outcome.ChangeSeq != 1 || len(outcome.RevisionIDs) != 0 {
+			t.Fatalf("empty output outcome=%+v", outcome)
+		}
 
-	operationID, err := m.CanonicalSemanticOperationID(turn.ExportID, testProcessorDerivation())
-	requireNoError(t, err, "operation identity: %v")
-	operation, found, err := store.LoadCanonicalOperation(context.Background(), turn.Scope, operationID)
-	requireNoError(t, err, "empty operation: %v")
+		operationID, err := m.CanonicalSemanticOperationID(turn.ExportID, testProcessorDerivation())
+		requireNoError(t, err, "operation identity: %v")
+		operation, found, err := store.LoadCanonicalOperation(context.Background(), turn.Scope, operationID)
+		requireNoError(t, err, "empty operation: %v")
 
-	if !found || len(operation.Outcome.RevisionIDs) != 0 {
-		t.Fatalf("empty operation=%+v, found=%v", operation, found)
-	}
+		if !found || len(operation.Outcome.RevisionIDs) != 0 {
+			t.Fatalf("empty operation=%+v, found=%v", operation, found)
+		}
 
-	replay, err := processor.ProcessTurn(context.Background(), turn, testProcessorDerivation())
-	requireNoError(t, err, "empty replay: %v")
+		replay, err := processor.ProcessTurn(context.Background(), turn, testProcessorDerivation())
+		requireNoError(t, err, "empty replay: %v")
 
-	if !reflect.DeepEqual(replay, outcome) || invoker.calls != 1 {
-		t.Errorf("empty replay=%+v calls=%d; original=%+v", replay, invoker.calls, outcome)
-	}
+		if !reflect.DeepEqual(replay, outcome) || invoker.calls != 1 {
+			t.Errorf("empty replay=%+v calls=%d; original=%+v", replay, invoker.calls, outcome)
+		}
+	})
 }

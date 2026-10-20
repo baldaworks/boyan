@@ -7,39 +7,40 @@ import (
 
 	core "github.com/baldaworks/boyan/internal/canonicalcore"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
 )
 
 func TestNativeReconciliationAdvancesLateStateAndEvent(t *testing.T) {
 	t.Parallel()
-	reader, _, turn, _, store := nativeFlow(t)
-	ingestKindFixture(t, store, turn)
-	first, err := store.ScanActiveMemory(context.Background(), m.ActiveMemoryScanRequest{Scope: turn.Scope, Limit: 256})
-	requireNoError(t, err, "page1: %v")
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		reader, _, turn, _, store := nativeFlow(t, factory)
+		ingestKindFixture(t, store, turn)
+		first, err := store.ScanActiveMemory(context.Background(), m.ActiveMemoryScanRequest{Scope: turn.Scope, Limit: 256})
+		requireNoError(t, err, "page1: %v")
 
-	if len(first) != 256 {
-		t.Fatalf("first page size: %d", len(first))
-	}
+		if len(first) != 256 {
+			t.Fatalf("first page size: %d", len(first))
+		}
 
-	late,
-		err := store.ScanActiveMemory(context.Background(),
-		m.ActiveMemoryScanRequest{Scope: turn.Scope,
-			AfterItemID: first[255].Item.ItemID,
-			Limit:       256})
-	requireNoError(t, err, "page2: %v")
+		late,
+			err := store.ScanActiveMemory(context.Background(),
+			m.ActiveMemoryScanRequest{Scope: turn.Scope,
+				AfterItemID: first[255].Item.ItemID,
+				Limit:       256})
+		requireNoError(t, err, "page2: %v")
 
-	if len(late) != 2 {
-		t.Fatalf("late fixtures: %+v", late)
-	}
+		if len(late) != 2 {
+			t.Fatalf("late fixtures: %+v", late)
+		}
 
-	for _, active := range late {
-		assertLateReconciliation(t, reader, store, turn, active)
-	}
+		for _, active := range late {
+			assertLateReconciliation(t, reader, store, turn, active)
+		}
+	})
 }
 
 func assertLateReconciliation(t *testing.T,
-	reader *b.CanonicalReader,
-	store *b.CanonicalStore,
+	reader coreReader,
+	store coreOwner,
 	turn m.Turn,
 	active m.ActiveCanonicalMemory) {
 	t.Helper()
@@ -129,7 +130,7 @@ func (s *failingReconcileStore) ApplyCanonicalMutation(ctx context.Context,
 	error) {
 	s.applied++
 	if s.mode == "cas" {
-		store := s.CanonicalStore.(*b.CanonicalStore)
+		store := s.CanonicalStore.(coreOwner)
 
 		_,
 			err := store.CommitCanonicalOperation(ctx,
@@ -148,28 +149,30 @@ func (s *failingReconcileStore) ApplyCanonicalMutation(ctx context.Context,
 
 func TestPagedReconciliationFailuresDoNotPartiallyWrite(t *testing.T) {
 	t.Parallel()
-	reader, _, turn, _, store := nativeFlow(t)
-	ingestKindFixture(t, store, turn)
-	page, err := store.ScanActiveMemory(context.Background(), m.ActiveMemoryScanRequest{Scope: turn.Scope, Limit: 256})
-	requireNoError(t, err, "page: %v")
-	late,
-		err := store.ScanActiveMemory(context.Background(),
-		m.ActiveMemoryScanRequest{Scope: turn.Scope,
-			AfterItemID: page[255].Item.ItemID,
-			Limit:       256})
-	requireNoError(t, err, "late: %v")
-	records, err := reader.LoadRecallRecords(context.Background(), turn.Scope, []string{late[0].RevisionID})
-	requireNoError(t, err, "late record: %v")
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		reader, _, turn, _, store := nativeFlow(t, factory)
+		ingestKindFixture(t, store, turn)
+		page, err := store.ScanActiveMemory(context.Background(), m.ActiveMemoryScanRequest{Scope: turn.Scope, Limit: 256})
+		requireNoError(t, err, "page: %v")
+		late,
+			err := store.ScanActiveMemory(context.Background(),
+			m.ActiveMemoryScanRequest{Scope: turn.Scope,
+				AfterItemID: page[255].Item.ItemID,
+				Limit:       256})
+		requireNoError(t, err, "late: %v")
+		records, err := reader.LoadRecallRecords(context.Background(), turn.Scope, []string{late[0].RevisionID})
+		requireNoError(t, err, "late record: %v")
 
-	for _, mode := range []string{"ambiguous", "nonadvancing", "foreign", "cancel", "cas"} {
-		t.Run(mode, func(t *testing.T) {
-			assertPagedFailure(t, store, turn, late[0], records[0].SourceRefs[0].SourceTurnID, mode)
-		})
-	}
+		for _, mode := range []string{"ambiguous", "nonadvancing", "foreign", "cancel", "cas"} {
+			t.Run(mode, func(t *testing.T) {
+				assertPagedFailure(t, store, turn, late[0], records[0].SourceRefs[0].SourceTurnID, mode)
+			})
+		}
+	})
 }
 
 func assertPagedFailure(t *testing.T,
-	store *b.CanonicalStore,
+	store coreOwner,
 	turn m.Turn,
 	target m.ActiveCanonicalMemory,
 	predicate,
@@ -240,7 +243,7 @@ func (s *failingReconcileStore) transformPage(page []m.ActiveCanonicalMemory) {
 }
 
 func assertNoPartialReconciliation(t *testing.T,
-	store *b.CanonicalStore,
+	store coreOwner,
 	scope m.Scope,
 	update m.Turn,
 	beforeVersion uint64,

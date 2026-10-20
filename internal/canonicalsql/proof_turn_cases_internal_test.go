@@ -159,7 +159,9 @@ func assertProofTurnResult(t *testing.T, result memory.CanonicalTurnIdentityResu
 		if err == nil && result.FullInputVerified {
 			t.Fatal("copied proof authorized foreign scope")
 		}
-	case "corrupt-payload", "missing-source", "missing-message", "copied-id":
+	case "corrupt-payload":
+		assertCode(t, err, memory.CodeStoreFailure)
+	case "missing-source", "missing-message", "copied-id":
 		if err == nil {
 			t.Fatal("corrupt proof accepted")
 		}

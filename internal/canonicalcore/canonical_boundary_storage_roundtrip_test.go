@@ -16,37 +16,39 @@ import (
 )
 
 func TestBoundaryProofAndInheritedBoundsStorageRoundTrip(t *testing.T) {
-	for _, logical := range []bool{false, true} {
-		for _, forgotten := range []bool{false, true} {
-			name := map[bool]string{false: "native", true: "logical"}[logical] + "/" +
-				map[bool]string{false: "live", true: "forgotten"}[forgotten]
-			t.Run(name, func(t *testing.T) {
-				t.Parallel()
-				f := newInheritanceFixture(t, false)
-				expected, err := f.processor.ProcessBoundary(context.Background(), f.export)
-				requireNoError(t, err, "synthesize: %v")
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		for _, logical := range []bool{false, true} {
+			for _, forgotten := range []bool{false, true} {
+				name := map[bool]string{false: "native", true: "logical"}[logical] + "/" +
+					map[bool]string{false: "live", true: "forgotten"}[forgotten]
+				t.Run(name, func(t *testing.T) {
+					t.Parallel()
+					f := newInheritanceFixture(t, false, factory)
+					expected, err := f.processor.ProcessBoundary(context.Background(), f.export)
+					requireNoError(t, err, "synthesize: %v")
 
-				revisions := roundTripStageRevisions(t, f.store, f.export.Scope, expected)
-				if forgotten {
-					forgetRoundTripScope(t, f)
-				}
+					revisions := roundTripStageRevisions(t, f.store, f.export.Scope, expected)
+					if forgotten {
+						forgetRoundTripScope(t, f)
+					}
 
-				restored := restoreBoundaryStore(t, f.store, logical)
-				assertRoundTripProofAndReplay(t, f, restored, expected)
-				assertRoundTripCapabilityGuard(t, restored, f.export)
+					restored := restoreBoundaryStore(t, f.store, logical, factory)
+					assertRoundTripProofAndReplay(t, f, restored, expected)
+					assertRoundTripCapabilityGuard(t, restored, f.export)
 
-				actual := roundTripStageRevisions(t, restored, f.export.Scope, expected)
-				if !reflect.DeepEqual(revisions, actual) {
-					t.Fatal("roundtrip changed inherited temporal/trust metadata")
-				}
+					actual := roundTripStageRevisions(t, restored, f.export.Scope, expected)
+					if !reflect.DeepEqual(revisions, actual) {
+						t.Fatal("roundtrip changed inherited temporal/trust metadata")
+					}
 
-				assertRoundTripInheritedSearch(t, restored, f, forgotten)
-			})
+					assertRoundTripInheritedSearch(t, restored, f, forgotten)
+				})
+			}
 		}
-	}
+	})
 }
 
-func restoreBoundaryStore(t *testing.T, source *b.CanonicalStore, logical bool) *b.CanonicalStore {
+func restoreBoundaryStore(t *testing.T, source coreOwner, logical bool, factory coreFactory) coreOwner {
 	t.Helper()
 
 	ctx := context.Background()
@@ -59,8 +61,17 @@ func restoreBoundaryStore(t *testing.T, source *b.CanonicalStore, logical bool) 
 		requireNoError(t, err, "native backup: %v")
 	}
 
-	destination, err := b.Open(t.TempDir())
-	requireNoError(t, err, "destination: %v")
+	var destination coreOwner
+
+	var err error
+
+	if factory != nil {
+		destination, _ = factory(t, t.TempDir())
+	} else {
+		destination, err = b.Open(t.TempDir())
+		requireNoError(t, err, "destination: %v")
+	}
+
 	t.Cleanup(func() { requireNoError(t, destination.Close(), "close destination: %v") })
 
 	if logical {
@@ -75,7 +86,7 @@ func restoreBoundaryStore(t *testing.T, source *b.CanonicalStore, logical bool) 
 	return destination
 }
 
-func roundTripStageRevisions(t *testing.T, store *b.CanonicalStore, scope m.Scope,
+func roundTripStageRevisions(t *testing.T, store coreOwner, scope m.Scope,
 	outcome m.BoundaryOutcome) []m.MemoryRevision {
 	t.Helper()
 
@@ -113,7 +124,7 @@ func forgetRoundTripScope(t *testing.T, f *inheritanceFixture) {
 	requireNoError(t, err, "forget: %v")
 }
 
-func assertRoundTripProofAndReplay(t *testing.T, f *inheritanceFixture, restored *b.CanonicalStore,
+func assertRoundTripProofAndReplay(t *testing.T, f *inheritanceFixture, restored coreOwner,
 	expected m.BoundaryOutcome) {
 	t.Helper()
 
@@ -129,8 +140,7 @@ func assertRoundTripProofAndReplay(t *testing.T, f *inheritanceFixture, restored
 	changed.Reason = m.BoundaryReasonReset
 	_, err = restored.VerifyCanonicalBoundary(ctx, changed)
 	requirePermanentIdentityConflict(t, err)
-	reader, err := b.NewCanonicalReader(restored)
-	requireNoError(t, err, "reader: %v")
+	reader := readerForCoreOwner(t, restored)
 	adapter, err := ops.NewCanonicalBoundaryStore(restored, reader)
 	requireNoError(t, err, "adapter: %v")
 	processor, err := boundary.NewBoundaryProcessorWithClock(adapter, f.model, f.model, testProcessorDerivation(),
@@ -151,11 +161,10 @@ func assertRoundTripProofAndReplay(t *testing.T, f *inheritanceFixture, restored
 	}
 }
 
-func assertRoundTripInheritedSearch(t *testing.T, store *b.CanonicalStore, f *inheritanceFixture, forgotten bool) {
+func assertRoundTripInheritedSearch(t *testing.T, store coreOwner, f *inheritanceFixture, forgotten bool) {
 	t.Helper()
 
-	reader, err := b.NewCanonicalReader(store)
-	requireNoError(t, err, "reader: %v")
+	reader := readerForCoreOwner(t, store)
 	service, err := read.NewRecallService(reader, nil)
 	requireNoError(t, err, "recall: %v")
 
@@ -177,36 +186,37 @@ func assertRoundTripInheritedSearch(t *testing.T, store *b.CanonicalStore, f *in
 }
 
 func TestBoundaryProofFreeLegacyStorageRoundTripStaysUnproven(t *testing.T) {
-	for _, logical := range []bool{false, true} {
-		t.Run(map[bool]string{false: "native", true: "logical"}[logical], func(t *testing.T) {
-			t.Parallel()
-			_, _, turn, _, source := nativeFlow(t)
-			at := time.Now().UTC()
-			seedLegacyAtomOnly(t, source, turn.Scope, at)
-			destination := restoreBoundaryStore(t, source, logical)
-			export, err := m.NewBoundary(turn.Scope, turn.Conversation, "unproven-import", m.BoundaryReasonClose, at)
-			requireNoError(t, err, "boundary: %v")
-			_, err = destination.VerifyCanonicalBoundary(context.Background(), export)
-			requirePermanentIdentityConflict(t, err)
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		for _, logical := range []bool{false, true} {
+			t.Run(map[bool]string{false: "native", true: "logical"}[logical], func(t *testing.T) {
+				t.Parallel()
+				_, _, turn, _, source := nativeFlow(t, factory)
+				at := time.Now().UTC()
+				seedLegacyAtomOnly(t, source, turn.Scope, at)
+				destination := restoreBoundaryStore(t, source, logical, factory)
+				export, err := m.NewBoundary(turn.Scope, turn.Conversation, "unproven-import", m.BoundaryReasonClose, at)
+				requireNoError(t, err, "boundary: %v")
+				_, err = destination.VerifyCanonicalBoundary(context.Background(), export)
+				requirePermanentIdentityConflict(t, err)
 
-			model := &legacyClassificationModel{}
-			reader, err := b.NewCanonicalReader(destination)
-			requireNoError(t, err, "reader: %v")
-			adapter, err := ops.NewCanonicalBoundaryStore(destination, reader)
-			requireNoError(t, err, "adapter: %v")
-			processor, err := boundary.NewBoundaryProcessor(adapter, model, model, testProcessorDerivation())
-			requireNoError(t, err, "processor: %v")
-			_, err = processor.ProcessBoundary(context.Background(), export)
-			requirePermanentIdentityConflict(t, err)
+				model := &legacyClassificationModel{}
+				reader := readerForCoreOwner(t, destination)
+				adapter, err := ops.NewCanonicalBoundaryStore(destination, reader)
+				requireNoError(t, err, "adapter: %v")
+				processor, err := boundary.NewBoundaryProcessor(adapter, model, model, testProcessorDerivation())
+				requireNoError(t, err, "processor: %v")
+				_, err = processor.ProcessBoundary(context.Background(), export)
+				requirePermanentIdentityConflict(t, err)
 
-			if model.calls != 0 {
-				t.Fatal("import manufactured certification for old derived history")
-			}
-		})
-	}
+				if model.calls != 0 {
+					t.Fatal("import manufactured certification for old derived history")
+				}
+			})
+		}
+	})
 }
 
-func assertRoundTripCapabilityGuard(t *testing.T, store *b.CanonicalStore, export m.Boundary) {
+func assertRoundTripCapabilityGuard(t *testing.T, store coreOwner, export m.Boundary) {
 	t.Helper()
 
 	ctx := context.Background()

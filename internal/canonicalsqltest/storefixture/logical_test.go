@@ -40,7 +40,7 @@ func TestPublicLogicalReceiptsClaimsCheckpointsAndLocalBackup(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		data, _ := publicRestoreArtifact(t, f.Store, 0, true)
+		data := publicRestoreFull(t, f.Store, true)
 		d := publicRestoreDestination(t, f.Backend)
 
 		_, localBefore := publicRestoreBytes(t, d.Store.(archive.CanonicalBackupWriter), 0)
@@ -163,7 +163,7 @@ func TestPublicLogicalBeyondLegacyRecordCeiling(t *testing.T) {
 			}
 		}
 
-		data, _ := publicRestoreArtifact(t, f.Store, 0, true)
+		data := publicRestoreFull(t, f.Store, true)
 		d := publicRestoreDestination(t, f.Backend)
 
 		summary, err := d.Store.(archive.CanonicalLogicalImporter).ImportCanonicalLogicalWithOptions(

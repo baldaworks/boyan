@@ -8,10 +8,9 @@ import (
 	core "github.com/baldaworks/boyan/internal/canonicalcore"
 	ordered "github.com/baldaworks/boyan/internal/orderedingest"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
 )
 
-func offlineIdentityProcessor(t *testing.T, store *b.CanonicalStore) (*core.CanonicalTurnProcessor, *int) {
+func offlineIdentityProcessor(t *testing.T, store coreOwner) (*core.CanonicalTurnProcessor, *int) {
 	t.Helper()
 
 	calls := 0
@@ -44,39 +43,42 @@ func changedIdentityTurn(turn m.Turn) m.Turn {
 
 func TestCanonicalTurnIdentityRejectsChangeAndReplaysBeforeModel(t *testing.T) {
 	t.Parallel()
-	_, _, original, committed, store := nativeFlow(t)
-	processor, calls := offlineIdentityProcessor(t, store)
-	ctx := context.Background()
-	before, err := store.LoadScopeState(ctx, original.Scope)
-	requireNoError(t, err, "state before: %v")
-	_, err = processor.ProcessTurn(ctx, changedIdentityTurn(original), testProcessorDerivation())
-	requirePermanentIdentityConflict(t, err)
-	replay, err := processor.ProcessTurn(ctx, original, testProcessorDerivation())
-	requireNoError(t, err, "committed replay: %v")
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		_, _, original, committed, store := nativeFlow(t, factory)
+		processor, calls := offlineIdentityProcessor(t, store)
+		ctx := context.Background()
+		before, err := store.LoadScopeState(ctx, original.Scope)
+		requireNoError(t, err, "state before: %v")
+		_, err = processor.ProcessTurn(ctx, changedIdentityTurn(original), testProcessorDerivation())
+		requirePermanentIdentityConflict(t, err)
+		replay, err := processor.ProcessTurn(ctx, original, testProcessorDerivation())
+		requireNoError(t, err, "committed replay: %v")
 
-	if *calls != 0 || replay.ScopeVersion != committed.ScopeVersion || replay.ChangeSeq != committed.ChangeSeq {
-		t.Fatalf("model calls=%d, replay=%+v", *calls, replay)
-	}
+		if *calls != 0 || replay.ScopeVersion != committed.ScopeVersion || replay.ChangeSeq != committed.ChangeSeq {
+			t.Fatalf("model calls=%d, replay=%+v", *calls, replay)
+		}
 
-	after, err := store.LoadScopeState(ctx, original.Scope)
-	requireNoError(t, err, "state after: %v")
+		after, err := store.LoadScopeState(ctx, original.Scope)
+		requireNoError(t, err, "state after: %v")
 
-	if after != before {
-		t.Fatal("identity guard or replay changed canonical state")
-	}
+		if after != before {
+			t.Fatal("identity guard or replay changed canonical state")
+		}
+	})
 }
 
 func TestSequencedTurnIdentityRejectsChangedReceiptAndProducerReplay(t *testing.T) {
 	t.Parallel()
-
-	for _, name := range []string{"same-sequence", "next-sequence", "other-producer"} {
-		t.Run(name, func(t *testing.T) { testSequencedIdentityGuard(t, name) })
-	}
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		for _, name := range []string{"same-sequence", "next-sequence", "other-producer"} {
+			t.Run(name, func(t *testing.T) { testSequencedIdentityGuard(t, name, factory) })
+		}
+	})
 }
 
-func testSequencedIdentityGuard(t *testing.T, name string) {
+func testSequencedIdentityGuard(t *testing.T, name string, factory coreFactory) {
 	t.Helper()
-	_, _, original, committed, store := nativeFlow(t)
+	_, _, original, committed, store := nativeFlow(t, factory)
 	seedIdentityReceipt(t, store, original, committed)
 	processor, calls := offlineIdentityProcessor(t, store)
 	runtime, err := ordered.NewSequencedIngestRuntime(store, store, processor,
@@ -117,7 +119,7 @@ func testSequencedIdentityGuard(t *testing.T, name string) {
 	requireUnchangedIdentityCursor(t, name, cursor, found)
 }
 
-func seedIdentityReceipt(t *testing.T, store *b.CanonicalStore, turn m.Turn, committed m.CanonicalMutationOutcome) {
+func seedIdentityReceipt(t *testing.T, store coreOwner, turn m.Turn, committed m.CanonicalMutationOutcome) {
 	t.Helper()
 
 	operationID, err := m.CanonicalSemanticOperationID(turn.ExportID, testProcessorDerivation())
@@ -135,24 +137,26 @@ func seedIdentityReceipt(t *testing.T, store *b.CanonicalStore, turn m.Turn, com
 
 func TestVerifiedTurnAllowsNewDerivationWithoutChangingSource(t *testing.T) {
 	t.Parallel()
-	_, _, original, committed, store := nativeFlow(t)
-	calls := 0
-	processor, err := core.NewCanonicalTurnProcessor(store, canonicalExtractorFunc(
-		func(context.Context, m.CanonicalExtractionRequest) ([]m.SemanticCandidate, error) {
-			calls++
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		_, _, original, committed, store := nativeFlow(t, factory)
+		calls := 0
+		processor, err := core.NewCanonicalTurnProcessor(store, canonicalExtractorFunc(
+			func(context.Context, m.CanonicalExtractionRequest) ([]m.SemanticCandidate, error) {
+				calls++
 
-			return nil, nil
-		}), m.PolicyRegistry{Version: "policy-v1"})
-	requireNoError(t, err, "processor: %v")
+				return nil, nil
+			}), m.PolicyRegistry{Version: "policy-v1"})
+		requireNoError(t, err, "processor: %v")
 
-	derivation := testProcessorDerivation()
-	derivation.Pipeline = "different-pipeline"
-	outcome, err := processor.ProcessTurn(context.Background(), original, derivation)
-	requireNoError(t, err, "verified new derivation: %v")
+		derivation := testProcessorDerivation()
+		derivation.Pipeline = "different-pipeline"
+		outcome, err := processor.ProcessTurn(context.Background(), original, derivation)
+		requireNoError(t, err, "verified new derivation: %v")
 
-	if calls != 1 || outcome.ChangeSeq != committed.ChangeSeq+1 {
-		t.Fatalf("calls=%d outcome=%+v", calls, outcome)
-	}
+		if calls != 1 || outcome.ChangeSeq != committed.ChangeSeq+1 {
+			t.Fatalf("calls=%d outcome=%+v", calls, outcome)
+		}
+	})
 }
 
 func requireUnchangedIdentityCursor(t *testing.T, name string, cursor m.IngestSequenceCursor, found bool) {

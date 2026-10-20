@@ -9,34 +9,35 @@ import (
 
 	hostapi "github.com/baldaworks/boyan/pkg/boyan"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/sqlite"
 )
 
 func TestPublicHostFinishesEraseBeforeRebuildingLostIndex(t *testing.T) {
-	config := testHostConfig(t)
-	target := capabilityTestTurn(t, m.Scope{Key: "startup:erase", Kind: m.ScopeKindPersonal})
-	foreign := target
-	foreign.Scope.Kind = m.ScopeKindGroup
-	targetOutcome := persistIntegrationTurn(t, config, target)
-	foreignOutcome := persistIntegrationTurn(t, config, foreign)
-	request, refs, root := interruptStartupErase(t, config, target, targetOutcome)
-	err := os.Remove(filepath.Join(config.StateDir, "search", "search.sqlite"))
-	requireNoError(t, err, "remove lost disposable index: %v")
-	host, err := hostapi.New(context.Background(), config)
-	requireNoError(t, err, "host: %v")
-	t.Cleanup(func() { _ = host.Close() })
-	requireNoError(t, host.Start(context.Background()), "startup must finish erase before repair: %v")
-	assertStartupScopeRecall(t, host, target, targetOutcome.ChangeSeq+1, 0)
-	assertStartupScopeRecall(t, host, foreign, foreignOutcome.ChangeSeq, 1)
+	forEachHostBackend(t, func(t *testing.T, backend string) {
+		config := selectedHostConfig(t, backend)
+		target := capabilityTestTurn(t, m.Scope{Key: "startup:erase", Kind: m.ScopeKindPersonal})
+		foreign := target
+		foreign.Scope.Kind = m.ScopeKindGroup
+		targetOutcome := persistIntegrationTurn(t, config, target)
+		foreignOutcome := persistIntegrationTurn(t, config, foreign)
+		request, refs, root := interruptStartupErase(t, config, target, targetOutcome)
+		err := os.Remove(filepath.Join(config.StateDir, "search", "search.sqlite"))
+		requireNoError(t, err, "remove lost disposable index: %v")
+		host, err := hostapi.New(context.Background(), config)
+		requireNoError(t, err, "host: %v")
+		t.Cleanup(func() { _ = host.Close() })
+		requireNoError(t, host.Start(context.Background()), "startup must finish erase before repair: %v")
+		assertStartupScopeRecall(t, host, target, targetOutcome.ChangeSeq+1, 0)
+		assertStartupScopeRecall(t, host, foreign, foreignOutcome.ChangeSeq, 1)
 
-	_, err = host.Trace(context.Background(), m.TraceRequest{Scope: target.Scope,
-		Root: root, MaxNodes: 10})
-	if err == nil {
-		t.Fatal("startup rebuilt forgotten trace")
-	}
+		_, err = host.Trace(context.Background(), m.TraceRequest{Scope: target.Scope,
+			Root: root, MaxNodes: 10})
+		if err == nil {
+			t.Fatal("startup rebuilt forgotten trace")
+		}
 
-	requireNoError(t, host.Close(), "close: %v")
-	assertStartupEraseComplete(t, config, request, refs, foreign)
+		requireNoError(t, host.Close(), "close: %v")
+		assertStartupEraseComplete(t, config, request, refs, foreign)
+	})
 }
 
 func interruptStartupErase(t *testing.T, config hostapi.Config, turn m.Turn,
@@ -44,7 +45,7 @@ func interruptStartupErase(t *testing.T, config hostapi.Config, turn m.Turn,
 ) (m.ScopeEraseRequest, []m.PayloadRef, m.RevisionRef) {
 	t.Helper()
 
-	store, err := b.Open(t.Context(), b.Config{Path: filepath.Join(config.StateDir, "canonical", "canonical.sqlite")})
+	store, _, err := openHostCanonical(t, config)
 
 	requireNoError(t, err, "store: %v")
 	defer func() { requireNoError(t, store.Close(), "store close: %v") }()
@@ -102,7 +103,7 @@ func assertStartupEraseComplete(t *testing.T, config hostapi.Config, request m.S
 ) {
 	t.Helper()
 
-	store, err := b.Open(t.Context(), b.Config{Path: filepath.Join(config.StateDir, "canonical", "canonical.sqlite")})
+	store, _, err := openHostCanonical(t, config)
 
 	requireNoError(t, err, "store: %v")
 	defer func() { requireNoError(t, store.Close(), "store close: %v") }()

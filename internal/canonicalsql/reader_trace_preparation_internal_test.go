@@ -92,10 +92,10 @@ func (q traceNoPayloadQuery) query(ctx context.Context, statement string, args .
 }
 
 func TestTracePreflightRejectsBeforeRawPayload(t *testing.T) {
-	for _, kind := range []string{"node-limit", "sensitive", "source-denial"} {
+	for _, kind := range []string{"node-limit", "sensitive", "source-denial", "opaque"} {
 		t.Run(kind, func(t *testing.T) {
 			forEachOwner(t, func(t *testing.T, owner *Owner, _ func() *Owner) {
-				h := prepareTraceHistory(t, owner)
+				h := prepareTracePreflightHistory(t, owner, kind)
 				alterReaderBarrier(t, owner, h, kind)
 
 				request := memory.TraceRequest{Scope: h.scope, Root: memory.RevisionRef{ItemID: h.item.ItemID,

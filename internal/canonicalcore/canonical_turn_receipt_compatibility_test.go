@@ -21,8 +21,9 @@ import (
 )
 
 type turnReceiptFixture struct {
+	factory      coreFactory
 	path         string
-	store        *b.CanonicalStore
+	store        coreOwner
 	runtime      *ordered.SequencedIngestRuntime
 	turn         m.Turn
 	calls        int
@@ -43,9 +44,9 @@ func (p receiptCountingProcessor) ProcessTurn(ctx context.Context, turn m.Turn,
 	return p.CanonicalTurnProcessor.ProcessTurn(ctx, turn, derivation)
 }
 
-func newTurnReceiptFixture(t *testing.T) *turnReceiptFixture {
+func newTurnReceiptFixture(t *testing.T, factory coreFactory) *turnReceiptFixture {
 	t.Helper()
-	f := &turnReceiptFixture{path: t.TempDir()}
+	f := &turnReceiptFixture{factory: factory, path: t.TempDir()}
 	f.open(t)
 
 	turn, err := m.NewTurn(m.Scope{Key: "receipt:old", Kind: m.ScopeKindPersonal},
@@ -65,8 +66,13 @@ func (f *turnReceiptFixture) open(t *testing.T) {
 
 	var err error
 
-	f.store, err = b.Open(f.path)
-	requireNoError(t, err, "open: %v")
+	if f.factory != nil {
+		f.store, _ = f.factory(t, f.path)
+	} else {
+		f.store, err = b.Open(f.path)
+		requireNoError(t, err, "open: %v")
+	}
+
 	processor, err := core.NewCanonicalTurnProcessor(f.store, canonicalExtractorFunc(
 		func(ctx context.Context, request m.CanonicalExtractionRequest) ([]m.SemanticCandidate, error) {
 			f.calls++
@@ -118,14 +124,16 @@ func (f *turnReceiptFixture) record(t *testing.T) m.IngestSequenceRecord {
 }
 
 func TestTurnHTTPReceiptCompatibilityUsesAuthoritativeProof(t *testing.T) {
-	for _, kind := range []string{"exact", "normalized", "restart", "forgotten"} {
-		t.Run(kind, func(t *testing.T) { testTurnReceiptCompatibility(t, kind) })
-	}
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		for _, kind := range []string{"exact", "normalized", "restart", "forgotten"} {
+			t.Run(kind, func(t *testing.T) { testTurnReceiptCompatibility(t, kind, factory) })
+		}
+	})
 }
 
-func testTurnReceiptCompatibility(t *testing.T, kind string) {
+func testTurnReceiptCompatibility(t *testing.T, kind string, factory coreFactory) {
 	t.Helper()
-	f := newTurnReceiptFixture(t)
+	f := newTurnReceiptFixture(t, factory)
 
 	raw := legacyReceiptWireTurn(f.turn)
 	if response := f.post(t, raw); response.Code != http.StatusOK {

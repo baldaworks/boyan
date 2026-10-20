@@ -10,40 +10,41 @@ import (
 	core "github.com/baldaworks/boyan/internal/canonicalcore"
 	hostapi "github.com/baldaworks/boyan/pkg/boyan"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/sqlite"
 )
 
 func TestPublicHostRecoversProjectionBeforeReady(t *testing.T) {
-	for _, mode := range []string{"missing", "dirty", "never-created"} {
-		t.Run(mode, func(t *testing.T) {
-			config := testHostConfig(t)
-			turn, err := m.NewTurn(m.Scope{Key: "startup:recovery", Kind: m.ScopeKindPersonal},
-				m.ConversationRef{ConversationID: "conversation", AgentConversationID: "agent"},
-				"turn", time.Now().UTC().Add(-time.Hour), "Я живу в Бишкеке", "OK")
-			requireNoError(t, err, "turn: %v")
-			initial := prepareStartupProjection(t, config, turn, mode)
-			host, err := hostapi.New(context.Background(), config)
-			requireNoError(t, err, "host: %v")
-			t.Cleanup(func() { _ = host.Close() })
-			requireNoError(t, host.Start(context.Background()), "start: %v")
+	forEachHostBackend(t, func(t *testing.T, backend string) {
+		for _, mode := range []string{"missing", "dirty", "never-created"} {
+			t.Run(mode, func(t *testing.T) {
+				config := selectedHostConfig(t, backend)
+				turn, err := m.NewTurn(m.Scope{Key: "startup:recovery", Kind: m.ScopeKindPersonal},
+					m.ConversationRef{ConversationID: "conversation", AgentConversationID: "agent"},
+					"turn", time.Now().UTC().Add(-time.Hour), "Я живу в Бишкеке", "OK")
+				requireNoError(t, err, "turn: %v")
+				initial := prepareStartupProjection(t, config, turn, mode)
+				host, err := hostapi.New(context.Background(), config)
+				requireNoError(t, err, "host: %v")
+				t.Cleanup(func() { _ = host.Close() })
+				requireNoError(t, host.Start(context.Background()), "start: %v")
 
-			if !host.Ready() {
-				t.Fatal("successful startup is not ready")
-			}
+				if !host.Ready() {
+					t.Fatal("successful startup is not ready")
+				}
 
-			response, err := host.Search(context.Background(), m.RecallRequest{
-				Scope: turn.Scope, Query: "живу", Limit: 10, MinScopeChangeSeq: initial.ChangeSeq,
+				response, err := host.Search(context.Background(), m.RecallRequest{
+					Scope: turn.Scope, Query: "живу", Limit: 10, MinScopeChangeSeq: initial.ChangeSeq,
+				})
+				requireNoError(t, err, "immediate fresh recall without ingest or manual sync: %v")
+
+				if len(response.Results) != 1 || response.Results[0].Text != turn.Messages[0].Text {
+					t.Fatalf("recovered recall: %+v", response)
+				}
+
+				requireNoError(t, host.Close(), "close: %v")
+				assertStartupCanonicalUnchanged(t, config, turn.Scope, initial)
 			})
-			requireNoError(t, err, "immediate fresh recall without ingest or manual sync: %v")
-
-			if len(response.Results) != 1 || response.Results[0].Text != turn.Messages[0].Text {
-				t.Fatalf("recovered recall: %+v", response)
-			}
-
-			requireNoError(t, host.Close(), "close: %v")
-			assertStartupCanonicalUnchanged(t, config, turn.Scope, initial)
-		})
-	}
+		}
+	})
 }
 
 func prepareStartupProjection(
@@ -52,7 +53,7 @@ func prepareStartupProjection(
 	t.Helper()
 
 	if mode == "never-created" {
-		store, err := b.Open(t.Context(), b.Config{Path: filepath.Join(config.StateDir, "canonical", "canonical.sqlite")})
+		store, _, err := openHostCanonical(t, config)
 
 		requireNoError(t, err, "store: %v")
 		defer func() { requireNoError(t, store.Close(), "store close: %v") }()
@@ -76,7 +77,7 @@ func prepareStartupProjection(
 		return outcome
 	}
 
-	store, err := b.Open(t.Context(), b.Config{Path: filepath.Join(config.StateDir, "canonical", "canonical.sqlite")})
+	store, _, err := openHostCanonical(t, config)
 	requireNoError(t, err, "store: %v")
 	manifest, found, err := store.LoadActiveProjectionManifest(context.Background(), turn.Scope, "sqlite")
 	requireNoError(t, err, "manifest: %v")
@@ -99,7 +100,7 @@ func assertStartupCanonicalUnchanged(
 ) {
 	t.Helper()
 
-	store, err := b.Open(t.Context(), b.Config{Path: filepath.Join(config.StateDir, "canonical", "canonical.sqlite")})
+	store, _, err := openHostCanonical(t, config)
 
 	requireNoError(t, err, "reopen: %v")
 	defer func() { requireNoError(t, store.Close(), "store close: %v") }()

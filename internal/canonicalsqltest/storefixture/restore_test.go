@@ -120,10 +120,6 @@ func TestPublicRestoreCertifiedMutationReplayAndRestrictions(t *testing.T) {
 }
 
 func TestPublicLogicalCertifiedMutationReplayAndRestrictions(t *testing.T) {
-	runPublicRestoreCertifiedMutation(t, true)
-}
-
-func runPublicRestoreCertifiedMutation(t *testing.T, logical bool) {
 	forEachMutation(
 		t,
 		func(t *testing.T, f *storefixture.Fixture, s mutationStore, sourceProbe mutationProbe) {
@@ -135,7 +131,7 @@ func runPublicRestoreCertifiedMutation(t *testing.T, logical bool) {
 				t.Fatal(err)
 			}
 
-			full, base := publicRestoreArtifact(t, f.Store, 0, logical)
+			full := publicRestoreFull(t, f.Store, true)
 			if err := sourceProbe.connection.Update(t.Context(), func(tx *canonicalsql.Tx) error {
 				for _, family := range []canonicalsql.Family{canonicalsql.SourcePrivacy,
 					canonicalsql.SourcePrivacyScope, canonicalsql.TurnCertificate} {
@@ -161,8 +157,8 @@ func runPublicRestoreCertifiedMutation(t *testing.T, logical bool) {
 				t.Fatal(err)
 			}
 
-			delta, _ := publicRestoreArtifact(t, f.Store, base, logical)
-			assertPublicRestoreRestrictions(t, f, m, outcome, full, delta, logical)
+			updated := publicRestoreFull(t, f.Store, true)
+			assertPublicRestoreRestrictions(t, f, m, outcome, full, updated, true)
 		},
 	)
 }
@@ -306,7 +302,7 @@ func runPublicRestorePendingErase(t *testing.T, logical bool) {
 				t.Fatal(err)
 			}
 
-			full, _ := publicRestoreArtifact(t, f.Store, 0, logical)
+			full := publicRestoreFull(t, f.Store, logical)
 			d := publicRestoreDestination(t, f.Backend)
 
 			ds := d.Store.(restoredStore)
@@ -385,11 +381,13 @@ func runPublicRestorePendingErase(t *testing.T, logical bool) {
 	)
 }
 
-func publicRestoreArtifact(t *testing.T, s storefixture.Store, since uint64, logical bool) ([]byte, uint64) {
+func publicRestoreFull(t *testing.T, s storefixture.Store, logical bool) []byte {
 	t.Helper()
 
 	if !logical {
-		return publicRestoreBytes(t, s.(archive.CanonicalBackupWriter), since)
+		full, _ := publicRestoreBytes(t, s.(archive.CanonicalBackupWriter), 0)
+
+		return full
 	}
 
 	var output bytes.Buffer
@@ -397,7 +395,7 @@ func publicRestoreArtifact(t *testing.T, s storefixture.Store, since uint64, log
 		t.Fatal(err)
 	}
 
-	return output.Bytes(), 0
+	return output.Bytes()
 }
 
 func restorePublicArtifact(ctx context.Context, s archive.CanonicalBackupReader, data []byte, logical bool) error {
@@ -425,7 +423,7 @@ func TestPublicRestorePendingEraseCompletionDelta(t *testing.T) {
 			forEachMutation(
 				t,
 				func(t *testing.T, f *storefixture.Fixture, s mutationStore, _ mutationProbe) {
-					runRestoreCompletionDelta(t, f, s, unrelated, false)
+					runRestoreCompletionDelta(t, f, s, unrelated)
 				},
 			)
 		})
@@ -441,19 +439,132 @@ func TestPublicLogicalPendingEraseCompletion(t *testing.T) {
 
 		t.Run(name, func(t *testing.T) {
 			forEachMutation(t, func(t *testing.T, f *storefixture.Fixture, s mutationStore, _ mutationProbe) {
-				runRestoreCompletionDelta(t, f, s, unrelated, true)
+				runLogicalEraseCompletion(t, f, s, unrelated)
 			})
 		})
 	}
 }
 
-//nolint:cyclop,funlen,gocognit,gocyclo // One chain completion must release only its owned recovery state.
+func runLogicalEraseCompletion(t *testing.T, f *storefixture.Fixture, s mutationStore, unrelated bool) {
+	t.Helper()
+
+	m := nativeMutation(t)
+	certifyMutation(t, &m)
+
+	if _, err := s.ApplyCanonicalMutation(t.Context(), m); err != nil {
+		t.Fatal(err)
+	}
+
+	request := memory.ScopeEraseRequest{Scope: m.Scope, OperationID: "logical-erase",
+		Fingerprint: "logical-erase", ExpectedScopeVersion: 1,
+		ForgottenAt: m.Operation.CommittedAt.Add(time.Hour)}
+
+	original, err := f.Store.(memory.ScopeEraseStore).BeginScopeErase(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	full := publicRestoreFull(t, f.Store, true)
+	d := publicRestoreDestination(t, f.Backend)
+
+	if err := restorePublicArtifact(t.Context(), d.Store.(restoredStore), full, true); err != nil {
+		t.Fatal("pending full logical import: ", err)
+	}
+
+	es := d.Store.(forgetStore)
+	localRequest := memory.ScopeEraseRequest{
+		Scope:       memory.Scope{Key: "test:unrelated-local-pending", Kind: memory.ScopeKindPersonal},
+		OperationID: "local-erase", Fingerprint: "local-erase", ForgottenAt: request.ForgottenAt,
+	}
+
+	var localJournal memory.ScopeEraseJournal
+
+	if unrelated {
+		localJournal, err = es.BeginScopeErase(t.Context(), localRequest)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	assertPublicLogicalImportRefused(t, d, full, original)
+	completePublicLogicalErase(t, d, request)
+
+	if unrelated {
+		assertPublicUnrelatedErase(t, d.Store.(forgetStore), localJournal, m)
+	}
+
+	assertPublicRestoreEraseRecovered(t, d, m)
+
+	if _, err := f.Store.(memory.ScopeEraseStore).RunScopeErase(t.Context(), request); err != nil {
+		t.Fatal("complete source for matching-lineage full snapshot: ", err)
+	}
+
+	current := publicRestoreFull(t, f.Store, true)
+	if err := restorePublicArtifact(t.Context(), d.Store.(restoredStore), current, true); err != nil {
+		t.Fatal("logical import after completed recovery: ", err)
+	}
+
+	assertPublicErasePayloads(t, d.Store.(forgetStore), m)
+	assertPublicEraseReplay(t, d, d.Store.(mutationStore), d.Store.(forgetStore), m)
+}
+
+func assertPublicLogicalImportRefused(t *testing.T, d *storefixture.Fixture, full []byte,
+	original memory.ScopeEraseJournal,
+) {
+	t.Helper()
+
+	before, _ := publicRestoreBytes(t, d.Store.(restoredStore), 0)
+	input := bytes.NewReader(full)
+
+	err := d.Store.(archive.CanonicalLogicalImporter).ImportCanonicalLogical(t.Context(), input)
+	if code, _, ok := memory.ClassifyError(err); !ok || code != memory.CodeConflict {
+		t.Fatalf("fresh logical import while erase pending: %v", err)
+	}
+
+	after, _ := publicRestoreBytes(t, d.Store.(restoredStore), 0)
+	if input.Len() != len(full) || !bytes.Equal(before, after) {
+		t.Fatal("refused import consumed input or changed canonical state")
+	}
+
+	assertPublicRestoreJournal(t, d.Store.(forgetStore), original)
+}
+
+func completePublicLogicalErase(t *testing.T, d *storefixture.Fixture, request memory.ScopeEraseRequest) {
+	t.Helper()
+
+	completed, err := d.Store.(forgetStore).RunScopeErase(t.Context(), request)
+	if err != nil || completed.Stage != memory.ScopeEraseComplete || completed.SourceCount != 1 ||
+		completed.RevisionCount != 1 || completed.Outcome.ScopeVersion != 2 {
+		t.Fatalf("destination logical recovery: %+v %v", completed, err)
+	}
+
+	if err := d.Store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	d.Store, err = d.Open(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertPublicRestoreJournal(t, d.Store.(forgetStore), completed)
+}
+
+func assertPublicRestoreJournal(t *testing.T, es forgetStore, want memory.ScopeEraseJournal) {
+	t.Helper()
+
+	got, found, err := es.LoadScopeErase(t.Context(), want.Scope, want.OperationID)
+	if err != nil || !found || !reflect.DeepEqual(got, want) {
+		t.Fatalf("restore journal changed: %+v %v", got, err)
+	}
+}
+
+//nolint:cyclop,funlen // One chain completion must release only its owned recovery state.
 func runRestoreCompletionDelta(
 	t *testing.T,
 	f *storefixture.Fixture,
 	s mutationStore,
 	unrelated bool,
-	logical bool,
 ) {
 	t.Helper()
 	m := nativeMutation(t)
@@ -487,7 +598,7 @@ func runRestoreCompletionDelta(
 		t.Fatal("source did not reach locked pending state")
 	}
 
-	full, base := publicRestoreArtifact(t, f.Store, 0, logical)
+	full, base := publicRestoreBytes(t, f.Store.(archive.CanonicalBackupWriter), 0)
 
 	d := publicRestoreDestination(t, f.Backend)
 	localRequest := memory.ScopeEraseRequest{
@@ -514,7 +625,7 @@ func runRestoreCompletionDelta(
 		}
 	}
 
-	if err := restorePublicArtifact(t.Context(), d.Store.(restoredStore), full, logical); err != nil {
+	if err := d.Store.(restoredStore).RestoreCanonicalBackup(t.Context(), bytes.NewReader(full), 1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -523,8 +634,8 @@ func runRestoreCompletionDelta(
 		t.Fatalf("source completion: %+v %v", completed, err)
 	}
 
-	delta, _ := publicRestoreArtifact(t, f.Store, base, logical)
-	if err := restorePublicArtifact(t.Context(), d.Store.(restoredStore), delta, logical); err != nil {
+	delta, _ := publicRestoreBytes(t, f.Store.(archive.CanonicalBackupWriter), base)
+	if err := d.Store.(restoredStore).RestoreCanonicalBackup(t.Context(), bytes.NewReader(delta), 1); err != nil {
 		t.Fatalf("completion delta restore: %v", err)
 	}
 
@@ -545,28 +656,39 @@ func runRestoreCompletionDelta(
 	}
 
 	if unrelated {
-		local, found, err := es.LoadScopeErase(
-			t.Context(),
-			localRequest.Scope,
-			localRequest.OperationID,
-		)
-		if err != nil || !found || !reflect.DeepEqual(local, localJournal) {
-			t.Fatalf("unrelated pending journal changed: %+v %v", local, err)
-		}
-
-		pending, _, err := es.ListPendingScopeErases(t.Context(), nil, 10)
-		if err != nil || len(pending) != 1 || pending[0].Scope != localRequest.Scope {
-			t.Fatalf("unrelated pending ownership: %+v %v", pending, err)
-		}
-
-		fresh := m.Payloads[0]
-
-		fresh.Ref.ID = "still-globally-guarded"
-		if err := es.PutPayload(t.Context(), fresh.Data, fresh.Ref); err == nil {
-			t.Fatal("unrelated pending erase lost global payload guard")
-		}
+		assertPublicUnrelatedErase(t, es, localJournal, m)
 	}
 
+	assertPublicRestoreEraseRecovered(t, d, m)
+}
+
+func assertPublicUnrelatedErase(t *testing.T, es forgetStore, original memory.ScopeEraseJournal,
+	m memory.CanonicalMutation,
+) {
+	t.Helper()
+
+	local, found, err := es.LoadScopeErase(t.Context(), original.Scope, original.OperationID)
+	if err != nil || !found || !reflect.DeepEqual(local, original) {
+		t.Fatalf("unrelated pending journal changed: %+v %v", local, err)
+	}
+
+	pending, _, err := es.ListPendingScopeErases(t.Context(), nil, 10)
+	if err != nil || len(pending) != 1 || pending[0].Scope != original.Scope {
+		t.Fatalf("unrelated pending ownership: %+v %v", pending, err)
+	}
+
+	fresh := m.Payloads[0]
+
+	fresh.Ref.ID = "still-globally-guarded"
+	if err := es.PutPayload(t.Context(), fresh.Data, fresh.Ref); err == nil {
+		t.Fatal("unrelated pending erase lost global payload guard")
+	}
+}
+
+func assertPublicRestoreEraseRecovered(t *testing.T, d *storefixture.Fixture, m memory.CanonicalMutation) {
+	t.Helper()
+
+	es := d.Store.(forgetStore)
 	if err := forgetops.RecoverPendingScopeErases(t.Context(), es); err != nil {
 		t.Fatal(err)
 	}

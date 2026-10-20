@@ -22,37 +22,39 @@ import (
 // Removing the semantic channel must break the paraphrase controls; bypassing
 // canonical filters or forgetting must break the lifecycle checks.
 func TestDeterministicHybridCorpus(t *testing.T) {
-	var outage atomic.Bool
+	forEachEvaluationBackend(t, func(t *testing.T, backend string) {
+		var outage atomic.Bool
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if outage.Load() {
-			w.WriteHeader(http.StatusServiceUnavailable)
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if outage.Load() {
+				w.WriteHeader(http.StatusServiceUnavailable)
 
-			return
-		}
+				return
+			}
 
-		var req struct {
-			Model    string   `json:"model"`
-			Input    []string `json:"input"`
-			Encoding string   `json:"encoding_format"`
-		}
-		if json.NewDecoder(io.LimitReader(r.Body, 65537)).Decode(&req) != nil ||
-			req.Model != referenceModel ||
-			req.Encoding != "float" {
-			w.WriteHeader(http.StatusBadRequest)
+			var req struct {
+				Model    string   `json:"model"`
+				Input    []string `json:"input"`
+				Encoding string   `json:"encoding_format"`
+			}
+			if json.NewDecoder(io.LimitReader(r.Body, 65537)).Decode(&req) != nil ||
+				req.Model != referenceModel ||
+				req.Encoding != "float" {
+				w.WriteHeader(http.StatusBadRequest)
 
-			return
-		}
+				return
+			}
 
-		rows := make([]map[string]any, len(req.Input))
-		for i, input := range req.Input {
-			rows[i] = map[string]any{"index": i, "embedding": wordVector(input)}
-		}
+			rows := make([]map[string]any, len(req.Input))
+			for i, input := range req.Input {
+				rows[i] = map[string]any{"index": i, "embedding": wordVector(input)}
+			}
 
-		_ = json.NewEncoder(w).Encode(map[string]any{"model": referenceModel, "data": rows})
-	}))
-	t.Cleanup(server.Close)
-	runCorpus(t, config(t, server.URL, 16), &outage)
+			_ = json.NewEncoder(w).Encode(map[string]any{"model": referenceModel, "data": rows})
+		}))
+		t.Cleanup(server.Close)
+		runCorpus(t, selectEvaluationBackend(t, config(t, server.URL, 16), backend), &outage)
+	})
 }
 
 // wordVector is a bag of bilingual concept words. It has no access to fixture

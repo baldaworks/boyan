@@ -12,7 +12,7 @@ import (
 )
 
 type failingReceiptStore struct {
-	*b.CanonicalStore
+	coreOwner
 
 	remaining int
 }
@@ -24,11 +24,11 @@ func (s *failingReceiptStore) SaveIngestSequence(ctx context.Context, record m.I
 		return m.RetryableError(m.CodeStoreFailure, "injected receipt save failure", nil)
 	}
 
-	return s.CanonicalStore.SaveIngestSequence(ctx, record)
+	return s.coreOwner.SaveIngestSequence(ctx, record)
 }
 
 func receiptRecoveryRuntime(
-	t *testing.T, store *b.CanonicalStore, failures int, calls *int,
+	t *testing.T, store coreOwner, failures int, calls *int,
 ) *ordered.SequencedIngestRuntime {
 	t.Helper()
 
@@ -42,7 +42,7 @@ func receiptRecoveryRuntime(
 			return extractTestStateCandidate(ctx, request)
 		}), m.PolicyRegistry{Version: "policy-v1"})
 	requireNoError(t, err, "processor: %v")
-	runtime, err := ordered.NewSequencedIngestRuntime(&failingReceiptStore{CanonicalStore: store, remaining: failures},
+	runtime, err := ordered.NewSequencedIngestRuntime(&failingReceiptStore{coreOwner: store, remaining: failures},
 		store, processor, testProcessorDerivation(), nil, nil, nil, ordered.SequencedIngestConfig{})
 	requireNoError(t, err, "ordered runtime: %v")
 	requireNoError(t, runtime.Start(context.Background()), "start: %v")
@@ -51,23 +51,34 @@ func receiptRecoveryRuntime(
 }
 
 func TestCommittedCanonicalTurnRecoversMissingReceiptWithoutModel(t *testing.T) {
-	for _, reopen := range []bool{false, true} {
-		name := "same-process-multiple-failures"
-		if reopen {
-			name = "reopened-store"
-		}
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		for _, reopen := range []bool{false, true} {
+			name := "same-process-multiple-failures"
+			if reopen {
+				name = "reopened-store"
+			}
 
-		t.Run(name, func(t *testing.T) { testCommittedReceiptRecovery(t, reopen) })
-	}
+			t.Run(name, func(t *testing.T) { testCommittedReceiptRecovery(t, reopen, factory) })
+		}
+	})
 }
 
-func testCommittedReceiptRecovery(t *testing.T, reopen bool) {
+func testCommittedReceiptRecovery(t *testing.T, reopen bool, factory coreFactory) {
 	t.Helper()
 
 	ctx := context.Background()
 	directory := t.TempDir()
-	store, err := b.OpenCanonicalStore(directory)
-	requireNoError(t, err, "open store: %v")
+
+	var store coreOwner
+
+	var err error
+
+	if factory != nil {
+		store, _ = factory(t, directory)
+	} else {
+		store, err = b.OpenCanonicalStore(directory)
+		requireNoError(t, err, "open store: %v")
+	}
 
 	calls := 0
 
@@ -100,8 +111,14 @@ func testCommittedReceiptRecovery(t *testing.T, reopen bool) {
 	if reopen {
 		requireNoError(t, runtime.Close(ctx), "close before reopen: %v")
 		requireNoError(t, store.Close(), "close before reopen: %v")
-		store, err = b.OpenCanonicalStore(directory)
-		requireNoError(t, err, "reopen: %v")
+
+		if factory != nil {
+			store, _ = factory(t, directory)
+		} else {
+			store, err = b.OpenCanonicalStore(directory)
+			requireNoError(t, err, "reopen: %v")
+		}
+
 		runtime = receiptRecoveryRuntime(t, store, 0, &calls)
 	}
 
@@ -109,7 +126,7 @@ func testCommittedReceiptRecovery(t *testing.T, reopen bool) {
 }
 
 func completeReceiptRecovery(t *testing.T, runtime *ordered.SequencedIngestRuntime,
-	store *b.CanonicalStore, request m.SequencedTurn, calls *int,
+	store coreOwner, request m.SequencedTurn, calls *int,
 ) {
 	t.Helper()
 
@@ -135,7 +152,7 @@ func completeReceiptRecovery(t *testing.T, runtime *ordered.SequencedIngestRunti
 	requireRecoveryState(t, store, request, *calls, true)
 }
 
-func requireRecoveryState(t *testing.T, store *b.CanonicalStore, request m.SequencedTurn, calls int, receipt bool) {
+func requireRecoveryState(t *testing.T, store coreOwner, request m.SequencedTurn, calls int, receipt bool) {
 	t.Helper()
 
 	state, err := store.LoadScopeState(context.Background(), request.Turn.Scope)

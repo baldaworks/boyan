@@ -9,26 +9,28 @@ import (
 )
 
 func TestTurnReceiptMissingCertificateCannotProveStrippedLineage(t *testing.T) {
-	f := newTurnReceiptFixture(t)
-	f.turn.Conversation.LineageID = "original-lineage"
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		f := newTurnReceiptFixture(t, factory)
+		f.turn.Conversation.LineageID = "original-lineage"
 
-	f.turn.Conversation.PreviousConversationID = "previous-conversation"
-	if response := f.post(t, f.turn); response.Code != http.StatusOK {
-		t.Fatalf("initial lineage input rejected: %d %s", response.Code, response.Body)
-	}
+		f.turn.Conversation.PreviousConversationID = "previous-conversation"
+		if response := f.post(t, f.turn); response.Code != http.StatusOK {
+			t.Fatalf("initial lineage input rejected: %d %s", response.Code, response.Body)
+		}
 
-	deleteTurnReceiptRecord(t, f, "turn-certificate", f.turn.SourceID)
-	retry := f.turn
-	retry.Conversation.LineageID = ""
-	retry.Conversation.PreviousConversationID = ""
+		deleteTurnReceiptRecord(t, f, "turn-certificate", f.turn.SourceID)
+		retry := f.turn
+		retry.Conversation.LineageID = ""
+		retry.Conversation.PreviousConversationID = ""
 
-	response := f.post(t, retry)
-	if response.Code != http.StatusConflict || f.calls != 1 || f.processCalls != 1 {
-		t.Fatalf("unproven stripped lineage replayed: status=%d body=%s extractor=%d processor=%d",
-			response.Code, response.Body, f.calls, f.processCalls)
-	}
+		response := f.post(t, retry)
+		if response.Code != http.StatusConflict || f.calls != 1 || f.processCalls != 1 {
+			t.Fatalf("unproven stripped lineage replayed: status=%d body=%s extractor=%d processor=%d",
+				response.Code, response.Body, f.calls, f.processCalls)
+		}
 
-	assertMissingLineageProofRejectsSuppliedFingerprint(t, f, retry)
+		assertMissingLineageProofRejectsSuppliedFingerprint(t, f, retry)
+	})
 }
 
 func assertMissingLineageProofRejectsSuppliedFingerprint(t *testing.T, f *turnReceiptFixture, retry memory.Turn) {

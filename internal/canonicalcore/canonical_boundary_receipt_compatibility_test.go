@@ -8,25 +8,28 @@ import (
 	"time"
 
 	core "github.com/baldaworks/boyan/internal/canonicalcore"
+	"github.com/baldaworks/boyan/internal/canonicalsql"
 	"github.com/baldaworks/boyan/internal/forgetops"
 	m "github.com/baldaworks/boyan/pkg/memory"
 	"github.com/dgraph-io/badger/v4"
 )
 
 func TestBoundaryOldReceiptAfterForgetAndLaterTurn(t *testing.T) {
-	for _, lost := range []bool{false, true} {
-		name := "retained-receipt"
-		if lost {
-			name = "lost-receipt"
-		}
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		for _, lost := range []bool{false, true} {
+			name := "retained-receipt"
+			if lost {
+				name = "lost-receipt"
+			}
 
-		t.Run(name, func(t *testing.T) { testBoundaryReceiptAfterForget(t, lost) })
-	}
+			t.Run(name, func(t *testing.T) { testBoundaryReceiptAfterForget(t, lost, factory) })
+		}
+	})
 }
 
-func testBoundaryReceiptAfterForget(t *testing.T, lost bool) {
+func testBoundaryReceiptAfterForget(t *testing.T, lost bool, factory coreFactory) {
 	t.Helper()
-	f := newBoundaryReplayFixture(t, false)
+	f := newBoundaryReplayFixture(t, false, factory)
 	request := f.request(1, "old-boundary-delivery")
 	original, err := f.runtime.ApplySequencedBoundary(context.Background(), request)
 	requireNoError(t, err, "initial boundary: %v")
@@ -73,7 +76,14 @@ func forgetBoundaryAndCommitLaterTurn(t *testing.T, f *boundaryReplayFixture) {
 	processor, err := core.NewCanonicalTurnProcessor(f.store, canonicalExtractorFunc(extractTestStateCandidate),
 		m.PolicyRegistry{Version: "policy-v1"})
 	requireNoError(t, err, "processor: %v")
-	turn, err := m.NewTurn(f.export.Scope, f.export.Conversation, "later-turn", f.at.Add(2*time.Hour), "Later state", "OK")
+	turn, err := m.NewTurn(
+		f.export.Scope,
+		f.export.Conversation,
+		"later-turn",
+		f.at.Add(2*time.Hour),
+		"Later state",
+		"OK",
+	)
 	requireNoError(t, err, "later turn: %v")
 	_, err = processor.ProcessTurn(context.Background(), turn, testProcessorDerivation())
 	requireNoError(t, err, "later commit: %v")
@@ -83,13 +93,29 @@ func deleteBoundaryReceipt(t *testing.T, f *boundaryReplayFixture, request m.Seq
 	t.Helper()
 
 	scope := request.Boundary.Scope
+	if f.factory != nil {
+		deleteCoreSQLRecord(
+			t,
+			f.store,
+			coreSQLKey(
+				canonicalsql.IngestSequence,
+				scope,
+				[]byte(request.ProducerID),
+				binary.BigEndian.AppendUint64(nil, request.ScopeSequence),
+			),
+			coreSQLKey(canonicalsql.IngestCursor, scope, []byte(request.ProducerID)),
+		)
+
+		return
+	}
+
 	prefix, err := m.TupleKey(0x53, 1, "ingest-sequence", scope.Key, string(scope.Kind), request.ProducerID)
 	requireNoError(t, err, "receipt key: %v")
 
 	key := binary.BigEndian.AppendUint64(prefix, request.ScopeSequence)
 	cursor, err := m.TupleKey(0x53, 1, "ingest-cursor", scope.Key, string(scope.Kind), request.ProducerID)
 	requireNoError(t, err, "cursor key: %v")
-	requireNoError(t, f.store.DB().Update(func(txn *badger.Txn) error {
+	requireNoError(t, f.store.(interface{ DB() *badger.DB }).DB().Update(func(txn *badger.Txn) error {
 		if err := txn.Delete(key); err != nil {
 			return err
 		}

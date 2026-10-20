@@ -13,7 +13,7 @@ import (
 func TestPublicMutationAtomicFailures(t *testing.T) {
 	for _, table := range []string{"source", "revision", "boundary_certificate", "operation"} {
 		t.Run(table, func(t *testing.T) {
-			forEachMutation(t, func(t *testing.T, _ *storefixture.Fixture, store mutationStore, probe mutationProbe) {
+			forEachMutation(t, func(t *testing.T, f *storefixture.Fixture, store mutationStore, probe mutationProbe) {
 				mutation := nativeMutation(t)
 				mutation.BoundaryIdentity = mutationBoundary(t, mutation.Scope)
 				before := probe.stamps(t)
@@ -32,8 +32,11 @@ func TestPublicMutationAtomicFailures(t *testing.T) {
 					t.Fatal("failed mutation changed clock/stamps")
 				}
 
-				if _, err := store.ApplyCanonicalMutation(t.Context(), mutation); err != nil {
-					t.Fatal(err)
+				store = assertFailedMutationReopensEmpty(t, f, mutation.Scope)
+
+				outcome, err := store.ApplyCanonicalMutation(t.Context(), mutation)
+				if err != nil || outcome.ScopeVersion != 1 || outcome.ChangeSeq != 1 {
+					t.Fatalf("retry after reopen=%+v err=%v", outcome, err)
 				}
 
 				assertMutationState(t, store, mutation.Scope, 1)

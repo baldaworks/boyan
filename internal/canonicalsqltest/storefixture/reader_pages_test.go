@@ -33,6 +33,7 @@ func TestPublicReaderEncodedActiveAndRawSourcePagesAndReopen(t *testing.T) {
 		}
 
 		assertReaderOrderedPages(t, f.Store.(activeReaderStore), initial.Scope, initial.Sources[0].SourceID)
+		assertReverseRevisionRead(t, store, initial.Scope)
 
 		if err := f.Store.Close(); err != nil {
 			t.Fatal(err)
@@ -45,7 +46,19 @@ func TestPublicReaderEncodedActiveAndRawSourcePagesAndReopen(t *testing.T) {
 		defer reopened.Close()
 
 		assertReaderOrderedPages(t, reopened.(activeReaderStore), initial.Scope, initial.Sources[0].SourceID)
+		assertReverseRevisionRead(t, reopened.(mutationStore), initial.Scope)
 	})
+}
+
+func assertReverseRevisionRead(t *testing.T, store mutationStore, scope memory.Scope) {
+	t.Helper()
+
+	got, err := store.LoadCanonicalRevisions(t.Context(), memory.CanonicalRevisionReadRequest{
+		Scope: scope, RevisionIDs: []string{"z", "aa"},
+	})
+	if err != nil || len(got) != 2 || got[0].RevisionID != "z" || got[1].RevisionID != "aa" {
+		t.Fatalf("reverse-request revision read=%+v err=%v", got, err)
+	}
 }
 
 func assertReaderOrderedPages(t *testing.T, store activeReaderStore, scope memory.Scope, source string) {

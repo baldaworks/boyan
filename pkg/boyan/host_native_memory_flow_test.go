@@ -3,7 +3,6 @@ package boyan_test
 import (
 	"context"
 	"encoding/json"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -13,7 +12,6 @@ import (
 	transport "github.com/baldaworks/boyan/mcp"
 	hostapi "github.com/baldaworks/boyan/pkg/boyan"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/sqlite"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -50,54 +48,56 @@ func (integrationExtractor) ExtractCanonicalSemantics(_ context.Context,
 
 func TestPublicHostAndMCPNativeMemoryLifecycle(t *testing.T) {
 	t.Parallel()
-	config := testHostConfig(t)
-	scope := m.Scope{Key: "test:lifecycle", Kind: m.ScopeKindPersonal}
-	conversation := m.ConversationRef{ConversationID: "conversation", AgentConversationID: "agent"}
-	first,
-		err := m.NewTurn(scope,
-		conversation,
-		"turn-first",
-		time.Date(2026,
-			time.October,
-			11,
-			0,
-			0,
-			0,
-			0,
-			time.UTC),
-		"Я живу в Бишкеке",
-		"OK")
-	requireNoError(t, err, "first: %v")
-	initial := persistIntegrationTurn(t, config, first)
-	host, client := startIntegrationHost(t, config)
-	initialReference := assertHostAndMCPRecall(t, host, client, first, initial.ChangeSeq, nil, 1)
-	assertHostAndMCPTrace(t, host, client, scope, initialReference, 1)
-	requireNoError(t, client.Close(), "client close: %v")
-	requireNoError(t, host.Close(), "host close for durable update: %v")
+	forEachHostBackend(t, func(t *testing.T, backend string) {
+		config := selectedHostConfig(t, backend)
+		scope := m.Scope{Key: "test:lifecycle", Kind: m.ScopeKindPersonal}
+		conversation := m.ConversationRef{ConversationID: "conversation", AgentConversationID: "agent"}
+		first,
+			err := m.NewTurn(scope,
+			conversation,
+			"turn-first",
+			time.Date(2026,
+				time.October,
+				11,
+				0,
+				0,
+				0,
+				0,
+				time.UTC),
+			"Я живу в Бишкеке",
+			"OK")
+		requireNoError(t, err, "first: %v")
+		initial := persistIntegrationTurn(t, config, first)
+		host, client := startIntegrationHost(t, config)
+		initialReference := assertHostAndMCPRecall(t, host, client, first, initial.ChangeSeq, nil, 1)
+		assertHostAndMCPTrace(t, host, client, scope, initialReference, 1)
+		requireNoError(t, client.Close(), "client close: %v")
+		requireNoError(t, host.Close(), "host close for durable update: %v")
 
-	second, err := m.NewTurn(scope, conversation, "turn-second", first.CompletedAt.Add(2*time.Hour), "Я живу в Оше", "OK")
-	requireNoError(t, err, "second: %v")
-	updated := persistIntegrationTurn(t, config, second)
-	host, client = startIntegrationHost(t, config)
+		second, err := m.NewTurn(scope, conversation, "turn-second", first.CompletedAt.Add(2*time.Hour), "Я живу в Оше", "OK")
+		requireNoError(t, err, "second: %v")
+		updated := persistIntegrationTurn(t, config, second)
+		host, client = startIntegrationHost(t, config)
 
-	current := assertHostAndMCPRecall(t, host, client, second, updated.ChangeSeq, nil, 1)
-	if current.ItemID != initialReference.ItemID || current.Revision != 2 {
-		t.Fatalf("identity/history changed: %+v -> %+v",
-			initialReference,
-			current)
-	}
+		current := assertHostAndMCPRecall(t, host, client, second, updated.ChangeSeq, nil, 1)
+		if current.ItemID != initialReference.ItemID || current.Revision != 2 {
+			t.Fatalf("identity/history changed: %+v -> %+v",
+				initialReference,
+				current)
+		}
 
-	assertHostAndMCPTrace(t, host, client, scope, current, 2)
+		assertHostAndMCPTrace(t, host, client, scope, current, 2)
 
-	between := first.CompletedAt.Add(time.Hour)
-	assertHostAndMCPRecall(t, host, client, second, updated.ChangeSeq, &between, 0)
-	assertHostAndMCPForget(t, host, client, second, current)
+		between := first.CompletedAt.Add(time.Hour)
+		assertHostAndMCPRecall(t, host, client, second, updated.ChangeSeq, &between, 0)
+		assertHostAndMCPForget(t, host, client, second, current)
+	})
 }
 
 func persistIntegrationTurn(t *testing.T, config hostapi.Config, turn m.Turn) m.CanonicalMutationOutcome {
 	t.Helper()
 
-	store, err := b.Open(t.Context(), b.Config{Path: filepath.Join(config.StateDir, "canonical", "canonical.sqlite")})
+	store, reader, err := openHostCanonical(t, config)
 
 	requireNoError(t, err, "store: %v")
 	defer func() { requireNoError(t, store.Close(), "store close: %v") }()
@@ -109,7 +109,6 @@ func persistIntegrationTurn(t *testing.T, config hostapi.Config, turn m.Turn) m.
 	outcome, err := processor.ProcessTurn(context.Background(), turn, m.LegacyDerivationRef())
 	requireNoError(t, err, "deterministic native ingest: %v")
 
-	reader := b.NewCanonicalReader(store)
 	indexer, err := index.Open(t.Context(), config.StateDir, index.Options{})
 
 	requireNoError(t, err, "index: %v")

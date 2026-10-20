@@ -36,46 +36,60 @@ func (*boundaryInvoker) Close(context.Context) error { return nil }
 
 func TestNativeBoundarySynthesisBeyondSearchPage(t *testing.T) {
 	t.Parallel()
-	store, err := b.Open(t.TempDir())
-	requireNoError(t, err, "store: %v")
-	t.Cleanup(func() { requireNoError(t, store.Close(), "close: %v") })
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		var store coreOwner
 
-	reader, err := b.NewCanonicalReader(store)
-	requireNoError(t, err, "reader: %v")
+		var reader coreReader
 
-	scope := m.Scope{Key: "test:growth", Kind: m.ScopeKindPersonal}
-	conversation := m.ConversationRef{ConversationID: "conversation", AgentConversationID: "agent"}
-	extractor := canonicalExtractorFunc(func(ctx context.Context,
-		request m.CanonicalExtractionRequest) ([]m.SemanticCandidate,
-		error) {
-		candidates, extractErr := extractTestStateCandidate(ctx, request)
-		if extractErr == nil {
-			candidates[0].Predicate = request.Turn.Messages[0].Text
+		var err error
+
+		if factory != nil {
+			store, reader = factory(t, t.TempDir())
+		} else {
+			legacy, openErr := b.Open(t.TempDir())
+			requireNoError(t, openErr, "store: %v")
+
+			store = legacy
+			reader, err = b.NewCanonicalReader(legacy)
+			requireNoError(t, err, "reader: %v")
 		}
 
-		return candidates, extractErr
+		t.Cleanup(func() { requireNoError(t, store.Close(), "close: %v") })
+
+		scope := m.Scope{Key: "test:growth", Kind: m.ScopeKindPersonal}
+		conversation := m.ConversationRef{ConversationID: "conversation", AgentConversationID: "agent"}
+		extractor := canonicalExtractorFunc(func(ctx context.Context,
+			request m.CanonicalExtractionRequest) ([]m.SemanticCandidate,
+			error) {
+			candidates, extractErr := extractTestStateCandidate(ctx, request)
+			if extractErr == nil {
+				candidates[0].Predicate = request.Turn.Messages[0].Text
+			}
+
+			return candidates, extractErr
+		})
+		processor, err := core.NewCanonicalTurnProcessor(store, extractor, m.PolicyRegistry{Version: "policy-v1"})
+		requireNoError(t, err, "processor: %v")
+
+		completed := time.Date(2026, time.October, 12, 0, 0, 0, 0, time.UTC)
+
+		for i := range 257 {
+			id := fmt.Sprintf("turn-%03d", i)
+			turn, turnErr := m.NewTurn(scope, conversation, id, completed, id, "OK")
+			requireNoError(t, turnErr, "turn: %v")
+			_, turnErr = processor.ProcessTurn(context.Background(), turn, testProcessorDerivation())
+			requireNoError(t, turnErr, "process: %v")
+		}
+
+		view, err := reader.LoadCanonicalBoundaryView(context.Background(), scope)
+		requireNoError(t, err, "boundary view: %v")
+
+		if len(view.Snapshot.Atoms) != 257 {
+			t.Fatalf("omitted atoms: %d", len(view.Snapshot.Atoms))
+		}
+
+		assertStructuredBoundaryBudget(t, view.Snapshot, conversation, completed)
 	})
-	processor, err := core.NewCanonicalTurnProcessor(store, extractor, m.PolicyRegistry{Version: "policy-v1"})
-	requireNoError(t, err, "processor: %v")
-
-	completed := time.Date(2026, time.October, 12, 0, 0, 0, 0, time.UTC)
-
-	for i := range 257 {
-		id := fmt.Sprintf("turn-%03d", i)
-		turn, turnErr := m.NewTurn(scope, conversation, id, completed, id, "OK")
-		requireNoError(t, turnErr, "turn: %v")
-		_, turnErr = processor.ProcessTurn(context.Background(), turn, testProcessorDerivation())
-		requireNoError(t, turnErr, "process: %v")
-	}
-
-	view, err := reader.LoadCanonicalBoundaryView(context.Background(), scope)
-	requireNoError(t, err, "boundary view: %v")
-
-	if len(view.Snapshot.Atoms) != 257 {
-		t.Fatalf("omitted atoms: %d", len(view.Snapshot.Atoms))
-	}
-
-	assertStructuredBoundaryBudget(t, view.Snapshot, conversation, completed)
 }
 
 func assertStructuredBoundaryBudget(t *testing.T,

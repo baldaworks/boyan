@@ -12,7 +12,6 @@ import (
 	ops "github.com/baldaworks/boyan/internal/canonicalops"
 	read "github.com/baldaworks/boyan/internal/memoryread"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
 )
 
 type inheritanceModel struct {
@@ -61,8 +60,8 @@ func (i *inheritanceModel) SynthesizeProfile(_ context.Context,
 }
 
 type inheritanceFixture struct {
-	store     *b.CanonicalStore
-	reader    *b.CanonicalReader
+	store     coreOwner
+	reader    coreReader
 	processor *boundary.BoundaryProcessor
 	model     *inheritanceModel
 	export    m.Boundary
@@ -72,9 +71,9 @@ type inheritanceFixture struct {
 	expiry    time.Time
 }
 
-func newInheritanceFixture(t *testing.T, failProfile bool) *inheritanceFixture {
+func newInheritanceFixture(t *testing.T, failProfile bool, factory coreFactory) *inheritanceFixture {
 	t.Helper()
-	store, reader := newModelRetryStore(t)
+	store, reader := newModelRetryStore(t, factory)
 	at := time.Date(2026, time.October, 13, 12, 0, 0, 0, time.UTC)
 	f := &inheritanceFixture{store: store, reader: reader, now: at,
 		from: at.Add(-2 * time.Hour), until: at.Add(3 * time.Hour), expiry: at.Add(2 * time.Hour),
@@ -92,7 +91,7 @@ func newInheritanceFixture(t *testing.T, failProfile bool) *inheritanceFixture {
 	return f
 }
 
-func seedInheritanceParents(t *testing.T, store *b.CanonicalStore, at time.Time) m.Turn {
+func seedInheritanceParents(t *testing.T, store coreOwner, at time.Time) m.Turn {
 	t.Helper()
 
 	extractor := canonicalExtractorFunc(func(ctx context.Context,
@@ -140,34 +139,36 @@ func inheritanceParentTemporal(name string, at time.Time) m.Temporal {
 
 func TestBoundaryInheritsSelectedParentBoundsThroughScenarioAndProfile(t *testing.T) {
 	t.Parallel()
-	f := newInheritanceFixture(t, false)
-	outcome, err := f.processor.ProcessBoundary(context.Background(), f.export)
-	requireNoError(t, err, "boundary synthesis: %v")
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		f := newInheritanceFixture(t, false, factory)
+		outcome, err := f.processor.ProcessBoundary(context.Background(), f.export)
+		requireNoError(t, err, "boundary synthesis: %v")
 
-	for _, stage := range []m.OperationOutcome{outcome.Scenarios, outcome.Profile} {
-		assertInheritedStage(t, f, stage)
-	}
-
-	service, err := read.NewRecallService(f.reader, nil)
-	requireNoError(t, err, "recall service: %v")
-
-	for _, test := range []struct {
-		at   time.Time
-		want int
-	}{
-		{at: f.now, want: 2},
-		{at: f.now.Add(time.Hour), want: 2},
-		{at: f.expiry, want: 0},
-	} {
-		response, searchErr := service.Search(context.Background(), m.RecallRequest{
-			Scope: f.export.Scope, Query: "shared", Limit: 10, AsOf: &test.at,
-		})
-		requireNoError(t, searchErr, "search: %v")
-
-		if len(response.Results) != test.want {
-			t.Fatalf("at %s results=%d, want %d", test.at, len(response.Results), test.want)
+		for _, stage := range []m.OperationOutcome{outcome.Scenarios, outcome.Profile} {
+			assertInheritedStage(t, f, stage)
 		}
-	}
+
+		service, err := read.NewRecallService(f.reader, nil)
+		requireNoError(t, err, "recall service: %v")
+
+		for _, test := range []struct {
+			at   time.Time
+			want int
+		}{
+			{at: f.now, want: 2},
+			{at: f.now.Add(time.Hour), want: 2},
+			{at: f.expiry, want: 0},
+		} {
+			response, searchErr := service.Search(context.Background(), m.RecallRequest{
+				Scope: f.export.Scope, Query: "shared", Limit: 10, AsOf: &test.at,
+			})
+			requireNoError(t, searchErr, "search: %v")
+
+			if len(response.Results) != test.want {
+				t.Fatalf("at %s results=%d, want %d", test.at, len(response.Results), test.want)
+			}
+		}
+	})
 }
 
 func assertInheritedStage(t *testing.T, f *inheritanceFixture, stage m.OperationOutcome) {
@@ -194,26 +195,28 @@ func assertInheritedStage(t *testing.T, f *inheritanceFixture, stage m.Operation
 
 func TestExpiredReplayedScenarioCannotGroundUnfinishedProfile(t *testing.T) {
 	t.Parallel()
-	f := newInheritanceFixture(t, true)
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		f := newInheritanceFixture(t, true, factory)
 
-	partial, err := f.processor.ProcessBoundary(context.Background(), f.export)
-	if code, _, ok := m.ClassifyError(err); !ok || code != m.CodeModelFailure {
-		t.Fatalf("first profile fixture should fail after scenario commit: %v", err)
-	}
+		partial, err := f.processor.ProcessBoundary(context.Background(), f.export)
+		if code, _, ok := m.ClassifyError(err); !ok || code != m.CodeModelFailure {
+			t.Fatalf("first profile fixture should fail after scenario commit: %v", err)
+		}
 
-	before, err := f.store.LoadScopeState(context.Background(), f.export.Scope)
-	requireNoError(t, err, "partial state: %v")
+		before, err := f.store.LoadScopeState(context.Background(), f.export.Scope)
+		requireNoError(t, err, "partial state: %v")
 
-	f.now = f.expiry
+		f.now = f.expiry
 
-	retried, err := f.processor.ProcessBoundary(context.Background(), f.export)
-	if code, class, ok := m.ClassifyError(err); !ok || code != m.CodeInvalidDerived || class != m.ErrorClassPermanent {
-		t.Fatalf("expired scenario grounded unfinished profile: %v", err)
-	}
+		retried, err := f.processor.ProcessBoundary(context.Background(), f.export)
+		if code, class, ok := m.ClassifyError(err); !ok || code != m.CodeInvalidDerived || class != m.ErrorClassPermanent {
+			t.Fatalf("expired scenario grounded unfinished profile: %v", err)
+		}
 
-	assertOnlyUnfinishedProfileRan(t, f, partial, retried)
+		assertOnlyUnfinishedProfileRan(t, f, partial, retried)
 
-	assertRejectedInheritanceProfile(t, f, before)
+		assertRejectedInheritanceProfile(t, f, before)
+	})
 }
 
 func assertOnlyUnfinishedProfileRan(t *testing.T, f *inheritanceFixture, partial, retried m.BoundaryOutcome) {

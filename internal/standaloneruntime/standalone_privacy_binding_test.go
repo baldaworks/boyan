@@ -21,64 +21,68 @@ var _ interface {
 } = (*badger.CanonicalStore)(nil)
 
 func TestStandaloneCanonicalPrivacyBindingUsesRealAuthority(t *testing.T) {
-	runtime, err := New(enabledLifecycleConfig(t, &lifecycleEmbeddingProvider{}))
-	requireNoError(t, err, "new runtime: %v")
-	t.Cleanup(func() { _ = runtime.Stop(context.Background()) })
-	turn := seedSemanticTurn(t, runtime, "privacy-binding")
-	startSQLComponents(t, runtime)
-	waitSemanticState(t, runtime, turn.Scope, "hybrid-ready")
-	// A second applier can share exactly the canonical instance already bound
-	// by openStandaloneStorage, without changing its staging ownership.
-	_, err = sqlite.NewSQLiteCanonicalApplier(runtime.service.index, runtime.service.reader, runtime.service.store)
-	requireNoError(t, err, "same real authority rebind: %v")
+	forEachSQLRuntimeConfig(t, func(t *testing.T, selection Config) {
+		cfg := enabledLifecycleConfig(t, &lifecycleEmbeddingProvider{})
+		cfg.Canonical = selection.Canonical
+		runtime, err := New(cfg)
+		requireNoError(t, err, "new runtime: %v")
+		t.Cleanup(func() { _ = runtime.Stop(context.Background()) })
+		turn := seedSemanticTurn(t, runtime, "privacy-binding")
+		startSQLComponents(t, runtime)
+		waitSemanticState(t, runtime, turn.Scope, "hybrid-ready")
+		// A second applier can share exactly the canonical instance already bound
+		// by openStandaloneStorage, without changing its staging ownership.
+		_, err = sqlite.NewSQLiteCanonicalApplier(runtime.service.index, runtime.service.reader, runtime.service.store)
+		requireNoError(t, err, "same real authority rebind: %v")
 
-	record := privacyRuntimeRecord(t, runtime, turn.Scope)
-	id := record.RevisionID
-	_, err = runtime.ForgetScope(t.Context(), memory.ForgetScopeCommand{
-		SchemaVersion: memory.DerivedSchemaVersionV1, Scope: turn.Scope,
-		RequestID: "privacy-binding-forget", ForgottenAt: time.Now().UTC(),
+		record := privacyRuntimeRecord(t, runtime, turn.Scope)
+		id := record.RevisionID
+		_, err = runtime.ForgetScope(t.Context(), memory.ForgetScopeCommand{
+			SchemaVersion: memory.DerivedSchemaVersionV1, Scope: turn.Scope,
+			RequestID: "privacy-binding-forget", ForgottenAt: time.Now().UTC(),
+		})
+		requireNoError(t, err, "forget canonical identity: %v")
+		denied, err := runtime.service.store.IsRevisionDenied(t.Context(), turn.Scope, id)
+		requireNoError(t, err, "real revision deny: %v")
+
+		if !denied {
+			t.Fatal("control did not establish real canonical denial")
+		}
+
+		manifest, found, err := runtime.service.store.LoadActiveProjectionManifest(t.Context(), turn.Scope, "sqlite")
+		requireNoError(t, err, "current lexical source: %v")
+
+		if !found {
+			t.Fatal("missing current certified lexical source")
+		}
+
+		_, found, err = runtime.service.index.LoadActivePhysicalProjectionManifest(t.Context(), turn.Scope, "sqlite")
+		requireNoError(t, err, "certify current physical source: %v")
+
+		if !found {
+			t.Fatal("late Stage fixture source is not physically certifiable")
+		}
+
+		g, coverage, chunks := lateDeniedPrivacyFixture(record, manifest)
+		_, _, err = semantic.PrepareProjection(t.Context(), g, coverage, chunks)
+		requireNoError(t, err, "late Stage portable admission control: %v")
+		// The physical source is current, not the obsolete source before forget.
+		// Only the real canonical identity authority can reject this valid late input.
+		_, err = runtime.service.index.Stage(t.Context(), g, coverage, chunks)
+		if !errors.Is(err, semantic.ErrConflict) {
+			t.Fatalf("real denial was not invoked on runtime Store: %v", err)
+		}
+
+		db := openRuntimeSQL(t, runtime)
+		defer func() { _ = db.Close() }()
+
+		var count int
+
+		err = db.QueryRowContext(t.Context(), "SELECT count(*) FROM semantic_build WHERE build_id=?", g.BuildID).Scan(&count)
+		if err != nil || count != 0 {
+			t.Fatalf("denied candidate durably claimed: %d %v", count, err)
+		}
 	})
-	requireNoError(t, err, "forget canonical identity: %v")
-	denied, err := runtime.service.store.IsRevisionDenied(t.Context(), turn.Scope, id)
-	requireNoError(t, err, "real revision deny: %v")
-
-	if !denied {
-		t.Fatal("control did not establish real canonical denial")
-	}
-
-	manifest, found, err := runtime.service.store.LoadActiveProjectionManifest(t.Context(), turn.Scope, "sqlite")
-	requireNoError(t, err, "current lexical source: %v")
-
-	if !found {
-		t.Fatal("missing current certified lexical source")
-	}
-
-	_, found, err = runtime.service.index.LoadActivePhysicalProjectionManifest(t.Context(), turn.Scope, "sqlite")
-	requireNoError(t, err, "certify current physical source: %v")
-
-	if !found {
-		t.Fatal("late Stage fixture source is not physically certifiable")
-	}
-
-	g, coverage, chunks := lateDeniedPrivacyFixture(record, manifest)
-	_, _, err = semantic.PrepareProjection(t.Context(), g, coverage, chunks)
-	requireNoError(t, err, "late Stage portable admission control: %v")
-	// The physical source is current, not the obsolete source before forget.
-	// Only the real canonical identity authority can reject this valid late input.
-	_, err = runtime.service.index.Stage(t.Context(), g, coverage, chunks)
-	if !errors.Is(err, semantic.ErrConflict) {
-		t.Fatalf("real denial was not invoked on runtime Store: %v", err)
-	}
-
-	db := openRuntimeSQL(t, runtime)
-	defer func() { _ = db.Close() }()
-
-	var count int
-
-	err = db.QueryRowContext(t.Context(), "SELECT count(*) FROM semantic_build WHERE build_id=?", g.BuildID).Scan(&count)
-	if err != nil || count != 0 {
-		t.Fatalf("denied candidate durably claimed: %d %v", count, err)
-	}
 }
 
 func lateDeniedPrivacyFixture(record memory.RecallRecord, manifest memory.ProjectionManifest) (

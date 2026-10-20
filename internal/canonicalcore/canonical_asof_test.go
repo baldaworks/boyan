@@ -14,34 +14,36 @@ import (
 
 func TestNativeAsOfFiltersCurrentHeadAfterSupersession(t *testing.T) {
 	t.Parallel()
-	reader, processor, turn, _, store := nativeFlow(t)
-	replacement,
-		err := m.NewTurn(turn.Scope,
-		turn.Conversation,
-		"turn-osh",
-		turn.CompletedAt.Add(2*time.Hour),
-		"Я живу в Оше",
-		"OK")
-	requireNoError(t, err, "replacement: %v")
-	_, err = processor.ProcessTurn(context.Background(), replacement, testProcessorDerivation())
-	requireNoError(t, err, "process: %v")
-	root := t.TempDir()
-	requireNoError(t, os.Chmod(root, 0o700), "private state: %v")
-	projection, err := index.Open(t.Context(), root, index.Options{})
-	requireNoError(t, err, "projection: %v")
-	t.Cleanup(func() { requireNoError(t, projection.Close(), "close: %v") })
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		reader, processor, turn, _, store := nativeFlow(t, factory)
+		replacement,
+			err := m.NewTurn(turn.Scope,
+			turn.Conversation,
+			"turn-osh",
+			turn.CompletedAt.Add(2*time.Hour),
+			"Я живу в Оше",
+			"OK")
+		requireNoError(t, err, "replacement: %v")
+		_, err = processor.ProcessTurn(context.Background(), replacement, testProcessorDerivation())
+		requireNoError(t, err, "process: %v")
+		root := t.TempDir()
+		requireNoError(t, os.Chmod(root, 0o700), "private state: %v")
+		projection, err := index.Open(t.Context(), root, index.Options{})
+		requireNoError(t, err, "projection: %v")
+		t.Cleanup(func() { requireNoError(t, projection.Close(), "close: %v") })
 
-	applier, err := index.NewSQLiteCanonicalApplier(projection, reader, store)
-	requireNoError(t, err, "applier: %v")
-	runner, err := runtime.NewProjectionRuntime(store, store, applier, "sqlite", 128)
-	requireNoError(t, err, "runtime: %v")
-	requireNoError(t, runner.Sync(context.Background(), turn.Scope), "sync: %v")
+		applier, err := index.NewSQLiteCanonicalApplier(projection, reader, store)
+		requireNoError(t, err, "applier: %v")
+		runner, err := runtime.NewProjectionRuntime(store, store, applier, "sqlite", 128)
+		requireNoError(t, err, "runtime: %v")
+		requireNoError(t, runner.Sync(context.Background(), turn.Scope), "sync: %v")
 
-	for _, adapter := range []m.RecallProjection{nil, projection} {
-		service, serviceErr := read.NewRecallService(reader, adapter)
-		requireNoError(t, serviceErr, "service: %v")
-		assertNativeAsOf(t, service, turn, replacement)
-	}
+		for _, adapter := range []m.RecallProjection{nil, projection} {
+			service, serviceErr := read.NewRecallService(reader, adapter)
+			requireNoError(t, serviceErr, "service: %v")
+			assertNativeAsOf(t, service, turn, replacement)
+		}
+	})
 }
 
 func assertNativeAsOf(t *testing.T, service *read.RecallService, first, second m.Turn) {

@@ -15,8 +15,9 @@ import (
 )
 
 type boundaryReplayFixture struct {
+	factory   coreFactory
 	path      string
-	store     *b.CanonicalStore
+	store     coreOwner
 	processor *boundary.BoundaryProcessor
 	runtime   *ordered.SequencedIngestRuntime
 	model     *profileRetryInvoker
@@ -24,10 +25,10 @@ type boundaryReplayFixture struct {
 	at        time.Time
 }
 
-func newBoundaryReplayFixture(t *testing.T, partial bool) *boundaryReplayFixture {
+func newBoundaryReplayFixture(t *testing.T, partial bool, factory coreFactory) *boundaryReplayFixture {
 	t.Helper()
 	turn := modelRetryTurn(t)
-	f := &boundaryReplayFixture{path: t.TempDir(), model: &profileRetryInvoker{invalidProfile: partial},
+	f := &boundaryReplayFixture{factory: factory, path: t.TempDir(), model: &profileRetryInvoker{invalidProfile: partial},
 		at: turn.CompletedAt.Add(24 * time.Hour)}
 	export, err := m.NewBoundary(turn.Scope, turn.Conversation, "replay", m.BoundaryReasonClose, f.at)
 	requireNoError(t, err, "boundary: %v")
@@ -47,12 +48,24 @@ func newBoundaryReplayFixture(t *testing.T, partial bool) *boundaryReplayFixture
 func (f *boundaryReplayFixture) open(t *testing.T) {
 	t.Helper()
 
-	store, err := b.Open(f.path)
-	requireNoError(t, err, "open: %v")
+	var store coreOwner
+
+	var reader coreReader
+
+	var err error
+
+	if f.factory != nil {
+		store, reader = f.factory(t, f.path)
+	} else {
+		legacy, openErr := b.Open(f.path)
+		requireNoError(t, openErr, "open: %v")
+
+		store = legacy
+		reader, err = b.NewCanonicalReader(legacy)
+		requireNoError(t, err, "reader: %v")
+	}
 
 	f.store = store
-	reader, err := b.NewCanonicalReader(store)
-	requireNoError(t, err, "reader: %v")
 	adapter, err := ops.NewCanonicalBoundaryStore(store, reader)
 	requireNoError(t, err, "adapter: %v")
 	deriver, err := derive.NewDeriver(f.model)

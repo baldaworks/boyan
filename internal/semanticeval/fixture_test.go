@@ -2,21 +2,61 @@ package semanticeval_test
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	index "github.com/baldaworks/boyan/index/sqlite"
 	core "github.com/baldaworks/boyan/internal/canonicalcore"
+	"github.com/baldaworks/boyan/internal/canonicalsqltest"
 	"github.com/baldaworks/boyan/internal/projection"
 	"github.com/baldaworks/boyan/pkg/boyan"
 	m "github.com/baldaworks/boyan/pkg/memory"
+	"github.com/baldaworks/boyan/store/postgres"
 	canonical "github.com/baldaworks/boyan/store/sqlite"
 	agentconfig "github.com/normahq/runtime/v2/agentconfig"
 	runtimeconfig "github.com/normahq/runtime/v2/appconfig"
 )
 
 var scope = m.Scope{Kind: m.ScopeKindPersonal, Key: "eval:public-semantic-v1"}
+
+type evaluationOwner interface {
+	m.CanonicalStore
+	m.CanonicalTurnIdentityStore
+	m.ProjectionCheckpointStore
+	PrepareSourcePrivacy(ctx context.Context) error
+	IsSourceDenied(ctx context.Context, scope m.Scope, id string) (bool, error)
+	IsRevisionDenied(ctx context.Context, scope m.Scope, id string) (bool, error)
+	Close() error
+}
+
+func forEachEvaluationBackend(t *testing.T, run func(*testing.T, string)) {
+	t.Helper()
+
+	for _, backend := range []string{"sqlite", "postgres"} {
+		t.Run(backend, func(t *testing.T) { run(t, backend) })
+	}
+}
+
+func selectEvaluationBackend(t *testing.T, cfg boyan.Config, backend string) boyan.Config {
+	t.Helper()
+
+	if err := os.MkdirAll(cfg.StateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	if backend == "postgres" {
+		db := canonicalsqltest.PostgresDatabase(t)
+		t.Setenv("BOYAN_TASK19_EVAL_DSN", db.DSN)
+
+		cfg.Canonical.Backend = backend
+		cfg.Canonical.Postgres.DSNEnv = "BOYAN_TASK19_EVAL_DSN"
+		cfg.Canonical.Postgres.AllowLocalInsecure = true
+	}
+
+	return cfg
+}
 
 type extractor struct{ subject string }
 
@@ -98,10 +138,26 @@ func config(t *testing.T, endpoint string, dimensions int) boyan.Config {
 func seed(t *testing.T, cfg boyan.Config, docs []document) map[string]string {
 	t.Helper()
 
-	store, err := canonical.Open(t.Context(), canonical.Config{
-		Path: filepath.Join(cfg.StateDir, "canonical", "canonical.sqlite")})
+	var store evaluationOwner
 
-	check(t, err)
+	var reader m.RecallCanonicalReader
+
+	if cfg.Canonical.Backend == "postgres" {
+		owner, err := postgres.Open(
+			t.Context(),
+			postgres.Config{DSN: os.Getenv(cfg.Canonical.Postgres.DSNEnv), AllowLocalInsecure: true},
+		)
+		check(t, err)
+
+		store, reader = owner, postgres.NewCanonicalReader(owner)
+	} else {
+		owner, err := canonical.Open(t.Context(), canonical.Config{
+			Path: filepath.Join(cfg.StateDir, "canonical", "canonical.sqlite")})
+		check(t, err)
+
+		store, reader = owner, canonical.NewCanonicalReader(owner)
+	}
+
 	defer func() { check(t, store.Close()) }()
 
 	check(t, store.PrepareSourcePrivacy(t.Context()))
@@ -144,7 +200,6 @@ func seed(t *testing.T, cfg boyan.Config, docs []document) map[string]string {
 		}
 	}
 
-	reader := canonical.NewCanonicalReader(store)
 	idx, err := index.Open(t.Context(), cfg.StateDir, index.Options{})
 
 	check(t, err)

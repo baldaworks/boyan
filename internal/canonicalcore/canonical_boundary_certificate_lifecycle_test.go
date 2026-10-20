@@ -31,36 +31,38 @@ func (i *certificateLifecycleModel) SynthesizeScenarios(ctx context.Context,
 
 func TestBoundaryCertificateBindsOnlySuccessfulStageAndSurvivesForget(t *testing.T) {
 	t.Parallel()
-	f := newInheritanceFixture(t, false)
-	model := &certificateLifecycleModel{inheritanceModel: f.model, failScenario: true}
-	adapter, err := ops.NewCanonicalBoundaryStore(f.store, f.reader)
-	requireNoError(t, err, "adapter: %v")
-	processor, err := boundary.NewBoundaryProcessorWithClock(adapter, model, model,
-		testProcessorDerivation(), func() time.Time { return f.now })
-	requireNoError(t, err, "processor: %v")
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		f := newInheritanceFixture(t, false, factory)
+		model := &certificateLifecycleModel{inheritanceModel: f.model, failScenario: true}
+		adapter, err := ops.NewCanonicalBoundaryStore(f.store, f.reader)
+		requireNoError(t, err, "adapter: %v")
+		processor, err := boundary.NewBoundaryProcessorWithClock(adapter, model, model,
+			testProcessorDerivation(), func() time.Time { return f.now })
+		requireNoError(t, err, "processor: %v")
 
-	_, err = processor.ProcessBoundary(context.Background(), f.export)
-	if code, _, ok := m.ClassifyError(err); !ok || code != m.CodeModelFailure {
-		t.Fatalf("scenario fixture should fail: %v", err)
-	}
+		_, err = processor.ProcessBoundary(context.Background(), f.export)
+		if code, _, ok := m.ClassifyError(err); !ok || code != m.CodeModelFailure {
+			t.Fatalf("scenario fixture should fail: %v", err)
+		}
 
-	identity, err := f.store.VerifyCanonicalBoundary(context.Background(), f.export)
-	requireNoError(t, err, "uncommitted identity: %v")
+		identity, err := f.store.VerifyCanonicalBoundary(context.Background(), f.export)
+		requireNoError(t, err, "uncommitted identity: %v")
 
-	if identity.Certified {
-		t.Fatal("failed model output reserved boundary identity")
-	}
+		if identity.Certified {
+			t.Fatal("failed model output reserved boundary identity")
+		}
 
-	committed, err := processor.ProcessBoundary(context.Background(), f.export)
-	requireNoError(t, err, "successful retry: %v")
-	identity, err = f.store.VerifyCanonicalBoundary(context.Background(), f.export)
-	requireNoError(t, err, "committed identity: %v")
+		committed, err := processor.ProcessBoundary(context.Background(), f.export)
+		requireNoError(t, err, "successful retry: %v")
+		identity, err = f.store.VerifyCanonicalBoundary(context.Background(), f.export)
+		requireNoError(t, err, "committed identity: %v")
 
-	if !identity.Certified {
-		t.Fatal("successful stage did not atomically bind input")
-	}
+		if !identity.Certified {
+			t.Fatal("successful stage did not atomically bind input")
+		}
 
-	assertCertifiedBoundaryForgetReplay(t, f, processor, committed)
+		assertCertifiedBoundaryForgetReplay(t, f, processor, committed)
+	})
 }
 
 func assertCertifiedBoundaryForgetReplay(t *testing.T, f *inheritanceFixture,

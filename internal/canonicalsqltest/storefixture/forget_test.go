@@ -111,6 +111,13 @@ func assertPublicForgetDenials(t *testing.T, reopened storefixture.Store, scope 
 		t.Fatalf("revision denial=%t %v", denied, err)
 	}
 
+	otherKey := scope
+
+	otherKey.Key += ":other"
+	if denied, err := denial.IsSourceDenied(t.Context(), otherKey, "source"); err != nil || denied {
+		t.Fatalf("different-key denial=%t %v", denied, err)
+	}
+
 	scope.Kind = memory.ScopeKindGroup
 	if denied, err := denial.IsSourceDenied(t.Context(), scope, "source"); err != nil || denied {
 		t.Fatalf("foreign denial=%t %v", denied, err)

@@ -75,6 +75,8 @@ func TestProofTurnPersistence(t *testing.T) {
 			t.Fatalf("legacy proof: %+v %v", legacy, err)
 		}
 
+		assertLegacyTurnEvidence(t, owner, h, legacy)
+
 		assertTurnProofRollback(t, owner, h, mutation)
 
 		requireProofSuccess(t, owner.Update(t.Context(), func(ctx context.Context, tx *Tx) error {

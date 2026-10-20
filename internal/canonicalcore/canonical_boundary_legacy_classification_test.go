@@ -9,7 +9,6 @@ import (
 	ops "github.com/baldaworks/boyan/internal/canonicalops"
 	forget "github.com/baldaworks/boyan/internal/forgetops"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	"github.com/baldaworks/boyan/store/badger"
 )
 
 type legacyClassificationModel struct{ calls int }
@@ -29,61 +28,63 @@ func (model *legacyClassificationModel) SynthesizeProfile(context.Context,
 }
 
 func TestBoundaryLegacyClassificationBeforeModels(t *testing.T) {
-	for _, legacy := range []bool{false, true} {
-		t.Run(map[bool]string{false: "native only", true: "legacy atom only"}[legacy], func(t *testing.T) {
-			t.Parallel()
-			reader, _, turn, _, store := nativeFlow(t)
-			ctx := context.Background()
-			at := time.Now().UTC()
-			export, err := m.NewBoundary(turn.Scope, turn.Conversation, "classify", m.BoundaryReasonClose, at)
-			requireNoError(t, err, "boundary: %v")
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		for _, legacy := range []bool{false, true} {
+			t.Run(map[bool]string{false: "native only", true: "legacy atom only"}[legacy], func(t *testing.T) {
+				t.Parallel()
+				reader, _, turn, _, store := nativeFlow(t, factory)
+				ctx := context.Background()
+				at := time.Now().UTC()
+				export, err := m.NewBoundary(turn.Scope, turn.Conversation, "classify", m.BoundaryReasonClose, at)
+				requireNoError(t, err, "boundary: %v")
 
-			if legacy {
-				seedLegacyAtomOnly(t, store, turn.Scope, at)
-			}
+				if legacy {
+					seedLegacyAtomOnly(t, store, turn.Scope, at)
+				}
 
-			model := &legacyClassificationModel{}
-			adapter, err := ops.NewCanonicalBoundaryStore(store, reader)
-			requireNoError(t, err, "adapter: %v")
-			processor, err := boundary.NewBoundaryProcessorWithClock(adapter, model, model,
-				testProcessorDerivation(), func() time.Time { return at })
-			requireNoError(t, err, "processor: %v")
-			before, err := store.LoadScopeState(ctx, turn.Scope)
-			requireNoError(t, err, "before: %v")
+				model := &legacyClassificationModel{}
+				adapter, err := ops.NewCanonicalBoundaryStore(store, reader)
+				requireNoError(t, err, "adapter: %v")
+				processor, err := boundary.NewBoundaryProcessorWithClock(adapter, model, model,
+					testProcessorDerivation(), func() time.Time { return at })
+				requireNoError(t, err, "processor: %v")
+				before, err := store.LoadScopeState(ctx, turn.Scope)
+				requireNoError(t, err, "before: %v")
 
-			_, err = processor.ProcessBoundary(ctx, export)
-			if !legacy {
-				assertNativeBoundaryClassified(t, store, model, export, err)
+				_, err = processor.ProcessBoundary(ctx, export)
+				if !legacy {
+					assertNativeBoundaryClassified(t, store, model, export, err)
 
-				return
-			}
+					return
+				}
 
-			requirePermanentIdentityConflict(t, err)
-			after, err := store.LoadScopeState(ctx, turn.Scope)
-			requireNoError(t, err, "after: %v")
+				requirePermanentIdentityConflict(t, err)
+				after, err := store.LoadScopeState(ctx, turn.Scope)
+				requireNoError(t, err, "after: %v")
 
-			if model.calls != 0 || before != after {
-				t.Fatal("legacy scope entered models or changed state")
-			}
+				if model.calls != 0 || before != after {
+					t.Fatal("legacy scope entered models or changed state")
+				}
 
-			forgotten, err := forget.NewCanonicalForgetAdapter(store)
-			requireNoError(t, err, "forget adapter: %v")
-			_, err = forgotten.ForgetScope(ctx, m.ForgetScopeCommand{
-				SchemaVersion: m.DerivedSchemaVersionV1, Scope: turn.Scope,
-				RequestID: "forget-unproven", ForgottenAt: at.Add(time.Hour),
+				forgotten, err := forget.NewCanonicalForgetAdapter(store)
+				requireNoError(t, err, "forget adapter: %v")
+				_, err = forgotten.ForgetScope(ctx, m.ForgetScopeCommand{
+					SchemaVersion: m.DerivedSchemaVersionV1, Scope: turn.Scope,
+					RequestID: "forget-unproven", ForgottenAt: at.Add(time.Hour),
+				})
+				requireNoError(t, err, "forget: %v")
+				_, err = processor.ProcessBoundary(ctx, export)
+				requirePermanentIdentityConflict(t, err)
+
+				if model.calls != 0 {
+					t.Fatal("forget admitted unproven history to models")
+				}
 			})
-			requireNoError(t, err, "forget: %v")
-			_, err = processor.ProcessBoundary(ctx, export)
-			requirePermanentIdentityConflict(t, err)
-
-			if model.calls != 0 {
-				t.Fatal("forget admitted unproven history to models")
-			}
-		})
-	}
+		}
+	})
 }
 
-func seedLegacyAtomOnly(t *testing.T, store *badger.CanonicalStore, scope m.Scope, at time.Time) {
+func seedLegacyAtomOnly(t *testing.T, store coreOwner, scope m.Scope, at time.Time) {
 	t.Helper()
 
 	ctx := context.Background()
@@ -101,7 +102,7 @@ func seedLegacyAtomOnly(t *testing.T, store *badger.CanonicalStore, scope m.Scop
 }
 
 func assertNativeBoundaryClassified(
-	t *testing.T, store *badger.CanonicalStore, model *legacyClassificationModel, export m.Boundary, err error,
+	t *testing.T, store coreOwner, model *legacyClassificationModel, export m.Boundary, err error,
 ) {
 	t.Helper()
 	requireNoError(t, err, "native-only scope: %v")

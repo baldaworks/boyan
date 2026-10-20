@@ -16,52 +16,54 @@ import (
 
 func TestKindFilterSurvivesMissingSQLiteRebuild(t *testing.T) {
 	t.Parallel()
-	reader, _, turn, _, store := nativeFlow(t)
-	ingestKindFixture(t, store, turn)
-	assertKindCanonicalPages(t, store, turn.Scope)
-	root := t.TempDir()
-	requireNoError(t, os.Chmod(root, 0o700), "private state: %v")
-	projection, err := index.Open(t.Context(), root, index.Options{})
-	requireNoError(t, err, "projection: %v")
-	applier, err := index.NewSQLiteCanonicalApplier(projection, reader, store)
-	requireNoError(t, err, "applier: %v")
-	applier.ConfigureProjectionRetention(store, "sqlite")
-	requireNoError(t, applier.BeginProjectionRebuild(t.Context(), turn.Scope, "kind-generation"), "begin rebuild: %v")
-	coordinator, err := syncer.NewProjectionCoordinator(store, store, applier, 128)
-	requireNoError(t, err, "coordinator: %v")
-	manifest, err := coordinator.Sync(context.Background(), turn.Scope, "sqlite", "kind-generation")
-	requireNoError(t, err, "sync: %v")
-	assertRebuiltKind(t, projection, reader, turn.Scope)
-	requireNoError(t, projection.Close(), "close: %v")
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		reader, _, turn, _, store := nativeFlow(t, factory)
+		ingestKindFixture(t, store, turn)
+		assertKindCanonicalPages(t, store, turn.Scope)
+		root := t.TempDir()
+		requireNoError(t, os.Chmod(root, 0o700), "private state: %v")
+		projection, err := index.Open(t.Context(), root, index.Options{})
+		requireNoError(t, err, "projection: %v")
+		applier, err := index.NewSQLiteCanonicalApplier(projection, reader, store)
+		requireNoError(t, err, "applier: %v")
+		applier.ConfigureProjectionRetention(store, "sqlite")
+		requireNoError(t, applier.BeginProjectionRebuild(t.Context(), turn.Scope, "kind-generation"), "begin rebuild: %v")
+		coordinator, err := syncer.NewProjectionCoordinator(store, store, applier, 128)
+		requireNoError(t, err, "coordinator: %v")
+		manifest, err := coordinator.Sync(context.Background(), turn.Scope, "sqlite", "kind-generation")
+		requireNoError(t, err, "sync: %v")
+		assertRebuiltKind(t, projection, reader, turn.Scope)
+		requireNoError(t, projection.Close(), "close: %v")
 
-	requireNoError(t, os.Remove(filepath.Join(root, "search", "search.sqlite")), "remove disposable fixture: %v")
-	reopened, err := index.Open(t.Context(), root, index.Options{})
-	requireNoError(t, err, "reopen: %v")
-	t.Cleanup(func() { requireNoError(t, reopened.Close(), "close: %v") })
+		requireNoError(t, os.Remove(filepath.Join(root, "search", "search.sqlite")), "remove disposable fixture: %v")
+		reopened, err := index.Open(t.Context(), root, index.Options{})
+		requireNoError(t, err, "reopen: %v")
+		t.Cleanup(func() { requireNoError(t, reopened.Close(), "close: %v") })
 
-	rebuilt, err := index.NewSQLiteCanonicalApplier(reopened, reader, store)
-	requireNoError(t, err, "rebuild applier: %v")
-	rebuilt.ConfigureProjectionRetention(store, "sqlite")
-	resumed, err := rebuilt.ResumeProjection(context.Background(), turn.Scope, manifest.GenerationID)
-	requireNoError(t, err, "resume: %v")
+		rebuilt, err := index.NewSQLiteCanonicalApplier(reopened, reader, store)
+		requireNoError(t, err, "rebuild applier: %v")
+		rebuilt.ConfigureProjectionRetention(store, "sqlite")
+		resumed, err := rebuilt.ResumeProjection(context.Background(), turn.Scope, manifest.GenerationID)
+		requireNoError(t, err, "resume: %v")
 
-	if resumed {
-		t.Fatal("missing physical generation accepted as compatible")
-	}
+		if resumed {
+			t.Fatal("missing physical generation accepted as compatible")
+		}
 
-	runner, err := runtime.NewProjectionRuntime(store, store, rebuilt, "sqlite", 128)
-	requireNoError(t, err, "runtime: %v")
-	requireNoError(t, runner.Sync(context.Background(), turn.Scope), "rebuild without new changes: %v")
-	final, found, err := store.LoadActiveProjectionManifest(context.Background(), turn.Scope, "sqlite")
-	requireNoError(t, err, "checkpoint: %v")
+		runner, err := runtime.NewProjectionRuntime(store, store, rebuilt, "sqlite", 128)
+		requireNoError(t, err, "runtime: %v")
+		requireNoError(t, runner.Sync(context.Background(), turn.Scope), "rebuild without new changes: %v")
+		final, found, err := store.LoadActiveProjectionManifest(context.Background(), turn.Scope, "sqlite")
+		requireNoError(t, err, "checkpoint: %v")
 
-	if !found || final.GenerationID == manifest.GenerationID || final.Watermark != manifest.Watermark {
-		t.Fatalf("invalid rebuilt manifest: %+v",
-			final)
-	}
+		if !found || final.GenerationID == manifest.GenerationID || final.Watermark != manifest.Watermark {
+			t.Fatalf("invalid rebuilt manifest: %+v",
+				final)
+		}
 
-	assertRebuiltKind(t, reopened, reader, turn.Scope)
-	assertKindCanonicalPages(t, store, turn.Scope)
+		assertRebuiltKind(t, reopened, reader, turn.Scope)
+		assertKindCanonicalPages(t, store, turn.Scope)
+	})
 }
 
 func assertRebuiltKind(t *testing.T,

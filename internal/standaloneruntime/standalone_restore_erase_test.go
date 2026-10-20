@@ -3,13 +3,16 @@ package standaloneruntime //nolint:testpackage // Exercises actual restart with 
 import (
 	"bytes"
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/baldaworks/boyan/internal/canonicalcore"
+	"github.com/baldaworks/boyan/internal/canonicalsql"
 	m "github.com/baldaworks/boyan/pkg/memory"
 	b "github.com/baldaworks/boyan/store/archive"
+	"github.com/jackc/pgx/v5"
 )
 
 func TestStandaloneLoadingRestoreDoesNotAdvanceErase(t *testing.T) {
@@ -18,23 +21,22 @@ func TestStandaloneLoadingRestoreDoesNotAdvanceErase(t *testing.T) {
 
 func testStandaloneLoadingRestoreDoesNotAdvanceErase(t *testing.T, cfg Config) {
 	ctx := context.Background()
-	full, prefix, original := standalonePendingEraseArchive(t, cfg.Canonical.Backend)
+	full, original := standalonePendingEraseArchive(t, cfg.Canonical.Backend)
 	destination := openFixtureSQLStore(t, cfg)
-	requireNoError(t, destination.ImportCanonicalLogical(ctx, bytes.NewReader(full)), "baseline pending journal: %v")
+	t.Cleanup(func() { _ = destination.Close() })
 
-	_, err := destination.ImportCanonicalLogicalWithOptions(ctx, bytes.NewReader(prefix),
-		b.CanonicalLogicalImportOptions{BatchSize: 1})
-	if err == nil {
-		t.Fatal("partial import succeeded")
-	}
-
+	interruptStandaloneRestore(t, destination, full)
 	requireNoError(t, destination.Close(), "close: %v")
+	assertStandalonePendingRestoreJournal(t, cfg, original)
 
 	runtime, err := New(cfg)
 	requireNoError(t, err, "new: %v")
+	t.Cleanup(func() { _ = runtime.Stop(context.Background()) })
 
 	if err := runtime.Start(ctx); err == nil {
 		t.Fatal("incomplete restore started")
+	} else if code, _, ok := m.ClassifyError(err); !ok || code != m.CodeUnavailable {
+		t.Fatalf("loading restore did not block startup: %v", err)
 	}
 
 	if runtime.Ready() {
@@ -42,6 +44,7 @@ func testStandaloneLoadingRestoreDoesNotAdvanceErase(t *testing.T, cfg Config) {
 	}
 
 	requireNoError(t, runtime.Stop(ctx), "stop: %v")
+	assertStandalonePendingRestoreJournal(t, cfg, original)
 
 	destination = openFixtureSQLStore(t, cfg)
 	// Complete retry must preserve the imported prepared journal, then permit normal recovery.
@@ -64,6 +67,62 @@ func testStandaloneLoadingRestoreDoesNotAdvanceErase(t *testing.T, cfg Config) {
 	assertStandaloneRecoveredErase(t, runtime, original)
 }
 
+func interruptStandaloneRestore(t *testing.T, destination runtimeFixtureStore, full []byte) {
+	t.Helper()
+
+	ctx := t.Context()
+	summary, err := canonicalsql.ScanCanonicalLogicalExport(ctx, bytes.NewReader(full), 1, nil)
+	requireNoError(t, err, "scan complete control: %v")
+
+	interrupted := false
+
+	_, err = destination.ImportCanonicalLogicalWithOptions(ctx, bytes.NewReader(full),
+		b.CanonicalLogicalImportOptions{BatchSize: 1, Progress: func(progress b.CanonicalLogicalImportProgress) error {
+			if progress.ImportedRecords == summary.RecordCount {
+				interrupted = true
+
+				return errors.New("interrupt after durable replay before validation")
+			}
+
+			return nil
+		}})
+	if err == nil || !interrupted {
+		t.Fatalf("restore did not reach interrupted durable replay: %v", err)
+	}
+}
+
+func assertStandalonePendingRestoreJournal(t *testing.T, cfg Config, original m.ScopeEraseJournal) {
+	t.Helper()
+
+	args := []any{[]byte(original.Scope.Key), []byte(original.Scope.Kind), []byte(original.OperationID)}
+
+	var encoded []byte
+
+	if cfg.Canonical.Backend == "postgres" {
+		conn, err := pgx.Connect(t.Context(), cfg.Canonical.Postgres.DSN)
+		requireNoError(t, err, "pending journal connection: %v")
+
+		defer conn.Close(context.Background())
+
+		err = conn.QueryRow(t.Context(), "SELECT envelope FROM boyan_canonical.erase_journal "+
+			"WHERE scope_key=$1 AND scope_kind=$2 AND id=$3", args...).Scan(&encoded)
+		requireNoError(t, err, "pending restore journal: %v")
+	} else {
+		db, _ := openRuntimeCanonicalSQL(t, cfg)
+		err := db.QueryRowContext(t.Context(), "SELECT envelope FROM erase_journal "+
+			"WHERE scope_key=$1 AND scope_kind=$2 AND id=$3", args...).Scan(&encoded)
+		requireNoError(t, err, "pending restore journal: %v")
+	}
+
+	var journal m.ScopeEraseJournal
+
+	requireNoError(t, canonicalsql.Decode(canonicalsql.EraseJournal, encoded, &journal), "decode journal: %v")
+
+	if !reflect.DeepEqual(journal, original) {
+		t.Fatalf("loading restore changed pending journal: %+v", journal)
+	}
+}
+
 func assertStandaloneRecoveredErase(t *testing.T, runtime *Runtime, original m.ScopeEraseJournal) {
 	t.Helper()
 
@@ -80,7 +139,7 @@ func assertStandaloneRecoveredErase(t *testing.T, runtime *Runtime, original m.S
 	}
 }
 
-func standalonePendingEraseArchive(t *testing.T, backend string) ([]byte, []byte, m.ScopeEraseJournal) {
+func standalonePendingEraseArchive(t *testing.T, backend string) ([]byte, m.ScopeEraseJournal) {
 	t.Helper()
 
 	ctx := context.Background()
@@ -108,29 +167,13 @@ func standalonePendingEraseArchive(t *testing.T, backend string) ([]byte, []byte
 
 	var full bytes.Buffer
 	requireNoError(t, source.ExportCanonicalLogical(ctx, &full), "export: %v")
-	fullBytes, prefix := reorderStandaloneEraseArchive(t, full.Bytes())
 	fresh := openFixtureSQLStore(t, sqlRuntimeConfig(t, backend))
 
 	defer fresh.Close()
 
-	requireNoError(t, fresh.ImportCanonicalLogical(ctx, bytes.NewReader(fullBytes)), "full control: %v")
+	requireNoError(t, fresh.ImportCanonicalLogical(ctx, bytes.NewReader(full.Bytes())), "full control: %v")
 
-	return fullBytes, prefix, original
-}
-
-func reorderStandaloneEraseArchive(t *testing.T, encoded []byte) ([]byte, []byte) {
-	t.Helper()
-	// SQL archives require stamp order and validate the whole stream before
-	// replay. Retain its exact native order and interrupt before the footer.
-	trimmed := bytes.TrimSuffix(encoded, []byte{'\n'})
-	end := bytes.LastIndexByte(trimmed, '\n') + 1
-
-	prefix := append([]byte(nil), encoded[:end]...)
-	if end == 0 || !bytes.HasPrefix(encoded, prefix) {
-		t.Fatal("interrupted stream is not exact prefix")
-	}
-
-	return encoded, prefix
+	return full.Bytes(), original
 }
 
 type restoreStartupExtractor struct{}
@@ -158,7 +201,7 @@ func TestStandaloneValidatedRestoreResumesBeforeErase(t *testing.T) {
 
 func testStandaloneValidatedRestoreResumesBeforeErase(t *testing.T, cfg Config) {
 	ctx := context.Background()
-	full, _, original := standalonePendingEraseArchive(t, cfg.Canonical.Backend)
+	full, original := standalonePendingEraseArchive(t, cfg.Canonical.Backend)
 	destination := openFixtureSQLStore(t, cfg)
 
 	removeFault := failRuntimePrivacyPreparation(t, cfg)

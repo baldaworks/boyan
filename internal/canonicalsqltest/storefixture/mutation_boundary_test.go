@@ -90,7 +90,7 @@ func runMutationBoundaryCase(t *testing.T, f *storefixture.Fixture, store mutati
 	case "competing-inputs":
 		assertBoundaryMutationCompetition(t, store, mutation, empty)
 	case "capability-rollback":
-		assertBoundaryCapabilityRollback(t, store, probe, mutation, empty)
+		assertBoundaryCapabilityRollback(t, f, store, probe, mutation, empty)
 	default:
 		assertBoundaryMutationReplay(t, f, store, probe, mutation, empty, kind)
 	}
@@ -229,7 +229,7 @@ func assertBoundaryFencePrecedence(t *testing.T, store mutationStore, probe muta
 	}
 }
 
-func assertBoundaryCapabilityRollback(t *testing.T, store mutationStore, probe mutationProbe,
+func assertBoundaryCapabilityRollback(t *testing.T, f *storefixture.Fixture, store mutationStore, probe mutationProbe,
 	mutation memory.CanonicalMutation, empty bool) {
 	t.Helper()
 	before := probe.stamps(t)
@@ -241,4 +241,6 @@ func assertBoundaryCapabilityRollback(t *testing.T, store mutationStore, probe m
 	if err == nil || !reflect.DeepEqual(before, probe.stamps(t)) {
 		t.Fatal("failed boundary published proof/capability")
 	}
+
+	assertFailedBoundaryReopensUnreserved(t, f, mutation, empty)
 }

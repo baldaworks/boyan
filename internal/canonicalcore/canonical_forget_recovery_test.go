@@ -14,20 +14,21 @@ import (
 
 func TestScopeForgetResumesLegacyCrashWindows(t *testing.T) {
 	t.Parallel()
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		for _, committed := range []bool{false, true} {
+			name := "after-denial"
+			if committed {
+				name = "after-outcome"
+			}
 
-	for _, committed := range []bool{false, true} {
-		name := "after-denial"
-		if committed {
-			name = "after-outcome"
+			t.Run(name, func(t *testing.T) { testLegacyForgetCrash(t, committed, factory) })
 		}
-
-		t.Run(name, func(t *testing.T) { testLegacyForgetCrash(t, committed) })
-	}
+	})
 }
 
-func testLegacyForgetCrash(t *testing.T, committed bool) {
+func testLegacyForgetCrash(t *testing.T, committed bool, factory coreFactory) {
 	t.Helper()
-	_, _, turn, outcome, store := nativeFlow(t)
+	_, _, turn, outcome, store := nativeFlow(t, factory)
 	ctx := context.Background()
 	refs := nativeFixturePayloadRefs(t, store)
 	revisions, err := store.LoadCanonicalRevisions(ctx, m.CanonicalRevisionReadRequest{
@@ -63,7 +64,7 @@ func testLegacyForgetCrash(t *testing.T, committed bool) {
 	}
 }
 
-func commitLegacyScopeForget(t *testing.T, store *b.CanonicalStore, turn m.Turn,
+func commitLegacyScopeForget(t *testing.T, store coreOwner, turn m.Turn,
 	revision m.MemoryRevision, command m.ForgetScopeCommand,
 ) {
 	t.Helper()
@@ -86,12 +87,16 @@ func commitLegacyScopeForget(t *testing.T, store *b.CanonicalStore, turn m.Turn,
 	requireNoError(t, err, "legacy outcome commit: %v")
 }
 
-func nativeFixturePayloadRefs(t *testing.T, store *b.CanonicalStore) []m.PayloadRef {
+func nativeFixturePayloadRefs(t *testing.T, store coreOwner) []m.PayloadRef {
 	t.Helper()
+
+	if _, legacy := store.(*b.CanonicalStore); !legacy {
+		return coreSQLPayloadRefs(t, store)
+	}
 
 	var refs []m.PayloadRef
 
-	err := store.DB().View(func(txn *db.Txn) error {
+	err := store.(*b.CanonicalStore).DB().View(func(txn *db.Txn) error {
 		iterator := txn.NewIterator(db.DefaultIteratorOptions)
 		defer iterator.Close()
 
@@ -130,7 +135,7 @@ func nativeFixturePayloadRefs(t *testing.T, store *b.CanonicalStore) []m.Payload
 	return refs
 }
 
-func requireNativePayloadsAbsent(t *testing.T, store *b.CanonicalStore, refs []m.PayloadRef) {
+func requireNativePayloadsAbsent(t *testing.T, store coreOwner, refs []m.PayloadRef) {
 	t.Helper()
 
 	for _, ref := range refs {
@@ -142,34 +147,36 @@ func requireNativePayloadsAbsent(t *testing.T, store *b.CanonicalStore, refs []m
 
 func TestCompletedScopeForgetReplayPreservesLaterTurn(t *testing.T) {
 	t.Parallel()
-	reader, processor, turn, _, store := nativeFlow(t)
-	ctx := context.Background()
-	adapter, err := forgetops.NewCanonicalForgetAdapter(store)
-	requireNoError(t, err, "adapter: %v")
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		reader, processor, turn, _, store := nativeFlow(t, factory)
+		ctx := context.Background()
+		adapter, err := forgetops.NewCanonicalForgetAdapter(store)
+		requireNoError(t, err, "adapter: %v")
 
-	command := m.ForgetScopeCommand{SchemaVersion: m.DerivedSchemaVersionV1,
-		Scope: turn.Scope, RequestID: "completed-forget", ForgottenAt: time.Now().UTC()}
-	_, err = adapter.ForgetScope(ctx, command)
-	requireNoError(t, err, "first forget: %v")
-	later, err := m.NewTurn(turn.Scope, turn.Conversation, "turn-after-forget",
-		turn.CompletedAt.Add(time.Hour), "Я живу в Оше", "OK")
-	requireNoError(t, err, "later turn: %v")
-	outcome, err := processor.ProcessTurn(ctx, later, testProcessorDerivation())
-	requireNoError(t, err, "later process: %v")
-	_, err = adapter.ForgetScope(ctx, command)
-	requireNoError(t, err, "old request replay: %v")
-	records, err := reader.LoadRecallRecords(ctx, later.Scope, outcome.RevisionIDs)
-	requireNoError(t, err, "later recall: %v")
+		command := m.ForgetScopeCommand{SchemaVersion: m.DerivedSchemaVersionV1,
+			Scope: turn.Scope, RequestID: "completed-forget", ForgottenAt: time.Now().UTC()}
+		_, err = adapter.ForgetScope(ctx, command)
+		requireNoError(t, err, "first forget: %v")
+		later, err := m.NewTurn(turn.Scope, turn.Conversation, "turn-after-forget",
+			turn.CompletedAt.Add(time.Hour), "Я живу в Оше", "OK")
+		requireNoError(t, err, "later turn: %v")
+		outcome, err := processor.ProcessTurn(ctx, later, testProcessorDerivation())
+		requireNoError(t, err, "later process: %v")
+		_, err = adapter.ForgetScope(ctx, command)
+		requireNoError(t, err, "old request replay: %v")
+		records, err := reader.LoadRecallRecords(ctx, later.Scope, outcome.RevisionIDs)
+		requireNoError(t, err, "later recall: %v")
 
-	if len(records) != 1 {
-		t.Fatalf("later records lost: %d", len(records))
-	}
+		if len(records) != 1 {
+			t.Fatalf("later records lost: %d", len(records))
+		}
 
-	traced, err := reader.Trace(ctx, m.TraceRequest{Scope: later.Scope,
-		Root: m.RevisionRef{ItemID: records[0].ItemID, RevisionID: records[0].RevisionID}, MaxNodes: 10})
-	requireNoError(t, err, "later trace: %v")
+		traced, err := reader.Trace(ctx, m.TraceRequest{Scope: later.Scope,
+			Root: m.RevisionRef{ItemID: records[0].ItemID, RevisionID: records[0].RevisionID}, MaxNodes: 10})
+		requireNoError(t, err, "later trace: %v")
 
-	if len(traced.Sources) != 1 || traced.Sources[0].Turn.Messages[0].Text != later.Messages[0].Text {
-		t.Fatalf("later source lost: %+v", traced.Sources)
-	}
+		if len(traced.Sources) != 1 || traced.Sources[0].Turn.Messages[0].Text != later.Messages[0].Text {
+			t.Fatalf("later source lost: %+v", traced.Sources)
+		}
+	})
 }

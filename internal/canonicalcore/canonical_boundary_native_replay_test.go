@@ -10,45 +10,47 @@ import (
 )
 
 func TestBoundaryNativeImmutableInputAfterRestart(t *testing.T) {
-	for _, partial := range []bool{false, true} {
-		t.Run(map[bool]string{false: "complete", true: "partial"}[partial], func(t *testing.T) {
-			t.Parallel()
-			f := newBoundaryReplayFixture(t, partial)
-			equivalent := f.export
-			equivalent.TransitionID = " \t" + equivalent.TransitionID + "\n"
-			equivalent.OccurredAt = equivalent.OccurredAt.In(time.FixedZone("offset", 6*60*60))
+	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
+		for _, partial := range []bool{false, true} {
+			t.Run(map[bool]string{false: "complete", true: "partial"}[partial], func(t *testing.T) {
+				t.Parallel()
+				f := newBoundaryReplayFixture(t, partial, factory)
+				equivalent := f.export
+				equivalent.TransitionID = " \t" + equivalent.TransitionID + "\n"
+				equivalent.OccurredAt = equivalent.OccurredAt.In(time.FixedZone("offset", 6*60*60))
 
-			original, err := f.processor.ProcessBoundary(context.Background(), equivalent)
-			if partial {
-				if code, _, ok := m.ClassifyError(err); !ok || code != m.CodeInvalidDerived {
-					t.Fatalf("expected partial profile failure: %v", err)
+				original, err := f.processor.ProcessBoundary(context.Background(), equivalent)
+				if partial {
+					if code, _, ok := m.ClassifyError(err); !ok || code != m.CodeInvalidDerived {
+						t.Fatalf("expected partial profile failure: %v", err)
+					}
+				} else {
+					requireNoError(t, err, "first: %v")
 				}
-			} else {
-				requireNoError(t, err, "first: %v")
-			}
 
-			f.restart(t)
-			assertBoundaryNativeChangedInputs(t, f)
-			f.model.invalidProfile = false
-			completed, err := f.processor.ProcessBoundary(context.Background(), f.export)
-			requireNoError(t, err, "original retry after restart: %v")
+				f.restart(t)
+				assertBoundaryNativeChangedInputs(t, f)
+				f.model.invalidProfile = false
+				completed, err := f.processor.ProcessBoundary(context.Background(), f.export)
+				requireNoError(t, err, "original retry after restart: %v")
 
-			if !reflect.DeepEqual(completed.Scenarios, original.Scenarios) || f.model.scenarioCalls != 1 {
-				t.Fatal("retry changed completed scenario or entered scenario model")
-			}
+				if !reflect.DeepEqual(completed.Scenarios, original.Scenarios) || f.model.scenarioCalls != 1 {
+					t.Fatal("retry changed completed scenario or entered scenario model")
+				}
 
-			expectedProfileCalls := 1
-			if partial {
-				expectedProfileCalls = 2
-			}
+				expectedProfileCalls := 1
+				if partial {
+					expectedProfileCalls = 2
+				}
 
-			if f.model.profileCalls != expectedProfileCalls {
-				t.Fatalf("profile calls=%d", f.model.profileCalls)
-			}
+				if f.model.profileCalls != expectedProfileCalls {
+					t.Fatalf("profile calls=%d", f.model.profileCalls)
+				}
 
-			assertBoundaryNativeCompletedReplay(t, f, completed, equivalent)
-		})
-	}
+				assertBoundaryNativeCompletedReplay(t, f, completed, equivalent)
+			})
+		}
+	})
 }
 
 func assertBoundaryNativeChangedInputs(t *testing.T, f *boundaryReplayFixture) {
