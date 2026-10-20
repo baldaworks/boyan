@@ -111,28 +111,3 @@ func (tx *Tx) pgPage(
 
 	return result, nil
 }
-
-func (tx *Tx) checkPageIdentities(ctx context.Context, f Family, def familyDef, page []Row) error {
-	// The page hydrates each envelope once. Duplicate checks inspect only keys.
-	for _, row := range page {
-		_, values, _ := row.Key.values()
-
-		var count int
-
-		err := scanOne(ctx, tx.q, "SELECT count(*) FROM (SELECT 1 FROM "+tx.connection.table(def.table)+
-			" WHERE logical_key=$1 LIMIT 2) exact", []any{stampKey(values)}, &count)
-		if err != nil {
-			return tx.fail(databaseError(ctx, "check page identity", err))
-		}
-
-		if count != 1 {
-			return tx.fail(corruptRow())
-		}
-
-		if _, err := tx.resolveStamp(ctx, f, stampKey(values)); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}

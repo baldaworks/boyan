@@ -8,19 +8,28 @@ import (
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
-const activeHeadMetadataSQL = `WITH requested AS MATERIALIZED (
+func (tx *Tx) pageMetadataStatement(def familyDef) string {
+	return `WITH requested AS MATERIALIZED (
  SELECT binary_key,ordinal FROM unnest($1::bytea[]) WITH ORDINALITY AS k(binary_key,ordinal)
 )
 SELECT k.ordinal,
- (SELECT count(*) FROM (SELECT 1 FROM boyan_canonical.head WHERE logical_key=k.binary_key LIMIT 2) exact),
+ (SELECT count(*) FROM (SELECT 1 FROM ` + tx.connection.table(def.table) + `
+                       WHERE logical_key=k.binary_key LIMIT 2) exact),
  s.ids,s.sequences,s.deleted
 FROM requested k LEFT JOIN LATERAL (
  SELECT array_agg(stamp_id) AS ids,array_agg(sequence) AS sequences,array_agg(deleted) AS deleted
  FROM (SELECT stamp_id,CASE WHEN length(last_seq)=8 THEN last_seq ELSE NULL END AS sequence,deleted
-       FROM boyan_canonical.row_stamp WHERE family=$2 AND binary_key=k.binary_key LIMIT 2) bounded
+       FROM ` + tx.connection.table("row_stamp") + ` WHERE family=$2 AND binary_key=k.binary_key LIMIT 2) bounded
 ) s ON true ORDER BY k.ordinal`
+}
 
 func (tx *Tx) checkActiveHeadIdentities(ctx context.Context, page []Row) error {
+	def, _ := familyDefinition(Head)
+
+	return tx.checkPageIdentities(ctx, Head, def, page)
+}
+
+func (tx *Tx) checkPageIdentities(ctx context.Context, f Family, def familyDef, page []Row) error {
 	if len(page) == 0 {
 		return nil
 	}
@@ -31,9 +40,9 @@ func (tx *Tx) checkActiveHeadIdentities(ctx context.Context, page []Row) error {
 		keys[i] = stampKey(values)
 	}
 
-	r, err := tx.q.query(ctx, activeHeadMetadataSQL, keys, []byte(Head))
+	r, err := tx.q.query(ctx, tx.pageMetadataStatement(def), keys, []byte(f))
 	if err != nil {
-		return tx.fail(databaseError(ctx, "check active identities", err))
+		return tx.fail(databaseError(ctx, "check page identities", err))
 	}
 	defer r.Close()
 
@@ -41,17 +50,17 @@ func (tx *Tx) checkActiveHeadIdentities(ctx context.Context, page []Row) error {
 
 	for r.Next() {
 		count++
-		if err := checkActiveHeadMetadata(r, count); err != nil {
+		if err := checkPageMetadata(r, count); err != nil {
 			return tx.fail(rowError(ctx, err))
 		}
 	}
 
 	if err := r.Err(); err != nil {
-		return tx.fail(databaseError(ctx, "check active identities", err))
+		return tx.fail(databaseError(ctx, "check page identities", err))
 	}
 
 	if err := r.Close(); err != nil {
-		return tx.fail(databaseError(ctx, "close active identities", err))
+		return tx.fail(databaseError(ctx, "close page identities", err))
 	}
 
 	if count != len(page) {
@@ -61,7 +70,7 @@ func (tx *Tx) checkActiveHeadIdentities(ctx context.Context, page []Row) error {
 	return nil
 }
 
-func checkActiveHeadMetadata(r rows, expected int) error {
+func checkPageMetadata(r rows, expected int) error {
 	var (
 		ordinal, matches int
 		ids              []int64
