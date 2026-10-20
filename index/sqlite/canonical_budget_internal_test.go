@@ -1,4 +1,3 @@
-//nolint:cyclop,lll // Real transaction boundary fixtures retain explicit checks.
 package sqlite
 
 import (

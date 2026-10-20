@@ -1,7 +1,5 @@
 //go:build integration
 
-// Package canonicalsqltest supplies isolated real SQL connections for canonical
-// storage tests. Public owner factories live in its storefixture subpackage.
 package canonicalsqltest
 
 import (

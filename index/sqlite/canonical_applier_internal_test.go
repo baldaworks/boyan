@@ -1,4 +1,4 @@
-//nolint:cyclop,lll,funlen // Real SQL lifecycle scenarios retain explicit error checks and fixture shapes.
+//nolint:lll // Keep the shared canonical record fixture readable together.
 package sqlite
 
 import (

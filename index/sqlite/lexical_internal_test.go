@@ -1,4 +1,3 @@
-//nolint:lll // Keep literal SQL fixtures and pre-authored controls readable together.
 package sqlite
 
 import (
