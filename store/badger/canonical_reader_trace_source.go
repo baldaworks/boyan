@@ -3,6 +3,7 @@ package badger
 import (
 	"context"
 	"errors"
+
 	"github.com/dgraph-io/badger/v4"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
@@ -27,7 +28,7 @@ func (r *CanonicalReader) loadSourceRecord(
 		return memory.SourceRecord{}, err
 	}
 
-	payload, err := r.loadTracePayload(ctx, source.Payload, maxCanonicalLogicalLineBytes)
+	payload, err := r.loadTracePayload(ctx, source.Payload, maxCanonicalValueBytes)
 	if err != nil {
 		return memory.SourceRecord{}, err
 	}

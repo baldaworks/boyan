@@ -30,7 +30,7 @@ func TestPrivacyRevisionPageCancellationRestarts(t *testing.T) {
 		assertCode(t, owner.SourcePrivacyReady(t.Context()), memory.CodeUnavailable)
 		requireEraseTestNoError(t, owner.PrepareSourcePrivacy(t.Context()))
 		assertPrivacyHistory(t, owner, h, "standard")
-		assertPrivacyMarkerLast(t, owner)
+		requireEraseTestNoError(t, owner.SourcePrivacyReady(t.Context()))
 	})
 }
 

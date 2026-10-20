@@ -83,7 +83,7 @@ func seedSemanticScopeTurn(t *testing.T, runtime *Runtime, scope memory.Scope, i
 	turn, err := memory.NewTurn(scope, conversation,
 		id, time.Now().UTC().Add(-time.Hour), "Bishkek home "+id, "OK")
 	requireNoError(t, err, "turn: %v")
-	processor, err := canonicalcore.NewCanonicalTurnProcessor(runtime.service.store, restoreStartupExtractor{},
+	processor, err := canonicalcore.NewCanonicalTurnProcessor(runtime.service.store, runtimeFixtureExtractor{},
 		memory.PolicyRegistry{Version: "policy-v1"})
 	requireNoError(t, err, "processor: %v")
 	_, err = processor.ProcessTurn(context.Background(), turn, memory.LegacyDerivationRef())

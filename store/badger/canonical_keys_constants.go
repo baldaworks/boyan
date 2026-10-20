@@ -30,8 +30,6 @@ const (
 )
 
 const (
-	maxCanonicalLogicalBatchSize             = 4096
-	maxCanonicalRestorePendingWrites         = 4096
 	maxCanonicalForgetScrubIDs               = 4096
 	canonicalSequenceBytes                   = 8
 	canonicalTupleLengthBytes                = 2

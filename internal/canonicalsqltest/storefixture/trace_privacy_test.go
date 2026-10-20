@@ -14,7 +14,7 @@ import (
 func TestPublicTracePrivacyAndCorruption(t *testing.T) {
 	for _, kind := range []string{"source-denied", "revision-denied", "sensitive", "unknown", "incomplete",
 		"unprepared", "scope-fence", "payload-missing", "payload-corrupt", "head-corrupt", "source-binding",
-		"membership-subset", "message-owner", "certified-owner", "scope-stamp", "restore-loading"} {
+		"membership-subset", "message-owner", "certified-owner"} {
 		t.Run(kind, func(t *testing.T) {
 			forEachMutation(t, func(t *testing.T, f *storefixture.Fixture, store mutationStore, p mutationProbe) {
 				m := nativeMutation(t)

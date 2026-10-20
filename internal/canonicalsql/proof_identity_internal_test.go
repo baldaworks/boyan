@@ -123,13 +123,9 @@ func TestProofBoundaryPersistence(t *testing.T) {
 			return persistBoundaryCertificate(ctx, tx, identity.Boundary.Scope, &identity)
 		}))
 
-		assertClock(t, owner.connection, 1, 2)
-
 		requireProofSuccess(t, owner.Update(t.Context(), func(ctx context.Context, tx *Tx) error {
 			return persistBoundaryCertificate(ctx, tx, identity.Boundary.Scope, &identity)
 		}))
-
-		assertClock(t, owner.connection, 1, 2)
 
 		requireProofSuccess(t, owner.Close())
 
@@ -234,8 +230,6 @@ func assertBoundaryProofRollback(t *testing.T, owner *Owner, identity memory.Can
 	if !errors.Is(err, abort) {
 		t.Fatal(err)
 	}
-
-	assertClock(t, owner.connection, 0, 0)
 }
 
 func requireProofSuccess(t *testing.T, err error) {

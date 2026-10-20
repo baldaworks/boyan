@@ -288,7 +288,7 @@ atom-only history, return permanent `conflict` before model execution or replay.
 Clean native-semantic-only old scopes can establish certification on their first
 successful boundary transaction using a bounded exact namespace existence
 check. Forget/reset cannot manufacture proof. There is no automatic backfill or
-repair command; see [upgrade and restore restrictions](OPERATIONS.md#boundary-contract-upgrades).
+repair command; see [boundary upgrade restrictions](OPERATIONS.md#boundary-contract-upgrades).
 
 ## MCP endpoint
 

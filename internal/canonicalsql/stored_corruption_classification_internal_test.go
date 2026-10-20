@@ -174,7 +174,6 @@ func TestStoredValidationKeepsCallerAndSizeErrors(t *testing.T) {
 			return err
 		})
 		assertPermanentStoredCode(t, err, memory.CodeInvalidDerived)
-		assertClock(t, c, 0, 0)
 	})
 
 	_, err := Encode(Revision, make(chan int))

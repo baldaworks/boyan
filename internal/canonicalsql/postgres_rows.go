@@ -163,88 +163,49 @@ func (s *physicalRowScan) decode(f Family, def familyDef) (physicalRow, error) {
 
 // Native HASH is deliberately nonunique. Always recheck full original bytes,
 // validate raw/derived/envelope bindings, and reject a second exact match.
-func (tx *Tx) resolvePoint(ctx context.Context, key Key, def familyDef, values [][]byte) (
-	*physicalRow, *physicalStamp, error,
-) {
-	r, err := tx.q.query(ctx, tx.pointStatement(key.Family, def), stampKey(values), []byte(key.Family))
+func (tx *Tx) resolvePoint(ctx context.Context, key Key, def familyDef, values [][]byte) (*physicalRow, error) {
+	statement := "SELECT " + pgSelection(key.Family, def) + " FROM " + tx.connection.table(def.table) +
+		" WHERE logical_key=$1 LIMIT 2"
+
+	r, err := tx.q.query(ctx, statement, stampKey(values))
 	if err != nil {
-		return nil, nil, tx.fail(databaseError(ctx, "resolve row", err))
+		return nil, tx.fail(databaseError(ctx, "resolve row", err))
 	}
 	defer r.Close()
 
-	var (
-		result *physicalRow
-		stamp  *physicalStamp
-	)
+	var result *physicalRow
 
 	for r.Next() {
-		result, stamp, err = scanPointRecord(r, key, def, result, stamp)
-		if err != nil {
-			return nil, nil, tx.fail(rowError(ctx, err))
+		if result != nil {
+			return nil, tx.fail(corruptRow())
 		}
+
+		row, err := scanPhysical(r, key.Family, def)
+		if err != nil {
+			return nil, tx.fail(rowError(ctx, err))
+		}
+
+		_, stored, _ := row.Key.values()
+		if !bytes.Equal(stampKey(stored), stampKey(values)) {
+			return nil, tx.fail(corruptRow())
+		}
+
+		result = &row
 	}
 
 	if err := r.Err(); err != nil {
-		return nil, nil, tx.fail(databaseError(ctx, "resolve row", err))
+		return nil, tx.fail(databaseError(ctx, "resolve row", err))
 	}
 
 	if err := r.Close(); err != nil {
-		return nil, nil, tx.fail(databaseError(ctx, "close rows", err))
+		return nil, tx.fail(databaseError(ctx, "close rows", err))
 	}
 
-	return result, stamp, nil
-}
-
-func scanPointRecord(r rows, key Key, def familyDef, row *physicalRow, stamp *physicalStamp) (
-	*physicalRow, *physicalStamp, error,
-) {
-	s := newPhysicalRowScan(key.Family, def)
-
-	var (
-		probe    int
-		id       *int64
-		sequence []byte
-		deleted  *bool
-	)
-
-	dest := append([]any{&probe}, s.destinations()...)
-	dest = append(dest, &id, &sequence, &deleted)
-
-	if err := r.Scan(dest...); err != nil {
-		return nil, nil, err
-	}
-
-	if probe == 0 {
-		if row != nil {
-			return nil, nil, corruptRow()
-		}
-
-		decoded, err := s.decode(key.Family, def)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		_, stored, _ := decoded.Key.values()
-
-		_, values, _ := key.values()
-		if !bytes.Equal(stampKey(stored), stampKey(values)) {
-			return nil, nil, corruptRow()
-		}
-
-		return &decoded, stamp, nil
-	}
-
-	if probe != 1 || stamp != nil {
-		return nil, nil, corruptRow()
-	}
-
-	decoded, err := decodePointStamp(id, sequence, deleted)
-
-	return row, decoded, err
+	return result, nil
 }
 
 func (tx *Tx) pgGet(ctx context.Context, key Key, def familyDef, values [][]byte) ([]byte, error) {
-	row, _, err := tx.resolvePoint(ctx, key, def, values)
+	row, err := tx.resolvePoint(ctx, key, def, values)
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +221,7 @@ func (tx *Tx) pgPut(
 	ctx context.Context, key Key, def familyDef, values [][]byte, encoded []byte, extra [][]byte,
 	expected *uint64, cas bool,
 ) error {
-	row, stamp, err := tx.resolvePoint(ctx, key, def, values)
+	row, err := tx.resolvePoint(ctx, key, def, values)
 	if err != nil {
 		return err
 	}
@@ -281,11 +242,11 @@ func (tx *Tx) pgPut(
 		return tx.fail(conflict())
 	}
 
-	return tx.pgStamp(ctx, key.Family, stampKey(values), false, stamp)
+	return nil
 }
 
 func (tx *Tx) pgDelete(ctx context.Context, key Key, def familyDef, values [][]byte) error {
-	row, stamp, err := tx.resolvePoint(ctx, key, def, values)
+	row, err := tx.resolvePoint(ctx, key, def, values)
 	if err != nil {
 		return err
 	}
@@ -301,7 +262,7 @@ func (tx *Tx) pgDelete(ctx context.Context, key Key, def familyDef, values [][]b
 		}
 	}
 
-	return tx.pgStamp(ctx, key.Family, stampKey(values), true, stamp)
+	return nil
 }
 
 func pgPutStatement(

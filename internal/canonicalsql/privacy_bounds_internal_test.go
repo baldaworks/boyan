@@ -137,41 +137,8 @@ func TestPrivacyPartialPageRestartAndMarkerLast(t *testing.T) {
 			t.Fatalf("partial preparation became sticky: %+v", got)
 		}
 
-		assertPrivacyMarkerLast(t, owner)
+		requireProofSuccess(t, owner.SourcePrivacyReady(t.Context()))
 	})
-}
-
-func assertPrivacyMarkerLast(t *testing.T, owner *Owner) {
-	t.Helper()
-
-	if err := owner.View(t.Context(), func(ctx context.Context, tx *Tx) error {
-		var (
-			after *StampCursor
-			last  Stamp
-		)
-
-		for {
-			stamps, err := tx.ScanStamps(ctx, after, 32)
-			if err != nil {
-				return err
-			}
-
-			if len(stamps) == 0 {
-				break
-			}
-
-			last = stamps[len(stamps)-1]
-			after = &last.Cursor
-		}
-
-		if last.Key.Family != SourcePrivacyReady || last.Deleted {
-			t.Fatalf("completion not final stamp: %+v", last.Cursor)
-		}
-
-		return tx.CheckIntegrity(ctx)
-	}); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func growSQLPrivacyHistory(t *testing.T, owner *Owner, h privacyHistory) {

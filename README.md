@@ -170,7 +170,7 @@ unknown, even when the requested revision is benign; benign recall remains
 available. These labels describe stored classification, not automatic secret
 detection. Startup prepares supported older stores before serving work. Take a
 trustworthy pre-upgrade backup and follow the
-[upgrade and restore restrictions](docs/OPERATIONS.md#source-privacy-and-restore-upgrades);
+[source privacy upgrade restrictions](docs/OPERATIONS.md#source-privacy-upgrades);
 older writers must never access upgraded state.
 
 HTTP Turn retries use canonical input equality, including equivalent UTC

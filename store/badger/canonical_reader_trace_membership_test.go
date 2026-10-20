@@ -235,7 +235,7 @@ func corruptTraceMessagePayload(txn *badger.Txn, mutation m.CanonicalMutation, k
 	case "member-identity":
 		message.MessageID = "wrong-message-identity"
 	case "oversized-envelope":
-		return txn.Set(key, bytes.Repeat([]byte("x"), maxCanonicalLogicalLineBytes+1))
+		return txn.Set(key, bytes.Repeat([]byte("x"), maxCanonicalValueBytes+1))
 	case "oversized-message":
 		data := bytes.Repeat([]byte("x"), m.MaxDerivedTurnTextBytes+1)
 
@@ -432,7 +432,7 @@ func oversizeBoundTraceSource(txn *badger.Txn, mutation m.CanonicalMutation) err
 	}
 
 	source.Payload = m.PayloadRef{ID: "oversized-source",
-		Digest: source.Payload.Digest, ByteSize: maxCanonicalLogicalLineBytes + 1}
+		Digest: source.Payload.Digest, ByteSize: maxCanonicalValueBytes + 1}
 
 	record.Payload = source.Payload
 	if err := writeSourcePrivacy(txn, record); err != nil {

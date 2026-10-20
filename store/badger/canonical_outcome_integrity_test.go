@@ -63,7 +63,6 @@ func TestCanonicalReplayRejectsOutcomeOutsideDurableScopeHistory(t *testing.T) {
 			}))
 
 			assertCanonicalStoreFailure(t, replay())
-			assertCanonicalStoreFailure(t, store.VerifyCanonicalIntegrity(ctx))
 		})
 	}
 }

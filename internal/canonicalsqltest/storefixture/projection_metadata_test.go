@@ -172,10 +172,6 @@ func TestPublicProjectionGenerationLifecycle(t *testing.T) {
 		}
 
 		assertMutationState(t, reopened.(mutationStore), m.Scope, 0)
-
-		if len(p.stamps(t)) != 4 {
-			t.Fatalf("metadata stamps=%+v", p.stamps(t))
-		}
 	})
 }
 
@@ -197,13 +193,13 @@ func TestPublicProjectionActivationRollsBack(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		before := p.stamps(t)
+		before := p.snapshot(t)
 		release := p.failInserts(t, "projection_active")
 		err := s.ActivateProjectionGeneration(t.Context(), m, m.UpdatedAt)
 
 		release()
 
-		if err == nil || !reflect.DeepEqual(before, p.stamps(t)) {
+		if err == nil || !reflect.DeepEqual(before, p.snapshot(t)) {
 			t.Fatalf("activation escaped: %v", err)
 		}
 
@@ -244,7 +240,7 @@ func TestPublicProjectionCheckpointAndRetentionMonotonicity(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		before := p.stamps(t)
+		before := p.snapshot(t)
 		replay := cp
 		replay.OccurredAt = replay.OccurredAt.Add(time.Hour)
 
@@ -253,7 +249,7 @@ func TestPublicProjectionCheckpointAndRetentionMonotonicity(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if !reflect.DeepEqual(before, p.stamps(t)) {
+		if !reflect.DeepEqual(before, p.snapshot(t)) {
 			t.Fatal("checkpoint replay wrote stamps")
 		}
 

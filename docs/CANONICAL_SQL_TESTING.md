@@ -5,26 +5,26 @@ subpackage registers the public SQLite and PostgreSQL owners without introducing
 an import cycle in primitive tests. The owner fixture tests lifecycle and the
 implemented privacy/preparation, denial-read and payload contracts. Shared
 privacy cases use actual owners with bounded structural history fixtures.
-Later tasks must run mutation, reader, erase and archive cases against both
+Preservation checks run mutation, reader and erase cases against both
 engines before retiring the corresponding Badger tests.
 
 The SQLite owner opens a separate canonical file through `store/sqlite.Open`.
 It holds an OS exclusive lock on the database file itself (including aliases),
 uses a single pinned connection configured with WAL/FULL and constraints, and
 drains canceled transactions before close/checkpoint/unlock. Opening is distinct
-from readiness: `RestorePreflight` on both store and reader rejects persisted
-restore control. Both Store pointers expose PrepareSourcePrivacy,
+from readiness: structural integrity is checked before pending-erase recovery
+and privacy preparation. Both Store pointers expose PrepareSourcePrivacy,
 SourcePrivacyReady, PutPayload/LoadPayload/DeletePayload and source/revision
 denial reads. Preparation retains exclusive admission across bounded pages,
 validates retained completed captures, preserves incomplete/sticky state and
-publishes the stamped ready marker last. No restore-clearing method is exposed.
+publishes the fixed-version ready marker last.
 
 `store/postgres.Open` acquires a fixed session advisory lock before migration
 on one direct pgx connection. Every transaction uses context-aware serialized
 admission and checks ownership on that connection. Disconnect, protocol failure
 or missing ownership permanently fences that owner until full close/reopen;
 there is no automatic reconnect or ambiguous-commit retry. Preflight checks
-stored integrity as well as the loading fence. Both owners expose the same
+stored structural integrity. Both owners expose the same
 small lifecycle test factory, without claiming the unfinished CanonicalStore port.
 
 PostgreSQL configuration accepts a resolved private DSN, a bounded connect
@@ -75,14 +75,14 @@ AST scan. It registers all Badger durable family constants (including metadata
 outside `canonical_keys_constants.go`), key constructors/direct tuple sites,
 write primitives/record helpers, raw accesses/fault hooks and every test/helper
 in Badger and its consumer packages. Complete package registration includes
-shared fixtures that construct a backend indirectly. Archive output and
-filesystem fence writers are included conservatively alongside row writers;
-their call details distinguish them. Benchmarks are recorded as preservation
-evidence, not executed by the ordinary test command.
+shared fixtures that construct a backend indirectly. Benchmarks are recorded as
+preservation evidence, not executed by the ordinary test command.
 
 Each entry names its source, symbol, relevant raw calls and primary migration
-owner. The inventory retains all existing tests; registration is not a record
-that a case already passed on SQL. Review every changed registration before
+owner. Registration is not a record that a case already passed on SQL.
+Historical maintenance-only cases are explicitly retired because the unrequested
+application archive/export/import subsystem was removed; they are not passing
+retained behavior. Review every changed registration before
 regenerating it:
 
 ```sh
@@ -90,7 +90,8 @@ go test -count=1 -run TestPreservationInventory ./internal/canonicalsqltest
 go test -count=1 -run TestPreservationInventory ./internal/canonicalsqltest -args -write-coverage
 ```
 
-Do not remove registrations or old coverage merely to make this check pass.
+Do not remove retained-behavior registrations or old coverage merely to make
+this check pass.
 After a later task ports a case, retain its replacement and dual-backend result
 in that task's evidence before changing its registration. TASK-019 owns residual
 consumer/raw fixture migration; TASK-020 owns final Badger retirement. Protected
@@ -98,7 +99,7 @@ audit/benchmark artifacts and user drafts remain unchanged.
 
 | Durable behavior / corruption category | Primary migration owners |
 | --- | --- |
-| Binary keys, global namespaces, unsigned cursors and row stamps | TASK-002 |
+| Binary keys, global namespaces and unsigned cursors | TASK-002 |
 | Sources/messages/items/revisions/payloads, immutable equality, CAS, replay and incremental mutation | TASK-007 |
 | Active heads, exact scope, temporal reads, raw membership and recall/trace interleavings | TASK-008/009 |
 | Source privacy/classification/membership/incomplete state and marker-last preparation | TASK-005 |
@@ -106,13 +107,16 @@ audit/benchmark artifacts and user drafts remain unchanged.
 | Ordered producer receipts/cursors, gaps and commit-before-receipt recovery | TASK-010 |
 | Delivery claims/leases, projection manifests/activation/retention/checkpoints | TASK-011 |
 | Permanent source/revision denials, erase journal/fence/guard, source/blob ownership locks, erased-blob tombstones and paged crash recovery | TASK-012 |
-| Full/incremental archives, delete/reinsert, corruption/truncation/gaps, restore fence/retry and monotone restriction merge | TASK-013/014/015 |
 | Startup/readiness, canonical authority binding, search cancellation, lexical/vector denial retirement and fallback | TASK-017/018 |
 | Remaining consumer integration, raw corruption fixtures and old-file preservation acceptance | TASK-019 |
 
 The global payload namespace, `source-privacy-ready` marker and erase guard must
-not become synthetic user scopes in SQL. The existing filesystem restore fence
-is explicitly inventoried for replacement by TASK-014's durable restore control.
+not become synthetic user scopes in SQL. Domain scope Version/ChangeSeq and CAS,
+full-tuple physical identity, duplicate rejection and envelope validation remain
+required independently of the removed archive clock and row stamps. Retained
+tests cover corrupt real rows, rollback, failure before readiness and interrupted
+pending-erase recovery on both engines. Task31 retires maintenance-only
+TASK-013/014/015 coverage without replacing it with another archive subsystem.
 
 The pgx v5.10.0 pin requires Go 1.25.0 and is compatible with the repository's
 Go 1.26 toolchain; checksums are committed in `go.sum`. Pin provenance is the

@@ -2,6 +2,7 @@ package canonicalsql
 
 import (
 	"context"
+
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
@@ -141,10 +142,6 @@ func scanReaderScopes(ctx context.Context, tx *Tx, scan Range) ([]memory.ScopeSt
 
 		if state.Validate() != nil || state.Scope != row.Key.Scope {
 			return nil, nil, corruptRow()
-		}
-
-		if err := validateScopeStateStamp(ctx, tx, row.Key, true); err != nil {
-			return nil, nil, err
 		}
 
 		states = append(states, state)

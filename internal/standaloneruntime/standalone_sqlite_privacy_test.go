@@ -1,24 +1,22 @@
 package standaloneruntime //nolint:testpackage // Exercises SQL reconstruction with canonical privacy.
 
 import (
-	"bytes"
 	"context"
-	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/baldaworks/boyan/internal/canonicalcore"
 	"github.com/baldaworks/boyan/pkg/memory"
-	canonical "github.com/baldaworks/boyan/store/sqlite"
 )
 
-// A disposable rebuild, canonical replay, or archive restore must never turn a
+// A disposable rebuild, canonical replay, or reopen must never turn a
 // denied/erased revision back into text, even with a healthy semantic provider.
 //
 //nolint:cyclop,funlen // One lifecycle retains receipts and checks all populated erase row families.
-func TestSQLiteRuntimeDeniedReplayRestoreAndErase(t *testing.T) {
-	cfg := enabledLifecycleConfig(t, &lifecycleEmbeddingProvider{})
+func TestSQLiteRuntimeDeniedReplayReopenAndErase(t *testing.T) {
+	provider := &lifecycleEmbeddingProvider{}
+	cfg := enabledLifecycleConfig(t, provider)
 	runtime, err := New(cfg)
 	requireNoError(t, err, "new: %v")
 	t.Cleanup(func() { _ = runtime.Stop(context.Background()) })
@@ -51,7 +49,7 @@ func TestSQLiteRuntimeDeniedReplayRestoreAndErase(t *testing.T) {
 	runtime, err = New(cfg)
 	requireNoError(t, err, "reopen: %v")
 	startSQLComponents(t, runtime)
-	processor, err := canonicalcore.NewCanonicalTurnProcessor(runtime.service.store, restoreStartupExtractor{},
+	processor, err := canonicalcore.NewCanonicalTurnProcessor(runtime.service.store, runtimeFixtureExtractor{},
 		memory.PolicyRegistry{Version: "policy-v1"})
 	requireNoError(t, err, "processor: %v")
 	_, err = processor.ProcessTurn(t.Context(), turn, memory.LegacyDerivationRef())
@@ -65,56 +63,45 @@ func TestSQLiteRuntimeDeniedReplayRestoreAndErase(t *testing.T) {
 
 	assertSQLPrivacyEmpty(t, runtime, request)
 
-	var archive bytes.Buffer
-	requireNoError(t, runtimeStore(t, runtime).ExportCanonicalLogical(t.Context(), &archive), "export denied state: %v")
-	requireNoError(t, runtime.Stop(t.Context()), "stop before restore: %v")
-
-	restoredProvider := &lifecycleEmbeddingProvider{}
-	restoredConfig := enabledLifecycleConfig(t, restoredProvider)
-	restored, err := canonical.Open(t.Context(), canonical.Config{
-		Path: filepath.Join(restoredConfig.StateDir, "canonical", "canonical.sqlite")})
-	requireNoError(t, err, "restore store: %v")
-	requireNoError(t, restored.ImportCanonicalLogical(t.Context(), bytes.NewReader(archive.Bytes())), "restore: %v")
-	requireNoError(t, restored.Close(), "close restore: %v")
-
-	runtime, err = New(restoredConfig)
-	requireNoError(t, err, "restored runtime: %v")
+	requireNoError(t, runtime.Stop(t.Context()), "stop before reopen: %v")
+	runtime, err = New(cfg)
+	requireNoError(t, err, "reopened runtime: %v")
 	startSQLComponents(t, runtime)
 	assertSQLPrivacyEmpty(t, runtime, request)
 
-	// Populate the restored database being erased, in the exact target scope.
+	// Populate the reopened database being erased, in the exact target scope.
 	// The denied source must stay absent while a separate eligible source gives
 	// every physical row-family removal assertion a nonempty starting point.
-	beforeBuild := restoredProvider.calls.Load()
-	eligible := seedSemanticScopeTurn(t, runtime, turn.Scope, "restored-eligible")
+	beforeBuild := provider.calls.Load()
+	eligible := seedSemanticScopeTurn(t, runtime, turn.Scope, "reopened-eligible")
 	syncer := semanticSyncer{lexical: runtime.service.projection, manager: runtime.service.semantic.manager}
-	requireNoError(t, syncer.Sync(t.Context(), turn.Scope), "sync restored eligible turn: %v")
+	requireNoError(t, syncer.Sync(t.Context(), turn.Scope), "sync reopened eligible turn: %v")
 	waitSemanticState(t, runtime, turn.Scope, "hybrid-ready")
 
-	if restoredProvider.calls.Load() <= beforeBuild {
-		t.Fatal("restored eligible turn did not run passage inference")
+	if provider.calls.Load() <= beforeBuild {
+		t.Fatal("reopened eligible turn did not run passage inference")
 	}
 
 	state, published, err := runtime.service.index.ActiveState(t.Context(), turn.Scope)
-	requireNoError(t, err, "restored publication: %v")
+	requireNoError(t, err, "reopened publication: %v")
 
 	if !published || state.PublicationEpoch == 0 {
-		t.Fatal("restored eligible turn has no positive semantic publication epoch")
+		t.Fatal("reopened eligible turn has no positive semantic publication epoch")
 	}
 
 	response, err = runtime.Search(t.Context(), request)
-	requireNoError(t, err, "restored eligible recall: %v")
+	requireNoError(t, err, "reopened eligible recall: %v")
 
 	if len(response.Results) != 1 || response.Results[0].Text != eligible.Messages[0].Text ||
 		response.Retrieval == nil || response.Retrieval.Effective != "hybrid" {
-		t.Fatalf("restored hybrid control missing or denied text resurrected: %#v", response)
+		t.Fatalf("reopened hybrid control missing or denied text resurrected: %#v", response)
 	}
 
 	after, found, err = runtime.service.store.LoadCanonicalOperation(t.Context(), turn.Scope, operation)
-	requireNoError(t, err, "restored denied receipt: %v")
+	requireNoError(t, err, "reopened denied receipt: %v")
 
 	if !found || !reflect.DeepEqual(after, receipt) {
-		t.Fatal("restoration or eligible ingest changed denied source receipt")
+		t.Fatal("reopen or eligible ingest changed denied source receipt")
 	}
 
 	assertSQLScopeRows(t, runtime, turn.Scope, true)

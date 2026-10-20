@@ -9,14 +9,11 @@ import (
 
 	"github.com/baldaworks/boyan/internal/canonicalsql"
 	"github.com/baldaworks/boyan/pkg/memory"
-	"github.com/baldaworks/boyan/store/archive"
 	"github.com/jackc/pgx/v5"
 )
 
 type runtimeFixtureStore interface {
 	standaloneCanonicalStore
-	archive.CanonicalLogicalExporter
-	archive.CanonicalLogicalImporter
 	BeginScopeErase(ctx context.Context, request memory.ScopeEraseRequest) (memory.ScopeEraseJournal, error)
 	DenySource(ctx context.Context, scope memory.Scope, sourceID string, at time.Time) error
 }
@@ -26,7 +23,7 @@ func runtimeStore(t *testing.T, runtime *Runtime) runtimeFixtureStore {
 
 	store, ok := runtime.service.store.(runtimeFixtureStore)
 	if !ok {
-		t.Fatal("selected SQL store lacks fixture maintenance ports")
+		t.Fatal("selected SQL store lacks fixture mutation ports")
 	}
 
 	return store

@@ -1,17 +1,18 @@
 package storefixture_test
 
 import (
+	"testing"
+	"time"
+
 	"github.com/baldaworks/boyan/internal/canonicalsql"
 	"github.com/baldaworks/boyan/internal/canonicalsqltest/storefixture"
 	memory "github.com/baldaworks/boyan/pkg/memory"
-	"testing"
-	"time"
 )
 
 func TestPublicReaderPrivacyAndCorruption(t *testing.T) {
 	for _, kind := range []string{"source-denied", "revision-denied", "sensitive", "revision-sensitive", "unknown",
 		"incomplete", "unprepared", "scope-fence", "payload-missing", "payload-corrupt", "head-corrupt", "source-binding",
-		"membership-subset", "message-owner", "certified-owner", "scope-stamp", "restore-loading"} {
+		"membership-subset", "message-owner", "certified-owner"} {
 		t.Run(kind, func(t *testing.T) {
 			forEachMutation(t, func(t *testing.T, f *storefixture.Fixture, store mutationStore, probe mutationProbe) {
 				mutation := nativeMutation(t)
@@ -108,20 +109,6 @@ func alterReaderStoredData(t *testing.T, p mutationProbe, m memory.CanonicalMuta
 		p.write(t, key(canonicalsql.Message, message.MessageID), message)
 
 		return memory.CodeStoreFailure
-	case "scope-stamp":
-		if err := p.exec("UPDATE "+p.table("row_stamp")+" SET last_seq=$1 WHERE family=$2",
-			canonicalsql.Uint64(100), []byte(canonicalsql.ScopeState)); err != nil {
-			t.Fatal(err)
-		}
-
-		return memory.CodeStoreFailure
-	case "restore-loading":
-		if err := p.exec("INSERT INTO "+p.table("restore_control")+" (singleton,control) VALUES (1,$1)",
-			[]byte("loading")); err != nil {
-			t.Fatal(err)
-		}
-
-		return memory.CodeUnavailable
 	}
 
 	return ""

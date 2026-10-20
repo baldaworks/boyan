@@ -1,7 +1,6 @@
 package forgetops_test
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -104,8 +103,8 @@ func TestSourceJournalRetryFinishesPendingOutcome(t *testing.T) {
 	}
 }
 
-// Build through supported canonical mutation and logical export/import APIs;
-// the imported SourceRef maps to an explicit nonnative SourceID, never a guess.
+// Build through canonical mutation; the legacy SourceRef maps to an explicit
+// nonnative SourceID, never a guess.
 func sourceJournalFixture(t *testing.T, native bool) (
 	*b.CanonicalStore, m.ForgetSourceCommand, m.CanonicalSourceRecord, string,
 ) {
@@ -136,11 +135,12 @@ func sourceJournalFixture(t *testing.T, native bool) (
 		source.SourceID = m.TurnSourceID(command.Source.ExportID)
 	}
 
-	origin, err := b.OpenCanonicalStore(t.TempDir())
+	directory := t.TempDir()
+	store, err := b.OpenCanonicalStore(directory)
 	sourceJournalNoError(t, err)
-	t.Cleanup(func() { _ = origin.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 
-	_, err = origin.ApplyCanonicalMutation(context.Background(), m.CanonicalMutation{
+	_, err = store.ApplyCanonicalMutation(context.Background(), m.CanonicalMutation{
 		SchemaVersion: m.CanonicalSchemaVersionV1, Scope: scope,
 		Operation: m.OperationRecord{
 			OperationID: "imported-operation", Fingerprint: "imported-fingerprint",
@@ -150,13 +150,6 @@ func sourceJournalFixture(t *testing.T, native bool) (
 	})
 	sourceJournalNoError(t, err)
 
-	var exported bytes.Buffer
-	sourceJournalNoError(t, origin.ExportCanonicalLogical(context.Background(), &exported))
-	directory := t.TempDir()
-	store, err := b.OpenCanonicalStore(directory)
-	sourceJournalNoError(t, err)
-	t.Cleanup(func() { _ = store.Close() })
-	sourceJournalNoError(t, store.ImportCanonicalLogical(context.Background(), &exported))
 	resolved, err := store.CanonicalSourceID(context.Background(), scope, command.Source)
 	sourceJournalNoError(t, err)
 

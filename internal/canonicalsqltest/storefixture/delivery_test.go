@@ -139,13 +139,13 @@ func TestPublicDeliveryLeaseRecoveryAndSettlement(t *testing.T) {
 func TestPublicDeliveryConcurrentClaimsAndAtomicFailure(t *testing.T) {
 	deliveryFixture(t, func(t *testing.T, _ *storefixture.Fixture, s mutationStore, d deliveryStore, p mutationProbe) {
 		r := seedDeliveries(t, s, "a", "b")
-		before := p.stamps(t)
+		before := p.snapshot(t)
 		release := p.failInserts(t, "delivery_claim")
 		_, err := d.ClaimDeliveryOutbox(t.Context(), r)
 
 		release()
 
-		if err == nil || !reflect.DeepEqual(before, p.stamps(t)) {
+		if err == nil || !reflect.DeepEqual(before, p.snapshot(t)) {
 			t.Fatalf("failed claim escaped: %v", err)
 		}
 

@@ -1,14 +1,15 @@
 package storefixture_test
 
 import (
-	"github.com/baldaworks/boyan/internal/canonicalsql"
-	"github.com/baldaworks/boyan/internal/canonicalsqltest/storefixture"
-	memory "github.com/baldaworks/boyan/pkg/memory"
 	"reflect"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/baldaworks/boyan/internal/canonicalsql"
+	"github.com/baldaworks/boyan/internal/canonicalsqltest/storefixture"
+	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
 func mutationBoundary(t *testing.T, scope memory.Scope) *memory.CanonicalBoundaryIdentityCommit {
@@ -232,13 +233,13 @@ func assertBoundaryFencePrecedence(t *testing.T, store mutationStore, probe muta
 func assertBoundaryCapabilityRollback(t *testing.T, f *storefixture.Fixture, store mutationStore, probe mutationProbe,
 	mutation memory.CanonicalMutation, empty bool) {
 	t.Helper()
-	before := probe.stamps(t)
+	before := probe.snapshot(t)
 	release := probe.failInserts(t, "operation")
 	_, err := writeBoundary(t, store, mutation, empty)
 
 	release()
 
-	if err == nil || !reflect.DeepEqual(before, probe.stamps(t)) {
+	if err == nil || !reflect.DeepEqual(before, probe.snapshot(t)) {
 		t.Fatal("failed boundary published proof/capability")
 	}
 

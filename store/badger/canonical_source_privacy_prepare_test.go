@@ -453,7 +453,11 @@ func TestPrepareSourcePrivacyForceCannotLaunderCompletedUnknown(t *testing.T) {
 	}
 
 	store.maintenanceMu.Lock()
-	err := store.prepareSourcePrivacyLocked(context.Background(), true)
+
+	err := store.db.Update(func(txn *badger.Txn) error { return txn.Delete(sourcePrivacyReadinessKey()) })
+	if err == nil {
+		err = store.prepareSourcePrivacyLocked(context.Background())
+	}
 	store.maintenanceMu.Unlock()
 
 	if err != nil {
@@ -606,7 +610,7 @@ func corruptPrivacyHistory(txn *badger.Txn, mutation m.CanonicalMutation, kind s
 	case "oversized-envelope":
 		key, _ := canonicalKey(mutation.Scope, badgerRecordRevision, mutation.Revisions[0].RevisionID)
 
-		return txn.Set(key, bytes.Repeat([]byte("x"), maxCanonicalLogicalLineBytes+1))
+		return txn.Set(key, bytes.Repeat([]byte("x"), maxCanonicalValueBytes+1))
 	default:
 		key, _ := canonicalKey(mutation.Scope, badgerRecordRevision, mutation.Revisions[0].RevisionID)
 		revision := mutation.Revisions[0]
@@ -616,6 +620,7 @@ func corruptPrivacyHistory(txn *badger.Txn, mutation m.CanonicalMutation, kind s
 	}
 }
 
+//nolint:cyclop // The same fixture verifies preparation, mutation, retry and retained incomplete authority.
 func TestPrepareSourcePrivacyUnsupportedDanglingEvidenceCannotLaunder(t *testing.T) {
 	store, mutation := privacyFixture(t)
 	historical := mutation.Revisions[0]
@@ -646,7 +651,11 @@ func TestPrepareSourcePrivacyUnsupportedDanglingEvidenceCannotLaunder(t *testing
 	}
 
 	store.maintenanceMu.Lock()
-	err := store.prepareSourcePrivacyLocked(context.Background(), true)
+
+	err := store.db.Update(func(txn *badger.Txn) error { return txn.Delete(sourcePrivacyReadinessKey()) })
+	if err == nil {
+		err = store.prepareSourcePrivacyLocked(context.Background())
+	}
 	store.maintenanceMu.Unlock()
 
 	if err != nil {

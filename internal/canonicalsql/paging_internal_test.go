@@ -28,8 +28,6 @@ func TestMaximumCompoundKeysMutationAndRawPages(t *testing.T) {
 		if err := c.View(t.Context(), func(tx *Tx) error { return tx.CheckIntegrity(t.Context()) }); err != nil {
 			t.Fatal(err)
 		}
-
-		assertClock(t, c, 20, 20)
 	})
 }
 

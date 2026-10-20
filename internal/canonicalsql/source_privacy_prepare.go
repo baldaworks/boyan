@@ -52,33 +52,7 @@ func (o *Owner) PrepareSourcePrivacy(ctx context.Context) error {
 	}
 	defer release()
 
-	// Preserve the original preparation contract only for a durably validated
-	// restore. This read cannot advance loading or waive ordinary erase guards.
-	var control *restoreControl
-
-	if err := o.restoreTransaction(admitted, false, func(ctx context.Context, tx *Tx) error {
-		var err error
-
-		control, err = tx.readRestoreControl(ctx, "restore_control")
-		if code, _, ok := memory.ClassifyError(err); ok && code == memory.CodeInvalidDerived {
-			return ownerUnavailable()
-		}
-
-		return err
-	}); err != nil {
-		return err
-	}
-
-	if control != nil {
-		if control.Phase != "validated" || control.Header == nil {
-			return ownerUnavailable()
-		}
-		// finishRestore verifies all stored bindings before granting its private
-		// held preparation capability, then removes the durable fence last.
-		return o.finishRestore(admitted, *control)
-	}
-
-	return o.prepareSourcePrivacy(admitted, false)
+	return o.prepareSourcePrivacy(admitted)
 }
 
 // privacyTransaction is used only while the owner already holds admission.
@@ -88,10 +62,6 @@ func (o *Owner) privacyTransaction(
 	write bool,
 	fn func(context.Context, *Tx) error,
 ) error {
-	if ctx.Value(validatedRestoreKey{}) == o {
-		return o.restoreTransaction(ctx, write, fn)
-	}
-
 	if err := o.checkPostgresOwnership(ctx); err != nil {
 		return err
 	}
@@ -105,18 +75,15 @@ func (o *Owner) privacyTransaction(
 	return o.connection.View(ctx, callback)
 }
 
-//nolint:cyclop // Existing ordered passes plus the private validated-restore capability.
-func (o *Owner) prepareSourcePrivacy(ctx context.Context, force bool) error {
-	ready, err := o.preparedPrivacy(ctx, force)
+func (o *Owner) prepareSourcePrivacy(ctx context.Context) error {
+	ready, err := o.preparedPrivacy(ctx)
 	if err != nil || ready {
 		return err
 	}
 
 	if err := o.privacyTransaction(ctx, true, func(ctx context.Context, tx *Tx) error {
-		if ctx.Value(validatedRestoreKey{}) != o {
-			if err := checkScopeErasePayloadGuard(ctx, tx); err != nil {
-				return err
-			}
+		if err := checkScopeErasePayloadGuard(ctx, tx); err != nil {
+			return err
 		}
 
 		return tx.Delete(ctx, Key{Family: SourcePrivacyReady})
@@ -205,16 +172,14 @@ func (o *Owner) preparePrivacyFamily(ctx context.Context,
 	}
 }
 
-func (o *Owner) preparedPrivacy(ctx context.Context, force bool) (bool, error) {
-	if !force {
-		err := o.privacyTransaction(ctx, false, requireSourcePrivacyReady)
-		if err == nil {
-			return true, nil
-		}
+func (o *Owner) preparedPrivacy(ctx context.Context) (bool, error) {
+	err := o.privacyTransaction(ctx, false, requireSourcePrivacyReady)
+	if err == nil {
+		return true, nil
+	}
 
-		if code, _, ok := memory.ClassifyError(err); !ok || code != memory.CodeUnavailable {
-			return false, err
-		}
+	if code, _, ok := memory.ClassifyError(err); !ok || code != memory.CodeUnavailable {
+		return false, err
 	}
 
 	return false, nil

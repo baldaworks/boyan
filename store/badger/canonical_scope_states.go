@@ -28,7 +28,7 @@ func (s *CanonicalStore) ListCanonicalScopeStates(
 			return nil, nil, eraseStoreFailure("scope state cursor is invalid", nil)
 		}
 
-		if _, _, err := decodeCanonicalLogicalKey(cursor); err != nil {
+		if _, _, err := decodeCanonicalTupleKey(cursor); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -103,7 +103,7 @@ func listScopeStatesTxn(
 }
 
 func scopeStateAtKey(txn *badger.Txn, key []byte) (memory.ScopeState, error) {
-	parts, _, err := decodeCanonicalLogicalKey(key)
+	parts, _, err := decodeCanonicalTupleKey(key)
 	if err != nil {
 		return memory.ScopeState{}, err
 	}

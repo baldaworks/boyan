@@ -36,8 +36,7 @@ func (config Config) Validate() error {
 // one direct connection and cannot reconnect after losing session ownership.
 type Store struct{ owner *canonicalsql.Owner }
 
-// Open acquires fixed session ownership before migration. Persisted loading
-// control can remain open for later recovery, but RestorePreflight must pass
+// Open acquires fixed session ownership before migration. CheckIntegrity must pass
 // before application readiness. No other database backend is used on failure.
 func Open(ctx context.Context, config Config) (*Store, error) {
 	owner, err := canonicalsql.OpenPostgresOwner(ctx, canonicalsql.PostgresConfig{
@@ -50,10 +49,10 @@ func Open(ctx context.Context, config Config) (*Store, error) {
 	return &Store{owner: owner}, nil
 }
 
-// RestorePreflight checks session ownership, durable loading control and stored
+// CheckIntegrity checks session ownership and stored structural
 // integrity. A disconnected/poisoned owner requires full Close/Open recovery.
-func (s *Store) RestorePreflight(ctx context.Context) error {
-	return s.canonicalOwner().RestorePreflight(ctx)
+func (s *Store) CheckIntegrity(ctx context.Context) error {
+	return s.canonicalOwner().CheckIntegrity(ctx)
 }
 
 // CheckReadiness verifies the pinned session, ownership and durable serving
@@ -80,11 +79,11 @@ type Reader struct{ store *Store }
 // NewCanonicalReader binds a reader to the store's pinned canonical authority.
 func NewCanonicalReader(store *Store) *Reader { return &Reader{store: store} }
 
-// RestorePreflight checks the same readiness boundary as the owning Store.
-func (r *Reader) RestorePreflight(ctx context.Context) error {
+// CheckIntegrity checks the same readiness boundary as the owning Store.
+func (r *Reader) CheckIntegrity(ctx context.Context) error {
 	if r == nil {
-		return (*Store)(nil).RestorePreflight(ctx)
+		return (*Store)(nil).CheckIntegrity(ctx)
 	}
 
-	return r.store.RestorePreflight(ctx)
+	return r.store.CheckIntegrity(ctx)
 }

@@ -15,7 +15,7 @@ import (
 // cancellation and erase fences are errors, not permission to replay fallback.
 func TestPublicBoundaryCompatibilityErrorPropagation(t *testing.T) {
 	for _, kind := range []string{"payload-missing", "payload-corrupt", "head-corrupt", "source-binding",
-		"unprepared", "restore-loading", "scope-fence", "canceled"} {
+		"unprepared", "scope-fence", "canceled"} {
 		t.Run(kind, func(t *testing.T) {
 			forEachMutation(t, func(t *testing.T, f *storefixture.Fixture, store mutationStore, p mutationProbe) {
 				m := compatibleTraceMutation(t)
@@ -77,7 +77,7 @@ func assertCompatibilityError(t *testing.T, kind string, want memory.ErrorCode, 
 	}
 
 	wantClass := memory.ErrorClassPermanent
-	if kind == "unprepared" || kind == "restore-loading" || kind == "scope-fence" {
+	if kind == "unprepared" || kind == "scope-fence" {
 		wantClass = memory.ErrorClassRetryable
 	}
 

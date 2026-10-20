@@ -35,7 +35,7 @@ func seedSQLBoundary(
 func TestSQLRuntimeBoundaryFallbackMatrix(t *testing.T) {
 	for _, mode := range []string{"native-absence", "legacy", "superseded",
 		"source-denied", "revision-sensitive", "missing-source",
-		"payload-missing", "payload-corrupt", "head-corrupt", "unprepared", "loading", "fence", "canceled", "unavailable"} {
+		"payload-missing", "payload-corrupt", "head-corrupt", "unprepared", "fence", "canceled", "unavailable"} {
 		t.Run(mode, func(t *testing.T) {
 			forEachSQLRuntimeConfig(t, func(t *testing.T, cfg Config) {
 				runtime, err := New(cfg)
@@ -151,14 +151,6 @@ func alterSQLBoundaryReplay(
 	}
 
 	p := nativeRuntimeProbe(t, cfg)
-	if mode == "loading" {
-		err := p.exec("INSERT INTO "+p.table("restore_control")+"(singleton,control) VALUES(1,$1)",
-			[]byte(`{"version":1,"phase":"loading"}`))
-		requireNoError(t, err, "durable loading: %v")
-
-		return
-	}
-
 	err := p.connection.Update(t.Context(), func(tx *canonicalsql.Tx) error {
 		key := canonicalsql.Key{Scope: turn.Scope}
 

@@ -362,8 +362,8 @@ message history with classification evidence, and full certifiable legacy
 history. Sensitive history stays sensitive and unsupported history stays
 unknown. Unattributable opaque history marks its exact scope incomplete, which can also deny later new
 sources in that scope. Cancellation leaves readiness unpublished and the next
-attempt restarts the bounded full pass. This work occurs once at startup or
-restore, never as a per-trace history scan.
+attempt restarts the bounded full pass. This work occurs at startup, never as a
+per-trace history scan.
 
 ## Scope isolation
 
@@ -412,9 +412,10 @@ timeout. This changes no canonical IDs or durable stage completion.
 
 ## Migration boundary
 
-Boyan does not ship migration or historical import as part of its supported
-CLI or runtime surface. If that capability is needed later, it belongs in a
-separate migration tool outside this repository's primary service boundary.
+Boyan does not ship old-state transfer, Badger conversion, application
+backup/restore or logical archive export/import as part of its supported library,
+CLI or runtime surface. Selecting fresh canonical SQL storage does not transfer
+existing Badger data or remove its files.
 
 ## Derivation and boundary identity
 
@@ -444,18 +445,8 @@ races. The producer fingerprint is separate delivery metadata. Scenarios and
 profile retain independent durable completion; forget retains content-free
 certificates and scope markers without restoring erased payloads.
 
-Logical exports and native backups preserve certificates, capability markers,
-inherited grounding metadata and restrictive source privacy. Integrity checks
-validate versions, finite staging states, exact key/source/payload bindings and
-complete membership against authoritative records before forced reconstruction;
-imported standard labels, completeness bits and readiness never establish trust.
-
-Restore uses a fixed local loading/validated fence outside Badger's copied MVCC
-stream. Loading remains unavailable across failures and reopen. A complete
-validated load is synced before the validated fence is synced; forced privacy
-preparation is synced again before fence removal and directory sync. A validated
-interruption can resume preparation; a partial loading interruption requires a
-complete retry. Native full and incremental backups remain supported. A single
-unlinked temporary spool and two sequential passes preserve restrictive incoming
-and destination history across versions and tombstones without a history-sized
-map. See [operator recovery limits](docs/OPERATIONS.md#source-privacy-and-restore-upgrades).
+Normal canonical reads and replay validate versions, finite staging states,
+exact key/source/payload bindings and complete membership against authoritative
+records. Source privacy preparation preserves restrictive classification and
+publishes readiness only after its complete pass. See
+[source privacy upgrade restrictions](docs/OPERATIONS.md#source-privacy-upgrades).

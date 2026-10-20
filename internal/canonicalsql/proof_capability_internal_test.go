@@ -114,7 +114,6 @@ func TestProofCapabilityExactNamespace(t *testing.T) {
 
 				if kind == "marked" {
 					assertCode(t, err, memory.CodeConflict)
-					assertClock(t, owner.connection, 0, 0)
 
 					return
 				}

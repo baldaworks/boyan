@@ -17,9 +17,9 @@ var durableFamilies = [...]Family{
 	EraseBlobLock, ErasedBlob,
 }
 
-// CheckIntegrity validates structural persistence bindings and row/stamp coverage
-// in bounded pages. It does not replace owner/domain/archive validation. Call it
-// in the same transaction before readiness/import completion; Migrate also calls it.
+// CheckIntegrity validates structural persistence bindings
+// in bounded pages. It does not replace owner/domain validation. Call it
+// in the same transaction before readiness; Migrate also calls it.
 func (tx *Tx) CheckIntegrity(ctx context.Context) error {
 	return tx.checkIntegrity(ctx, memory.MaxCanonicalReadRecords)
 }
@@ -35,41 +35,7 @@ func (tx *Tx) checkIntegrity(ctx context.Context, pageSize int) error {
 		}
 	}
 
-	return tx.checkStampIntegrity(ctx, pageSize)
-}
-
-func (tx *Tx) checkStampIntegrity(ctx context.Context, pageSize int) error {
-	var encoded []byte
-	if err := scanOne(ctx, tx.q, "SELECT mutation_clock FROM "+tx.connection.table("store_meta")+" WHERE singleton=1",
-		nil, &encoded); err != nil {
-		return tx.fail(databaseError(ctx, "integrity clock", err))
-	}
-
-	clock, err := DecodeUint64(encoded)
-	if err != nil {
-		return tx.fail(corruptRow())
-	}
-
-	var after *StampCursor
-	for {
-		page, err := tx.ScanStamps(ctx, after, pageSize)
-		if err != nil {
-			return err
-		}
-
-		if len(page) == 0 {
-			return nil
-		}
-
-		for _, stamp := range page {
-			if stamp.Cursor.Sequence > clock {
-				return tx.fail(corruptRow())
-			}
-		}
-
-		cursor := page[len(page)-1].Cursor
-		after = &cursor
-	}
+	return nil
 }
 
 func (tx *Tx) checkFamilyIntegrity(ctx context.Context, family Family, pageSize int) error {
@@ -82,23 +48,6 @@ func (tx *Tx) checkFamilyIntegrity(ctx context.Context, family Family, pageSize 
 
 		if len(page) == 0 {
 			return nil
-		}
-
-		for _, row := range page {
-			_, values, _ := row.Key.values()
-
-			var count int
-
-			err := scanOne(ctx, tx.q, "SELECT count(*) FROM (SELECT 1 FROM "+tx.connection.table("row_stamp")+
-				" WHERE family=$1 AND binary_key=$2 AND deleted=$3 LIMIT 2) live",
-				[]any{[]byte(family), stampKey(values), false}, &count)
-			if err != nil {
-				return tx.fail(databaseError(ctx, "integrity stamp", err))
-			}
-
-			if count != 1 {
-				return tx.fail(corruptRow())
-			}
 		}
 
 		key := page[len(page)-1].Key

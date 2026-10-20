@@ -1,15 +1,16 @@
 package storefixture_test
 
 import (
+	"reflect"
+	"testing"
+
 	"github.com/baldaworks/boyan/internal/canonicalsql"
 	"github.com/baldaworks/boyan/internal/canonicalsqltest/storefixture"
 	memory "github.com/baldaworks/boyan/pkg/memory"
-	"reflect"
-	"testing"
 )
 
 func TestPublicMutationRejectsCorruptScopeAndStamp(t *testing.T) {
-	for _, kind := range []string{"scope-column", "stamp"} {
+	for _, kind := range []string{"scope-column"} {
 		t.Run(kind, func(t *testing.T) {
 			forEachMutation(t, func(t *testing.T, _ *storefixture.Fixture, store mutationStore, probe mutationProbe) {
 				runMutationScopeCorruption(t, store, probe, kind)
@@ -26,7 +27,7 @@ func runMutationScopeCorruption(t *testing.T, store mutationStore, probe mutatio
 		t.Fatal(err)
 	}
 
-	before := probe.stamps(t)
+	before := probe.snapshot(t)
 	alterMutationScopeCorruption(t, probe, kind, true)
 
 	later := laterMutation(mutation, "must-not-commit", 1)
@@ -35,7 +36,7 @@ func runMutationScopeCorruption(t *testing.T, store mutationStore, probe mutatio
 	alterMutationScopeCorruption(t, probe, kind, false)
 	assertMutationState(t, store, mutation.Scope, 1)
 
-	if !reflect.DeepEqual(before, probe.stamps(t)) {
+	if !reflect.DeepEqual(before, probe.snapshot(t)) {
 		t.Fatal("failed corruption attempt changed stamps")
 	}
 
@@ -57,9 +58,6 @@ func alterMutationScopeCorruption(t *testing.T, probe mutationProbe, kind string
 		}
 
 		err = probe.exec("UPDATE "+probe.table("scope_state")+" SET version_u64=$1", canonicalsql.Uint64(version))
-	} else {
-		err = probe.exec("UPDATE "+probe.table("row_stamp")+" SET deleted=$1 WHERE family=$2", corrupt,
-			[]byte(canonicalsql.ScopeState))
 	}
 
 	if err != nil {
@@ -67,7 +65,7 @@ func alterMutationScopeCorruption(t *testing.T, probe mutationProbe, kind string
 	}
 }
 
-func TestPublicMutationRecordsShareStamp(t *testing.T) {
+func TestPublicMutationPersistsDeliveryBinding(t *testing.T) {
 	forEachMutation(t, func(t *testing.T, _ *storefixture.Fixture, store mutationStore, probe mutationProbe) {
 		mutation := nativeMutation(t)
 		mutation.Lifecycle = []memory.LifecycleEvent{{EventID: "activate", RevisionID: "revision",
@@ -78,37 +76,6 @@ func TestPublicMutationRecordsShareStamp(t *testing.T) {
 			CreatedAt: mutation.Operation.CommittedAt}}
 		if _, err := store.ApplyCanonicalMutation(t.Context(), mutation); err != nil {
 			t.Fatal(err)
-		}
-
-		stamps := probe.stamps(t)
-
-		var sequence uint64
-
-		families := make(map[canonicalsql.Family]bool)
-
-		for _, stamp := range stamps {
-			if stamp.Key.Family == canonicalsql.SourcePrivacyReady {
-				continue
-			}
-
-			if sequence == 0 {
-				sequence = stamp.Cursor.Sequence
-			}
-
-			if stamp.Cursor.Sequence != sequence {
-				t.Fatal("mutation family escaped atomic clock")
-			}
-
-			families[stamp.Key.Family] = true
-		}
-
-		for _, family := range []canonicalsql.Family{canonicalsql.Source, canonicalsql.Message, canonicalsql.Item,
-			canonicalsql.Revision, canonicalsql.Payload, canonicalsql.Head, canonicalsql.Lifecycle,
-			canonicalsql.Delivery, canonicalsql.SourceRevision, canonicalsql.SourcePrivacy, canonicalsql.ScopeState,
-			canonicalsql.ScopeChange, canonicalsql.Operation} {
-			if !families[family] {
-				t.Fatalf("missing mutation stamp: %s", family)
-			}
 		}
 
 		var delivery memory.DeliveryOutboxRecord

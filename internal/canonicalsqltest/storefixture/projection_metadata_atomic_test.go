@@ -75,22 +75,15 @@ func TestPublicProjectionSwitchRollbackAndStampAccounting(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		before := p.stamps(t)
-
-		clock, err := p.clock()
-		if err != nil {
-			t.Fatal(err)
-		}
+		before := p.snapshot(t)
 
 		release := failMetadataUpdate(t, p, "projection_active")
-		err = s.ActivateProjectionGeneration(t.Context(), second, second.UpdatedAt)
+		err := s.ActivateProjectionGeneration(t.Context(), second, second.UpdatedAt)
 
 		release()
 
-		afterClock, clockErr := p.clock()
-		if err == nil || clockErr != nil || !reflect.DeepEqual(before, p.stamps(t)) ||
-			!reflect.DeepEqual(clock, afterClock) {
-			t.Fatalf("failed switch escaped: %v clock=%v", err, clockErr)
+		if err == nil || !reflect.DeepEqual(before, p.snapshot(t)) {
+			t.Fatalf("failed switch escaped: %v", err)
 		}
 
 		active, found, err := s.LoadActiveProjectionManifest(t.Context(), first.Scope, first.ProjectionID)
@@ -103,29 +96,9 @@ func TestPublicProjectionSwitchRollbackAndStampAccounting(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		afterClock, err = p.clock()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		seq, err := canonicalsql.DecodeUint64(clock)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if !reflect.DeepEqual(afterClock, canonicalsql.Uint64(seq+1)) {
-			t.Fatalf("clock before=%x after=%x", clock, afterClock)
-		}
-
-		stamps := p.stamps(t)
-		if len(stamps) != 3 {
-			t.Fatalf("stamps=%+v", stamps)
-		}
-
-		for _, stamp := range stamps {
-			if stamp.Cursor.Sequence != seq+1 {
-				t.Fatalf("split activation stamps=%+v", stamps)
-			}
+		active, found, err = s.LoadActiveProjectionManifest(t.Context(), second.Scope, second.ProjectionID)
+		if err != nil || !found || active.GenerationID != "second" {
+			t.Fatalf("active switch=%+v %v", active, err)
 		}
 	})
 }
@@ -134,12 +107,9 @@ func TestPublicProjectionFloorAndCheckpointRollback(t *testing.T) {
 	metadataFixture(t, func(t *testing.T, _ *storefixture.Fixture, s metadataStore, p mutationProbe) {
 		m := testManifest(t, "first")
 		for _, family := range []string{"projection_retention", "projection_checkpoint"} {
-			before := p.stamps(t)
+			before := p.snapshot(t)
 
-			clock, err := p.clock()
-			if err != nil {
-				t.Fatal(err)
-			}
+			var err error
 
 			release := p.failInserts(t, family)
 			if family == "projection_retention" {
@@ -162,9 +132,7 @@ func TestPublicProjectionFloorAndCheckpointRollback(t *testing.T) {
 
 			release()
 
-			afterClock, clockErr := p.clock()
-			if err == nil || clockErr != nil || !reflect.DeepEqual(before, p.stamps(t)) ||
-				!reflect.DeepEqual(clock, afterClock) {
+			if err == nil || !reflect.DeepEqual(before, p.snapshot(t)) {
 				t.Fatalf("%s failure escaped: %v", family, err)
 			}
 		}

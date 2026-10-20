@@ -1,12 +1,13 @@
 package storefixture_test
 
 import (
-	"github.com/baldaworks/boyan/internal/canonicalsql"
-	"github.com/baldaworks/boyan/internal/canonicalsqltest/storefixture"
-	memory "github.com/baldaworks/boyan/pkg/memory"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/baldaworks/boyan/internal/canonicalsql"
+	"github.com/baldaworks/boyan/internal/canonicalsqltest/storefixture"
+	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
 func TestPublicMutationGrounding(t *testing.T) {
@@ -45,7 +46,7 @@ func runPublicGroundingMutation(t *testing.T, _ *storefixture.Fixture, store mut
 
 	alterGroundingMutation(t, store, probe, parent, &child, kind)
 
-	before := probe.stamps(t)
+	before := probe.snapshot(t)
 
 	outcome, err := store.ApplyCanonicalMutation(t.Context(), child)
 	if kind != "valid-expired-replay" {
@@ -53,7 +54,7 @@ func runPublicGroundingMutation(t *testing.T, _ *storefixture.Fixture, store mut
 			t.Fatal("invalid grounding committed")
 		}
 
-		if !reflect.DeepEqual(before, probe.stamps(t)) {
+		if !reflect.DeepEqual(before, probe.snapshot(t)) {
 			t.Fatal("invalid grounding modified rows")
 		}
 

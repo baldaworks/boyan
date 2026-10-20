@@ -47,7 +47,7 @@ func openWithConfig(directory string, config Config) (*CanonicalStore, error) {
 	}
 
 	store := &CanonicalStore{db: db}
-	if err := store.loadRestoreFence(); err != nil {
+	if err := store.rejectUnsupportedRestoreMarker(); err != nil {
 		_ = db.Close()
 
 		return nil, err

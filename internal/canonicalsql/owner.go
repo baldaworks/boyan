@@ -50,9 +50,8 @@ func (o *Owner) View(ctx context.Context, fn func(context.Context, *Tx) error) e
 	return o.run(ctx, false, fn)
 }
 
-// RestorePreflight checks durable control before application startup. Opening
-// a fenced store remains possible for the controlled recovery added later.
-func (o *Owner) RestorePreflight(ctx context.Context) error {
+// CheckIntegrity validates structural canonical state before application readiness.
+func (o *Owner) CheckIntegrity(ctx context.Context) error {
 	return o.View(ctx, func(admitted context.Context, tx *Tx) error { return tx.CheckIntegrity(admitted) })
 }
 

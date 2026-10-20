@@ -1,7 +1,6 @@
 package standaloneruntime //nolint:testpackage // Startup must retire the existing database before readiness.
 
 import (
-	"bytes"
 	"context"
 	"reflect"
 	"strings"
@@ -215,42 +214,6 @@ func denialEraseRequest(t *testing.T, r *Runtime, command memory.ForgetScopeComm
 		Fingerprint: memory.CanonicalForgetFingerprint(
 			id, command.Scope, memory.ForgetKindScope, memory.SourceRef{}, command.RequestID),
 		ExpectedScopeVersion: state.Version, ForgottenAt: command.ForgottenAt}
-}
-
-func TestStandaloneDenialLogicalRestoreFreshSQL(t *testing.T) {
-	r, _, _, first := denialFixture(t)
-	command := denialCommand(first.Scope)
-	adapter, err := forgetops.NewCanonicalForgetAdapter(r.service.store)
-	requireNoError(t, err, "adapter: %v")
-	outcome, err := adapter.ForgetScope(t.Context(), command)
-	requireNoError(t, err, "erase before logical export: %v")
-
-	var archive bytes.Buffer
-	requireNoError(t, runtimeStore(t, r).ExportCanonicalLogical(t.Context(), &archive), "export: %v")
-	fresh, err := New(testStandaloneConfig(t))
-	requireNoError(t, err, "fresh SQL: %v")
-	t.Cleanup(func() { _ = fresh.Stop(context.Background()) })
-	requireNoError(t, runtimeStore(t, fresh).ImportCanonicalLogical(t.Context(), &archive), "logical restore: %v")
-	startSQLComponents(t, fresh)
-	replay, err := fresh.ForgetScope(t.Context(), command)
-	requireNoError(t, err, "restored replay: %v")
-
-	if !reflect.DeepEqual(outcome, replay) {
-		t.Fatal("logical restore changed original receipt")
-	}
-
-	assertSQLSemanticTables(t, fresh.service.state.Root, 0)
-
-	db := openRuntimeSQL(t, fresh)
-	defer func() { _ = db.Close() }()
-
-	var count int
-	requireNoError(t, db.QueryRowContext(t.Context(), "SELECT count(*) FROM lexical_record").Scan(&count),
-		"fresh SQL population: %v")
-
-	if count != 0 {
-		t.Fatal("fresh reconstruction admitted denied material")
-	}
 }
 
 func TestStandaloneDenialInvalidOwnerStopsStartup(t *testing.T) {

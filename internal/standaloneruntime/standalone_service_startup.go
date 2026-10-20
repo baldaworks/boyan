@@ -8,11 +8,7 @@ import (
 )
 
 func (s *standaloneService) startComponents(ctx context.Context) error {
-	if err := s.store.ResumeRestoreBeforeEraseRecovery(ctx); err != nil {
-		return err
-	}
-
-	if err := s.store.RestorePreflight(ctx); err != nil {
+	if err := s.store.CheckIntegrity(ctx); err != nil {
 		return err
 	}
 

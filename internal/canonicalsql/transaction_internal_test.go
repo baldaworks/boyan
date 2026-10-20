@@ -20,31 +20,6 @@ func rawExec(t *testing.T, c *Connection, statement string, args ...any) {
 	}
 }
 
-func assertClock(t *testing.T, c *Connection, want uint64, stamps int) {
-	t.Helper()
-
-	var (
-		clock []byte
-		count int
-	)
-
-	if err := scanOne(t.Context(), c.q, "SELECT mutation_clock FROM "+c.table("store_meta"), nil, &clock); err != nil {
-		t.Fatal(err)
-	}
-
-	if !bytes.Equal(clock, Uint64(want)) {
-		t.Fatalf("clock=%x, want %d", clock, want)
-	}
-
-	if err := scanOne(t.Context(), c.q, "SELECT count(*) FROM "+c.table("row_stamp"), nil, &count); err != nil {
-		t.Fatal(err)
-	}
-
-	if count != stamps {
-		t.Fatalf("stamp count=%d, want %d", count, stamps)
-	}
-}
-
 func assertCode(t *testing.T, err error, want memory.ErrorCode) {
 	t.Helper()
 
@@ -56,15 +31,15 @@ func assertCode(t *testing.T, err error, want memory.ErrorCode) {
 
 // Catches committing rows/clock when a later stamp fails, including a swallowed
 // write error. Real database constraints inject the failure after a row write.
-func TestMultirowStampFailureRollsBackEverything(t *testing.T) {
+func TestMultirowWriteFailureRollsBackEverything(t *testing.T) {
 	canonicalsqltest.ForEach(t, func(t *testing.T, db *canonicalsqltest.Database) {
 		c := testConnection(t, db)
 		if db.SQLite != nil {
-			rawExec(t, c, "CREATE TRIGGER reject_item_stamp BEFORE INSERT ON row_stamp WHEN NEW.family=X'6974656d' "+
+			rawExec(t, c, "CREATE TRIGGER reject_item_stamp BEFORE INSERT ON item "+
 				"BEGIN SELECT RAISE(ABORT,'secret-payload'); END")
 		} else {
-			rawExec(t, c, "ALTER TABLE boyan_canonical.row_stamp ADD CONSTRAINT reject_item_stamp "+
-				"CHECK(family<>decode('6974656d','hex'))")
+			rawExec(t, c, "ALTER TABLE boyan_canonical.item ADD CONSTRAINT reject_item_stamp "+
+				"CHECK(id<>decode('6f6e65','hex'))")
 		}
 
 		key := Key{Family: Source, Scope: testScope(), Parts: [][]byte{[]byte("one")}}
@@ -90,8 +65,6 @@ func TestMultirowStampFailureRollsBackEverything(t *testing.T) {
 			t.Fatal("unclassified database error")
 		}
 
-		assertClock(t, c, 0, 0)
-
 		var count int
 		if err := scanOne(t.Context(), c.q, "SELECT count(*) FROM "+c.table("source"), nil, &count); err != nil {
 			t.Fatal(err)
@@ -111,71 +84,42 @@ func TestMultirowStampFailureRollsBackEverything(t *testing.T) {
 	})
 }
 
-// Catches one clock per row rather than transaction, retained old plaintext,
-// missing tombstones, and reinsertion failing to replace a deletion stamp.
-func TestTransactionClockAndDeleteReinsert(t *testing.T) {
+// Deletion and reinsertion must preserve absence and exact replacement bytes.
+func TestTransactionDeleteAndReinsert(t *testing.T) {
 	canonicalsqltest.ForEach(t, func(t *testing.T, db *canonicalsqltest.Database) {
 		c := testConnection(t, db)
-		key := Key{Family: Source, Scope: testScope(), Parts: [][]byte{[]byte("id")}}
-		other := key
-		other.Parts = [][]byte{[]byte("other")}
+		key := Key{Family: Source, Scope: testScope(), Parts: [][]byte{[]byte("same-key")}}
 
-		mustUpdate(t, c, func(tx *Tx) error {
-			if err := tx.Put(t.Context(), key, envelope(t, Source, "first")); err != nil {
-				return err
-			}
-
-			if err := tx.Put(t.Context(), key, envelope(t, Source, "last")); err != nil {
-				return err
-			}
-
-			return tx.Put(t.Context(), other, envelope(t, Source, true))
-		})
-		assertClock(t, c, 1, 2)
+		mustUpdate(t, c, func(tx *Tx) error { return tx.Put(t.Context(), key, envelope(t, Source, "first")) })
 		mustUpdate(t, c, func(tx *Tx) error { return tx.Delete(t.Context(), key) })
-		assertClock(t, c, 2, 2)
 
-		_, values, _ := key.values()
-
-		var (
-			seq     []byte
-			deleted bool
-		)
-
-		readStamp := func() {
-			t.Helper()
-
-			if err := scanOne(t.Context(), c.q, "SELECT last_seq,deleted FROM "+c.table("row_stamp")+
-				" WHERE family=$1 AND binary_key=$2",
-				[]any{[]byte(Source), stampKey(values)}, &seq, &deleted); err != nil {
-				t.Fatal(err)
-			}
-		}
-		readStamp()
-
-		if !deleted || !bytes.Equal(seq, Uint64(2)) {
-			t.Fatal("deletion tombstone missing")
-		}
-
-		err := c.View(t.Context(), func(tx *Tx) error {
+		if err := c.View(t.Context(), func(tx *Tx) error {
 			_, err := tx.Get(t.Context(), key)
+			assertCode(t, err, memory.CodeNotFound)
+
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		want := envelope(t, Source, "replacement")
+		mustUpdate(t, c, func(tx *Tx) error { return tx.Put(t.Context(), key, want) })
+
+		if err := c.View(t.Context(), func(tx *Tx) error {
+			got, err := tx.Get(t.Context(), key)
+			if !bytes.Equal(got, want) {
+				t.Fatal("reinsertion returned stale bytes")
+			}
 
 			return err
-		})
-		assertCode(t, err, memory.CodeNotFound)
-		mustUpdate(t, c, func(tx *Tx) error { return tx.Put(t.Context(), key, envelope(t, Source, "new")) })
-		assertClock(t, c, 3, 2)
-		readStamp()
-
-		if deleted || !bytes.Equal(seq, Uint64(3)) {
-			t.Fatal("reinsertion did not replace tombstone")
+		}); err != nil {
+			t.Fatal(err)
 		}
-
-		mustUpdate(t, c, func(*Tx) error { return nil })
-		assertClock(t, c, 3, 2)
 	})
 }
 
+// Catches one clock per row rather than transaction, retained old plaintext,
+// missing tombstones, and reinsertion failing to replace a deletion stamp.
 // Catches signed CAS, trusting mismatched columns, and committing a second
 // same-version mutation. Scope increments themselves belong to domain callers.
 func TestScopeCASAndEnvelopeColumnValidation(t *testing.T) {
@@ -194,7 +138,7 @@ func TestScopeCASAndEnvelopeColumnValidation(t *testing.T) {
 		mustUpdate(t, c, func(tx *Tx) error { return tx.CompareAndSwapScope(t.Context(), &expected, state) })
 		err := c.Update(t.Context(), func(tx *Tx) error { return tx.CompareAndSwapScope(t.Context(), &expected, state) })
 		assertCode(t, err, memory.CodeConflict)
-		assertClock(t, c, 2, 1)
+
 		rawExec(t, c, "UPDATE "+c.table("scope_state")+" SET version_u64=$1", Uint64(7))
 
 		storedCode := memory.CodeStoreFailure
@@ -209,7 +153,6 @@ func TestScopeCASAndEnvelopeColumnValidation(t *testing.T) {
 		expected = 7
 		err = c.Update(t.Context(), func(tx *Tx) error { return tx.CompareAndSwapScope(t.Context(), &expected, state) })
 		assertCode(t, err, storedCode)
-		assertClock(t, c, 2, 1)
 
 		if _, err := c.q.exec(t.Context(), "UPDATE "+c.table("scope_state")+" SET change_seq_u64=$1", []byte{1}); err == nil {
 			t.Fatal("malformed uint column accepted")
@@ -218,24 +161,6 @@ func TestScopeCASAndEnvelopeColumnValidation(t *testing.T) {
 }
 
 // Catches wraparound and the row being committed before clock exhaustion fails.
-func TestClockOverflowRollsBackRows(t *testing.T) {
-	canonicalsqltest.ForEach(t, func(t *testing.T, db *canonicalsqltest.Database) {
-		c := testConnection(t, db)
-		rawExec(t, c, "UPDATE "+c.table("store_meta")+" SET mutation_clock=$1", Uint64(math.MaxUint64))
-
-		key := Key{Family: Payload, Parts: [][]byte{[]byte("id")}}
-		err := c.Update(t.Context(), func(tx *Tx) error { return tx.Put(t.Context(), key, envelope(t, Payload, true)) })
-		assertCode(t, err, memory.CodeLimitExceeded)
-		assertClock(t, c, math.MaxUint64, 0)
-		err = c.View(t.Context(), func(tx *Tx) error {
-			_, err := tx.Get(t.Context(), key)
-
-			return err
-		})
-		assertCode(t, err, memory.CodeNotFound)
-	})
-}
-
 // Catches canceled SQLite transactions retaining a write lock or publishing
 // effects; cancellation must take precedence over a callback's other failure.
 func TestContextRollbackAndHandleLifetime(t *testing.T) {
@@ -262,8 +187,6 @@ func TestContextRollbackAndHandleLifetime(t *testing.T) {
 			t.Fatalf("cancellation lost: %v", err)
 		}
 
-		assertClock(t, c, 0, 0)
-
 		if err := retained.Delete(t.Context(), key); err == nil {
 			t.Fatal("escaped transaction remains usable")
 		}
@@ -271,6 +194,5 @@ func TestContextRollbackAndHandleLifetime(t *testing.T) {
 		err = c.View(t.Context(), func(tx *Tx) error { return tx.Put(t.Context(), key, envelope(t, Source, true)) })
 		assertCode(t, err, memory.CodeInvalidDerived)
 		mustUpdate(t, c, func(tx *Tx) error { return tx.Put(t.Context(), key, envelope(t, Source, true)) })
-		assertClock(t, c, 1, 1)
 	})
 }

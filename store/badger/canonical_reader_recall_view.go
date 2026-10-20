@@ -19,16 +19,8 @@ func (r *CanonicalReader) loadCanonicalView(
 		return canonicalRecallView{}, false, err
 	}
 
-	if r.store.restoreBlocked.Load() {
-		return canonicalRecallView{}, false, restoreUnavailable()
-	}
-
 	r.store.maintenanceMu.RLock()
 	defer r.store.maintenanceMu.RUnlock()
-
-	if r.store.restoreBlocked.Load() {
-		return canonicalRecallView{}, false, restoreUnavailable()
-	}
 
 	view := canonicalRecallView{state: memory.RevisionStateActive}
 

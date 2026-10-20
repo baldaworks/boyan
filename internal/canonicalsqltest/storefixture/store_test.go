@@ -13,7 +13,7 @@ func TestRegisteredOwnerFactory(t *testing.T) {
 			t.Fatal("unknown owner factory backend")
 		}
 
-		if err := fixture.Store.RestorePreflight(t.Context()); err != nil {
+		if err := fixture.Store.CheckIntegrity(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 

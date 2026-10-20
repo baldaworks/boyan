@@ -103,7 +103,7 @@ func validatePart(column string, part []byte) error {
 	return nil
 }
 
-// stampKey is identity framing only. It is NEVER used for ordered row scans.
+// stampKey is tuple identity framing only. It is never used for ordered row scans.
 func stampKey(values [][]byte) []byte {
 	result := []byte{1}
 	for _, value := range values {
@@ -112,4 +112,38 @@ func stampKey(values [][]byte) []byte {
 	}
 
 	return result
+}
+
+const frameLengthBytes = 4
+
+func keyFromFrame(f Family, frame []byte) (Key, error) {
+	def, err := familyDefinition(f)
+	if err != nil || len(frame) == 0 || frame[0] != 1 {
+		return Key{}, corruptRow()
+	}
+
+	remaining := frame[1:]
+
+	values := make([][]byte, 0, len(def.columns()))
+	for range def.columns() {
+		if len(remaining) < frameLengthBytes {
+			return Key{}, corruptRow()
+		}
+
+		size := uint64(binary.BigEndian.Uint32(remaining))
+
+		remaining = remaining[frameLengthBytes:]
+		if size > uint64(len(remaining)) {
+			return Key{}, corruptRow()
+		}
+
+		values = append(values, remaining[:size])
+		remaining = remaining[size:]
+	}
+
+	if len(remaining) != 0 {
+		return Key{}, corruptRow()
+	}
+
+	return keyFromValues(f, def, values)
 }

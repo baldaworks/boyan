@@ -47,35 +47,6 @@ func TestSQLiteOwnerRejectsForeignFileWithoutTruncation(t *testing.T) {
 
 // Ordinary admission must inspect persistent restore control before invoking
 // callbacks, including when a new owner opens an interrupted loading store.
-func TestSQLiteOwnerRestorePreflight(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "canonical.sqlite")
-	owner := openTestOwner(t, path)
-	rawExec(t, owner.connection, "INSERT INTO restore_control(singleton,control) VALUES(1,$1)", []byte("loading"))
-
-	if err := owner.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	reopened := openTestOwner(t, path)
-	assertCode(t, reopened.RestorePreflight(t.Context()), memory.CodeUnavailable)
-
-	for _, run := range []func(context.Context, func(context.Context, *Tx) error) error{reopened.View, reopened.Update} {
-		err := run(t.Context(), func(context.Context, *Tx) error {
-			t.Error("ordinary callback entered loading store")
-
-			return nil
-		})
-		assertCode(t, err, memory.CodeUnavailable)
-	}
-
-	var marker []byte
-
-	err := scanOne(t.Context(), reopened.connection.q, "SELECT control FROM restore_control", nil, &marker)
-	if err != nil || string(marker) != "loading" {
-		t.Fatalf("opening changed durable restore control: %v", err)
-	}
-}
-
 // Native contention must be bounded, cancellation must preserve context
 // identity, and neither BEGIN failure may poison the next admitted transaction.
 func TestSQLiteOwnerBusyAndCancellation(t *testing.T) {
@@ -161,7 +132,7 @@ func TestSQLiteOwnerCloseReportsBlockedCheckpoint(t *testing.T) {
 	}
 
 	var count int
-	if err := raw.SQLite.QueryRowContext(t.Context(), "SELECT count(*) FROM row_stamp").Scan(&count); err != nil {
+	if err := raw.SQLite.QueryRowContext(t.Context(), "SELECT count(*) FROM source").Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 
@@ -185,7 +156,16 @@ func TestSQLiteOwnerCloseReportsBlockedCheckpoint(t *testing.T) {
 	}
 
 	reopened := openTestOwner(t, path)
-	assertClock(t, reopened.connection, 1, 1)
+	if err := reopened.View(t.Context(), func(ctx context.Context, tx *Tx) error {
+		got, err := tx.Get(ctx, key)
+		if !bytes.Equal(got, envelope(t, Payload, "durable WAL")) {
+			t.Fatal("checkpoint failure lost committed payload")
+		}
+
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // Unsupported schema must close every native resource and release ownership,
@@ -194,7 +174,8 @@ func TestSQLiteOwnerPartialOpenCleanup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "canonical.sqlite")
 	owner := openTestOwner(t, path)
 	rawExec(t, owner.connection, "UPDATE schema_migration SET checksum='unsupported'")
-	rawExec(t, owner.connection, "INSERT INTO restore_control(singleton,control) VALUES(1,$1)", []byte("loading"))
+	rawExec(t, owner.connection, "CREATE TABLE prior_state(value TEXT)")
+	rawExec(t, owner.connection, "INSERT INTO prior_state VALUES('preserved')")
 
 	if err := owner.Close(); err != nil {
 		t.Fatal(err)
@@ -226,12 +207,12 @@ func TestSQLiteOwnerPartialOpenCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := raw.SQLite.QueryRowContext(t.Context(), "SELECT control FROM restore_control").Scan(&control); err != nil {
+	if err := raw.SQLite.QueryRowContext(t.Context(), "SELECT value FROM prior_state").Scan(&control); err != nil {
 		t.Fatal(err)
 	}
 
-	if checksum != "unsupported" || control != "loading" {
-		t.Fatal("failed open mutated schema history or restore control")
+	if checksum != "unsupported" || control != "preserved" {
+		t.Fatal("failed open mutated schema history or prior state")
 	}
 }
 

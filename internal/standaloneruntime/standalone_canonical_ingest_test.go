@@ -68,7 +68,7 @@ func configureSQLRuntimePipeline(
 
 	s := runtime.service
 	requireNoError(t, s.sequenced.Close(t.Context()), "close unused model pipeline: %v")
-	turn, err := canonicalcore.NewCanonicalTurnProcessor(s.store, restoreStartupExtractor{},
+	turn, err := canonicalcore.NewCanonicalTurnProcessor(s.store, runtimeFixtureExtractor{},
 		m.PolicyRegistry{Version: "policy-v1"})
 	requireNoError(t, err, "native processor: %v")
 	adapter, err := canonicalops.NewCanonicalBoundaryStore(s.store, s.reader)

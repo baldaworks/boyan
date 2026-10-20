@@ -2,12 +2,13 @@ package storefixture_test
 
 import (
 	"context"
-	"github.com/baldaworks/boyan/internal/canonicalsql"
-	"github.com/baldaworks/boyan/internal/canonicalsqltest/storefixture"
-	memory "github.com/baldaworks/boyan/pkg/memory"
 	"reflect"
 	"sync"
 	"testing"
+
+	"github.com/baldaworks/boyan/internal/canonicalsql"
+	"github.com/baldaworks/boyan/internal/canonicalsqltest/storefixture"
+	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
 func TestPublicMutationAtomicFailures(t *testing.T) {
@@ -16,7 +17,7 @@ func TestPublicMutationAtomicFailures(t *testing.T) {
 			forEachMutation(t, func(t *testing.T, f *storefixture.Fixture, store mutationStore, probe mutationProbe) {
 				mutation := nativeMutation(t)
 				mutation.BoundaryIdentity = mutationBoundary(t, mutation.Scope)
-				before := probe.stamps(t)
+				before := probe.snapshot(t)
 				release := probe.failInserts(t, table)
 				_, err := store.ApplyCanonicalMutation(t.Context(), mutation)
 
@@ -28,7 +29,7 @@ func TestPublicMutationAtomicFailures(t *testing.T) {
 
 				assertMutationState(t, store, mutation.Scope, 0)
 
-				if !reflect.DeepEqual(before, probe.stamps(t)) {
+				if !reflect.DeepEqual(before, probe.snapshot(t)) {
 					t.Fatal("failed mutation changed clock/stamps")
 				}
 
@@ -54,7 +55,7 @@ func TestSourcePrivacyAtomicLateSensitiveAndMonotone(t *testing.T) {
 
 		later := laterMutation(mutation, "late-sensitive", 1)
 		later.Revisions[0].Sensitivity = memory.SensitivitySensitive
-		before := probe.stamps(t)
+		before := probe.snapshot(t)
 		release := probe.failInserts(t, "operation")
 		_, err := store.ApplyCanonicalMutation(t.Context(), later)
 
@@ -65,7 +66,7 @@ func TestSourcePrivacyAtomicLateSensitiveAndMonotone(t *testing.T) {
 		}
 
 		if privacyState(t, probe, mutation.Scope, mutation.Sources[0].SourceID) != "standard" ||
-			!reflect.DeepEqual(before, probe.stamps(t)) {
+			!reflect.DeepEqual(before, probe.snapshot(t)) {
 			t.Fatal("aborted sensitivity escaped transaction")
 		}
 
@@ -106,12 +107,12 @@ func TestPublicMutationCASAndCancellation(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		before := probe.stamps(t)
+		before := probe.snapshot(t)
 		if _, err := store.ApplyCanonicalMutation(ctx, mutation); err != context.Canceled {
 			t.Fatalf("cancel=%v", err)
 		}
 
-		if !reflect.DeepEqual(before, probe.stamps(t)) {
+		if !reflect.DeepEqual(before, probe.snapshot(t)) {
 			t.Fatal("cancel wrote")
 		}
 
@@ -165,11 +166,11 @@ func TestPublicMutationImmutableConflict(t *testing.T) {
 		mutation.ExpectedScopeVersion = 1
 		mutation.Operation.OperationID = "changed"
 		mutation.Items[0].MemoryKey = "changed"
-		before := probe.stamps(t)
+		before := probe.snapshot(t)
 		_, err := store.ApplyCanonicalMutation(t.Context(), mutation)
 		assertMutationCode(t, err, memory.CodeConflict)
 
-		if !reflect.DeepEqual(before, probe.stamps(t)) {
+		if !reflect.DeepEqual(before, probe.snapshot(t)) {
 			t.Fatal("immutable failure modified rows")
 		}
 

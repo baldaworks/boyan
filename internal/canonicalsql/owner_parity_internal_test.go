@@ -132,8 +132,6 @@ func TestOwnerExactIdentityAndDurability(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-
-		assertClock(t, owner.connection, 3, 3)
 	})
 }
 
@@ -154,33 +152,4 @@ func assertOwnerRows(t *testing.T, ctx context.Context, tx *Tx, keys []Key, valu
 			t.Fatalf("lost independent identity on reopen: %v", err)
 		}
 	}
-}
-
-func TestOwnerLoadingFenceSurvivesReopen(t *testing.T) {
-	forEachOwner(t, func(t *testing.T, owner *Owner, reopen func() *Owner) {
-		rawExec(t, owner.connection, "INSERT INTO "+owner.connection.table("restore_control")+
-			"(singleton,control) VALUES(1,$1)", []byte("loading"))
-
-		if err := owner.Close(); err != nil {
-			t.Fatal(err)
-		}
-
-		owner = reopen()
-		assertCode(t, owner.RestorePreflight(t.Context()), memory.CodeUnavailable)
-
-		for _, run := range []func(context.Context, func(context.Context, *Tx) error) error{owner.View, owner.Update} {
-			err := run(t.Context(), func(context.Context, *Tx) error {
-				t.Error("loading fence admitted ordinary work")
-
-				return nil
-			})
-			assertCode(t, err, memory.CodeUnavailable)
-		}
-
-		var control []byte
-		if err := scanOne(t.Context(), owner.connection.q, "SELECT control FROM "+
-			owner.connection.table("restore_control"), nil, &control); err != nil || string(control) != "loading" {
-			t.Fatalf("loading control changed on reopen: %v", err)
-		}
-	})
 }

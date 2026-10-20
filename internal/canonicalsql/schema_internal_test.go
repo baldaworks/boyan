@@ -73,8 +73,6 @@ func TestEveryInventoriedFamilyRoundtrip(t *testing.T) {
 		if err := c.Migrate(t.Context()); err != nil {
 			t.Fatalf("idempotent migration: %v", err)
 		}
-
-		assertClock(t, c, 38, 38)
 	})
 }
 

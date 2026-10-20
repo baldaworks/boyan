@@ -181,10 +181,10 @@ func (tx *Tx) Put(ctx context.Context, key Key, encoded []byte) error {
 		return tx.fail(databaseError(ctx, "put", err))
 	}
 
-	return tx.stamp(ctx, key, values, false)
+	return nil
 }
 
-// Delete records a tombstone even when a key is already absent.
+// Delete removes a typed key; absence is harmless.
 func (tx *Tx) Delete(ctx context.Context, key Key) error {
 	if err := tx.check(ctx, true); err != nil {
 		return err
@@ -206,7 +206,7 @@ func (tx *Tx) Delete(ctx context.Context, key Key) error {
 		return tx.fail(databaseError(ctx, "delete", err))
 	}
 
-	return tx.stamp(ctx, key, values, true)
+	return nil
 }
 
 // CompareAndSwapScope inserts an absent scope when expected is nil; otherwise it
@@ -264,7 +264,7 @@ func (tx *Tx) CompareAndSwapScope(ctx context.Context, expected *uint64, state m
 		return tx.fail(conflict())
 	}
 
-	return tx.stamp(ctx, key, values, false)
+	return nil
 }
 
 func (tx *Tx) validateScopeCAS(ctx context.Context, key Key, expected *uint64) error {

@@ -6,7 +6,7 @@ import (
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
-func decodeCanonicalLogicalKey(key []byte) ([]string, []byte, error) {
+func decodeCanonicalTupleKey(key []byte) ([]string, []byte, error) {
 	if len(key) < 2 || key[0] != canonicalNamespace || key[1] != canonicalVersion {
 		return nil, nil, memory.PermanentError(memory.CodeStoreFailure, "canonical key namespace is invalid", nil)
 	}
@@ -18,7 +18,7 @@ func decodeCanonicalLogicalKey(key []byte) ([]string, []byte, error) {
 
 	recordType := components[0]
 
-	want, _ := canonicalLogicalComponentCount(recordType)
+	want, _ := canonicalTupleComponentCount(recordType)
 	if len(components) != want {
 		return nil, nil, memory.PermanentError(memory.CodeStoreFailure, "canonical key component count is invalid", nil)
 	}
@@ -50,7 +50,7 @@ func decodeCanonicalTupleComponents(encoded []byte) ([]string, int, error) {
 		offset = start + length
 
 		if len(components) > 0 {
-			if want, _ := canonicalLogicalComponentCount(components[0]); want > 0 && len(components) == want {
+			if want, _ := canonicalTupleComponentCount(components[0]); want > 0 && len(components) == want {
 				return components, offset, nil
 			}
 		}

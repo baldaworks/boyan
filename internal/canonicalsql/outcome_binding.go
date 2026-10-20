@@ -2,7 +2,6 @@ package canonicalsql
 
 import (
 	"context"
-	"encoding/json"
 	"slices"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
@@ -84,34 +83,6 @@ func validateCanonicalOutcomeScopeState(
 	}
 
 	return nil
-}
-
-func validateStoredCanonicalOutcomeBindings(
-	ctx context.Context, txn *Tx,
-	components []string,
-	envelope memory.RecordEnvelope,
-) error {
-	if envelope.RecordType != string(Operation) {
-		return nil
-	}
-
-	if len(components) != canonicalRecordComponents {
-		return invalidStoredCanonicalOutcome(nil)
-	}
-
-	var stored memory.CanonicalOperationRecord
-	if err := json.Unmarshal(envelope.Payload, &stored); err != nil {
-		return invalidStoredCanonicalOutcome(err)
-	}
-
-	record := memory.CanonicalOperationRecord{Fingerprint: stored.Fingerprint, Outcome: stored.Outcome}
-	if err := record.Validate(); err != nil {
-		return invalidStoredCanonicalOutcome(err)
-	}
-
-	scope := memory.Scope{Key: components[1], Kind: memory.ScopeKind(components[2])}
-
-	return validateCanonicalOutcomeBinding(ctx, txn, scope, components[3], stored.Outcome)
 }
 
 func invalidStoredCanonicalOutcome(err error) error {

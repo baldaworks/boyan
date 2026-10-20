@@ -139,16 +139,12 @@ func testAcceptedLongKey(t *testing.T, db *canonicalsqltest.Database, key Key, s
 
 	err := c.Update(t.Context(), func(tx *Tx) error { return tx.Put(t.Context(), key, encoded) })
 	if err != nil {
-		assertClock(t, c, 0, 0)
-
 		if db.Postgres != nil {
 			logLongKeyIndexFailure(t, db, key, statement, encoded)
 		}
 
 		t.Fatalf("Put rejected identity accepted by existing tuple and SQL key contracts: %v", err)
 	}
-
-	assertClock(t, c, 1, 1)
 
 	if err := c.View(t.Context(), func(tx *Tx) error {
 		got, err := tx.Get(t.Context(), key)

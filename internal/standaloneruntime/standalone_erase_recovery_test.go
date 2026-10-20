@@ -12,6 +12,21 @@ func TestStandaloneStartupResumesPendingEraseBeforeProjection(t *testing.T) {
 	forEachSQLRuntimeConfig(t, testStandaloneStartupResumesPendingEraseBeforeProjection)
 }
 
+func assertStandaloneRecoveredErase(t *testing.T, runtime *Runtime, original m.ScopeEraseJournal) {
+	t.Helper()
+
+	journal, found, err := runtime.service.store.LoadScopeErase(context.Background(), original.Scope, original.OperationID)
+	requireNoError(t, err, "recovered: %v")
+
+	if !runtime.Ready() || !found || journal.Stage != m.ScopeEraseComplete {
+		t.Fatalf("startup not recovered: %+v", journal)
+	}
+
+	if journal.SourceCount == 0 || journal.RevisionCount == 0 {
+		t.Fatalf("startup not recovered: %+v", journal)
+	}
+}
+
 func testStandaloneStartupResumesPendingEraseBeforeProjection(t *testing.T, cfg Config) {
 	runtime, err := New(cfg)
 	requireNoError(t, err, "runtime: %v")

@@ -1,11 +1,12 @@
 package storefixture_test
 
 import (
+	"reflect"
+	"testing"
+
 	"github.com/baldaworks/boyan/internal/canonicalsql"
 	"github.com/baldaworks/boyan/internal/canonicalsqltest/storefixture"
 	memory "github.com/baldaworks/boyan/pkg/memory"
-	"reflect"
-	"testing"
 )
 
 func TestPublicMutationImmutableFamilies(t *testing.T) {
@@ -21,11 +22,11 @@ func TestPublicMutationImmutableFamilies(t *testing.T) {
 				mutation.Operation.OperationID = "changed"
 				alterImmutableMutation(&mutation, family)
 
-				before := probe.stamps(t)
+				before := probe.snapshot(t)
 				_, err := store.ApplyCanonicalMutation(t.Context(), mutation)
 				assertMutationCode(t, err, memory.CodeConflict)
 
-				if !reflect.DeepEqual(before, probe.stamps(t)) {
+				if !reflect.DeepEqual(before, probe.snapshot(t)) {
 					t.Fatal("immutable conflict changed records")
 				}
 			})

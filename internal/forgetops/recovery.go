@@ -57,16 +57,10 @@ type CanonicalEraseRecoveryStore interface {
 }
 
 func prepareEraseRecovery(ctx context.Context, store CanonicalEraseRecoveryStore) error {
-	if resume, ok := store.(interface {
-		ResumeRestoreBeforeEraseRecovery(ctx context.Context) error
-	}); ok {
-		return resume.ResumeRestoreBeforeEraseRecovery(ctx)
-	}
-
 	if preflight, ok := store.(interface {
-		RestorePreflight(ctx context.Context) error
+		CheckIntegrity(ctx context.Context) error
 	}); ok {
-		return preflight.RestorePreflight(ctx)
+		return preflight.CheckIntegrity(ctx)
 	}
 
 	return memory.PermanentError(memory.CodeStoreFailure, "canonical erase recovery preflight is unavailable", nil)

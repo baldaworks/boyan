@@ -22,7 +22,7 @@ func checkPrivacyPreparationValue(txn *badger.Txn, key []byte) error {
 		return err
 	}
 
-	if item.ValueSize() > maxCanonicalLogicalLineBytes {
+	if item.ValueSize() > maxCanonicalValueBytes {
 		return invalidSourcePrivacy()
 	}
 

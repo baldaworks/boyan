@@ -226,7 +226,7 @@ func assertPrivacyHistory(t *testing.T, owner *Owner, h privacyHistory, want str
 		t.Fatalf("classification=%+v want %s", record, want)
 	}
 
-	if err := owner.RestorePreflight(t.Context()); err != nil {
+	if err := owner.CheckIntegrity(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 }

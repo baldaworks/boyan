@@ -86,7 +86,7 @@ func failRuntimeEraseJournal(t *testing.T, cfg Config) func() {
 
 func TestSQLRuntimeStructuralCorruptionFailsStartup(t *testing.T) {
 	for _, test := range []struct{ backend, mode string }{
-		{"sqlite", "stamp"}, {"postgres", "stamp"}, {"postgres", "frame"}, {"postgres", "duplicate"},
+		{"sqlite", "envelope"}, {"postgres", "envelope"}, {"postgres", "frame"}, {"postgres", "duplicate"},
 	} {
 		t.Run(test.backend+"/"+test.mode, func(t *testing.T) {
 			cfg := sqlRuntimeConfig(t, test.backend)
@@ -97,9 +97,9 @@ func TestSQLRuntimeStructuralCorruptionFailsStartup(t *testing.T) {
 			p := nativeRuntimeProbe(t, cfg)
 
 			switch mode {
-			case "stamp":
-				err = p.exec("UPDATE "+p.table("row_stamp")+" SET deleted=true WHERE family=$1", []byte("scope"))
-				requireNoError(t, err, "corrupt stamp: %v")
+			case "envelope":
+				err = p.exec("UPDATE "+p.table("scope_state")+" SET envelope=$1", []byte("corrupt envelope"))
+				requireNoError(t, err, "corrupt envelope: %v")
 			case "frame":
 				err = p.exec("UPDATE boyan_canonical.scope_state SET logical_key=$1", []byte("broken-frame"))
 				requireNoError(t, err, "corrupt frame: %v")

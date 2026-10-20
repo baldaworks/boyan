@@ -105,10 +105,6 @@ func loadProofScopeState(ctx context.Context, tx *Tx, scope memory.Scope, key Ke
 		return memory.ScopeState{}, err
 	}
 
-	if stampErr := validateScopeStateStamp(ctx, tx, key, err == nil); stampErr != nil {
-		return memory.ScopeState{}, stampErr
-	}
-
 	if err := state.Validate(); err != nil || state.Scope != scope {
 		return memory.ScopeState{}, proofStoreFailure("invalid canonical scope state", err)
 	}

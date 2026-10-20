@@ -25,6 +25,7 @@ func terminateTestOwner(t *testing.T, db *canonicalsqltest.Database, pid uint32)
 	}
 }
 
+//nolint:cyclop // Each native disconnect phase verifies rejection, reopen and absent uncommitted data.
 func TestPostgresOwnerDisconnectBoundaries(t *testing.T) {
 	for _, phase := range []string{"read", "transaction", "commit_boundary"} {
 		t.Run(phase, func(t *testing.T) {
@@ -69,18 +70,25 @@ func TestPostgresOwnerDisconnectBoundaries(t *testing.T) {
 				t.Fatal("explicit reopen reused terminated owner")
 			}
 
-			if err := reopened.RestorePreflight(t.Context()); err != nil {
+			if err := reopened.CheckIntegrity(t.Context()); err != nil {
 				t.Fatal(err)
 			}
 
-			assertClock(t, reopened.connection, 0, 0)
+			if err := reopened.View(t.Context(), func(ctx context.Context, tx *Tx) error {
+				_, err := tx.Get(ctx, key)
+				assertCode(t, err, memory.CodeNotFound)
+
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
 		})
 	}
 }
 
 func assertPoisonedOwner(t *testing.T, owner *Owner) {
 	t.Helper()
-	assertCode(t, owner.RestorePreflight(t.Context()), memory.CodeUnavailable)
+	assertCode(t, owner.CheckIntegrity(t.Context()), memory.CodeUnavailable)
 	err := owner.Update(t.Context(), func(context.Context, *Tx) error {
 		t.Error("disconnected owner admitted subsequent write")
 
@@ -98,7 +106,7 @@ func TestPostgresOwnerProtocolFailure(t *testing.T) {
 		t.Fatal("write protocol fault to owned session")
 	}
 
-	if err := owner.RestorePreflight(t.Context()); err == nil {
+	if err := owner.CheckIntegrity(t.Context()); err == nil {
 		t.Fatal("protocol failure retained readiness")
 	}
 
@@ -197,7 +205,14 @@ func TestPostgresOwnerTerminationDuringCommit(t *testing.T) {
 	}
 
 	reopened := openPostgresTestOwner(t, config)
-	assertClock(t, reopened.connection, 0, 0)
+	if err := reopened.View(t.Context(), func(ctx context.Context, tx *Tx) error {
+		_, err := tx.Get(ctx, Key{Family: Payload, Parts: [][]byte{[]byte("commit-fault")}})
+		assertCode(t, err, memory.CodeNotFound)
+
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestPostgresOwnerNativeQueryCancellation(t *testing.T) {

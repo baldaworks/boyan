@@ -72,8 +72,8 @@ func (r *CanonicalReader) traceReadTxn(ctx context.Context, read func(*badger.Tx
 		return err
 	}
 
-	if r.store.restoreBlocked.Load() || !r.store.maintenanceMu.TryRLock() {
-		return restoreUnavailable()
+	if !r.store.maintenanceMu.TryRLock() {
+		return memory.RetryableError(memory.CodeUnavailable, "canonical store is busy", nil)
 	}
 	defer r.store.maintenanceMu.RUnlock()
 

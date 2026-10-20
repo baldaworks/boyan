@@ -148,7 +148,6 @@ func TestCorruptEnvelopeAndMaterializedColumnsFailClosed(t *testing.T) {
 		oversized := bytes.Repeat([]byte{1}, MaxEnvelopeBytes+1)
 		err = c.Update(t.Context(), func(tx *Tx) error { return tx.Put(t.Context(), key, oversized) })
 		assertCode(t, err, memory.CodeLimitExceeded)
-		assertClock(t, c, 1, 1)
 	})
 }
 

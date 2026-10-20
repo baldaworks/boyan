@@ -106,8 +106,8 @@ them.
 
 Release checks cover strict four-stage model replies with valid empty/skip
 controls, current-T eligibility and inherited lifetimes, normalized immutable
-boundary replay across partial completion/restart/receipts, and native/logical
-proof roundtrips. Preserve the existing candidate wire spellings.
+boundary replay across partial completion/restart/receipts, and durable proof
+preservation on reopen. Preserve the existing candidate wire spellings.
 
 Before deployment, follow the [boundary upgrade restrictions](docs/OPERATIONS.md#boundary-contract-upgrades).
 Uncertified old derived scopes (including atom-only history) fail closed;
@@ -125,13 +125,10 @@ preparation. Direct unprepared readers fail unavailable; interrupted preparation
 restarts without publishing readiness. Classification labels do not promise
 secret detection, and existing native tool-trace limitations remain.
 
-Native full/incremental and logical roundtrips must retain sensitive, completed
-unknown and scope-incomplete restrictions. Check forged/malformed imported
-metadata, higher-MVCC copied readiness, failed loading across reopen and
-validated preparation restart. The external restore fence and both Badger sync
-boundaries must precede availability. Preserve the 256 MiB operational native
-frame bound, bounded memory and linear temporary spool disk cost. Follow the
-[source privacy upgrade restrictions](docs/OPERATIONS.md#source-privacy-and-restore-upgrades);
+Reopen and interrupted preparation checks must retain sensitive, completed
+unknown and scope-incomplete restrictions. Check malformed proof/privacy
+metadata and failure before readiness. Follow the
+[source privacy upgrade restrictions](docs/OPERATIONS.md#source-privacy-upgrades);
 never use an old writer or strip metadata/fences, including during rollback.
 
 Runtime checks use actual ADK session ownership under overlapping calls,

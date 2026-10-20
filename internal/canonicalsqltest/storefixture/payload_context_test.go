@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/baldaworks/boyan/internal/canonicalsql"
 	"github.com/baldaworks/boyan/internal/canonicalsqltest/storefixture"
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
@@ -26,7 +25,7 @@ func TestPublicPayloadContextPrecedence(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		before := probe.stamps(t)
+		before := probe.snapshot(t)
 		for _, kind := range []string{"canceled", "deadline", "live", "nil"} {
 			t.Run(kind, func(t *testing.T) {
 				ctx, want := payloadCallerContext(t, kind)
@@ -50,7 +49,7 @@ func TestPublicPayloadContextPrecedence(t *testing.T) {
 			})
 		}
 
-		if after := probe.stamps(t); !reflect.DeepEqual(after, before) {
+		if after := probe.snapshot(t); !reflect.DeepEqual(after, before) {
 			t.Fatal("rejected payload operations changed archive stamps")
 		}
 
@@ -59,7 +58,7 @@ func TestPublicPayloadContextPrecedence(t *testing.T) {
 			t.Fatalf("rejected operations changed payload: %q %v", got, err)
 		}
 
-		assertPayloadDeletedStamp(t, store, probe, ref, before)
+		assertPayloadDeleted(t, store, ref)
 	})
 }
 
@@ -119,8 +118,7 @@ func assertPayloadCallerErrors(t *testing.T, store privacyStore, ctx context.Con
 	}
 }
 
-func assertPayloadDeletedStamp(t *testing.T, store privacyStore, probe mutationProbe,
-	ref memory.PayloadRef, before []canonicalsql.Stamp) {
+func assertPayloadDeleted(t *testing.T, store privacyStore, ref memory.PayloadRef) {
 	t.Helper()
 
 	if err := store.DeletePayload(t.Context(), ref); err != nil {
@@ -133,10 +131,4 @@ func assertPayloadDeletedStamp(t *testing.T, store privacyStore, probe mutationP
 	}
 
 	assertMutationCode(t, err, memory.CodeNotFound)
-
-	after := probe.stamps(t)
-	if len(before) != 1 || len(after) != 1 || !after[0].Deleted ||
-		after[0].Cursor.Sequence <= before[0].Cursor.Sequence || after[0].Key.Family != canonicalsql.Payload {
-		t.Fatalf("delete did not replace payload stamp with an advanced tombstone: %+v", after)
-	}
 }

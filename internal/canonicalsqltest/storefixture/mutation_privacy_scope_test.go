@@ -1,11 +1,12 @@
 package storefixture_test
 
 import (
+	"reflect"
+	"testing"
+
 	"github.com/baldaworks/boyan/internal/canonicalsql"
 	"github.com/baldaworks/boyan/internal/canonicalsqltest/storefixture"
 	memory "github.com/baldaworks/boyan/pkg/memory"
-	"reflect"
-	"testing"
 )
 
 func TestSourcePrivacyExactScopeAndBoundedTouchedSources(t *testing.T) {
@@ -102,11 +103,11 @@ func TestPublicMutationPayloadLocks(t *testing.T) {
 				}
 
 				probe.write(t, key, value)
-				before := probe.stamps(t)
+				before := probe.snapshot(t)
 				_, err := store.ApplyCanonicalMutation(t.Context(), mutation)
 				assertMutationCode(t, err, memory.CodeConflict)
 
-				if !reflect.DeepEqual(before, probe.stamps(t)) {
+				if !reflect.DeepEqual(before, probe.snapshot(t)) {
 					t.Fatal("payload gate allowed partial mutation")
 				}
 

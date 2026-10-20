@@ -91,7 +91,6 @@ func TestCompoundPrefixAndGlobalIsolation(t *testing.T) {
 
 			return tx.Put(t.Context(), Key{Family: Payload, Parts: [][]byte{[]byte("a")}}, envelope(t, Payload, "global"))
 		})
-		assertClock(t, c, 1, 4)
 
 		if err := c.View(t.Context(), func(tx *Tx) error {
 			for i, key := range keys {
@@ -165,8 +164,7 @@ func TestGlobalKeysRejectUserScopes(t *testing.T) {
 		c := testConnection(t, db)
 		scope := testScope()
 
-		const control Family = "restore_control"
-		for _, f := range []Family{Payload, SourcePrivacyReady, EraseGuard, EraseBlobLock, ErasedBlob, control} {
+		for _, f := range []Family{Payload, SourcePrivacyReady, EraseGuard, EraseBlobLock, ErasedBlob} {
 			key := Key{Family: f, Scope: scope}
 			if f == Payload || f == EraseBlobLock || f == ErasedBlob {
 				key.Parts = [][]byte{[]byte("a")}

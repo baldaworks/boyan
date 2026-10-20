@@ -1,11 +1,12 @@
 package storefixture_test
 
 import (
+	"reflect"
+	"testing"
+
 	"github.com/baldaworks/boyan/internal/canonicalsql"
 	"github.com/baldaworks/boyan/internal/canonicalsqltest/storefixture"
 	memory "github.com/baldaworks/boyan/pkg/memory"
-	"reflect"
-	"testing"
 )
 
 func certifyMutation(t *testing.T, mutation *memory.CanonicalMutation) memory.Turn {
@@ -141,13 +142,13 @@ func prepareTurnMutationCase(t *testing.T, store mutationStore, probe mutationPr
 	}
 
 	if kind == "rollback" {
-		before := probe.stamps(t)
+		before := probe.snapshot(t)
 		release := probe.failInserts(t, "operation")
 		_, err := store.ApplyCanonicalMutation(t.Context(), mutation)
 
 		release()
 
-		if err == nil || !reflect.DeepEqual(before, probe.stamps(t)) {
+		if err == nil || !reflect.DeepEqual(before, probe.snapshot(t)) {
 			t.Fatal("failed mutation published turn proof")
 		}
 	}

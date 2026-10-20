@@ -6,7 +6,7 @@ import (
 )
 
 func loadCanonicalSourcePayload(txn *badger.Txn, ref memory.PayloadRef) ([]byte, error) {
-	if ref.ByteSize > maxCanonicalLogicalLineBytes {
+	if ref.ByteSize > maxCanonicalValueBytes {
 		return nil, memory.PermanentError(memory.CodeLimitExceeded, "canonical source payload exceeds its bound", nil)
 	}
 

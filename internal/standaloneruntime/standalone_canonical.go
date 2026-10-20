@@ -28,8 +28,7 @@ type standaloneCanonicalStore interface {
 	memory.ProjectionCheckpointStore
 	memory.ProjectionRetentionFloorReader
 	PrepareSourcePrivacy(ctx context.Context) error
-	RestorePreflight(ctx context.Context) error
-	ResumeRestoreBeforeEraseRecovery(ctx context.Context) error
+	CheckIntegrity(ctx context.Context) error
 	IsSourceDenied(ctx context.Context, scope memory.Scope, sourceID string) (bool, error)
 	IsRevisionDenied(ctx context.Context, scope memory.Scope, revisionID string) (bool, error)
 	CheckReadiness(ctx context.Context) error

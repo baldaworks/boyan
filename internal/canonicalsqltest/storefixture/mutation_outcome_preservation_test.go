@@ -7,7 +7,6 @@ import (
 	"github.com/baldaworks/boyan/internal/canonicalsql"
 	"github.com/baldaworks/boyan/internal/canonicalsqltest/storefixture"
 	memory "github.com/baldaworks/boyan/pkg/memory"
-	"github.com/baldaworks/boyan/store/archive"
 )
 
 func TestPublicReplayAcceptsLegacyChangeWithoutScopeVersion(t *testing.T) {
@@ -50,11 +49,6 @@ func TestPublicReplayRejectsOutcomeOutsideDurableScopeHistory(t *testing.T) {
 				empty := route == "operation"
 				preserveOutcomeBaseline(t, store, mutation, empty)
 
-				verifier := fixture.Store.(archive.CanonicalIntegrityVerifier)
-				if err := verifier.VerifyCanonicalIntegrity(t.Context()); err != nil {
-					t.Fatalf("valid baseline integrity: %v", err)
-				}
-
 				alterStoredOutcomeScopeVersion(t, probe, mutation, 999)
 				got, err := writeBoundary(t, store, mutation, empty)
 				requireOutcomePermanentStoreFailure(t, err)
@@ -62,8 +56,6 @@ func TestPublicReplayRejectsOutcomeOutsideDurableScopeHistory(t *testing.T) {
 				if !reflect.DeepEqual(got, memory.CanonicalMutationOutcome{}) {
 					t.Fatalf("corrupt replay exposed outcome=%+v", got)
 				}
-
-				requireOutcomePermanentStoreFailure(t, verifier.VerifyCanonicalIntegrity(t.Context()))
 			})
 		})
 	}

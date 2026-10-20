@@ -1,7 +1,6 @@
 package badger
 
 import (
-	"encoding/json"
 	"slices"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
@@ -84,34 +83,6 @@ func validateCanonicalOutcomeScopeState(
 	}
 
 	return nil
-}
-
-func validateStoredCanonicalOutcomeBindings(
-	txn *badger.Txn,
-	components []string,
-	envelope memory.RecordEnvelope,
-) error {
-	if envelope.RecordType != badgerRecordOperation {
-		return nil
-	}
-
-	if len(components) != canonicalRecordComponents {
-		return invalidStoredCanonicalOutcome(nil)
-	}
-
-	var stored badgerCanonicalOperation
-	if err := json.Unmarshal(envelope.Payload, &stored); err != nil {
-		return invalidStoredCanonicalOutcome(err)
-	}
-
-	record := memory.CanonicalOperationRecord{Fingerprint: stored.Fingerprint, Outcome: stored.Outcome}
-	if err := record.Validate(); err != nil {
-		return invalidStoredCanonicalOutcome(err)
-	}
-
-	scope := memory.Scope{Key: components[1], Kind: memory.ScopeKind(components[2])}
-
-	return validateCanonicalOutcomeBinding(txn, scope, components[3], stored.Outcome)
 }
 
 func invalidStoredCanonicalOutcome(err error) error {

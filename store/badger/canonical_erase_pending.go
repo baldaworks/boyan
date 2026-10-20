@@ -46,7 +46,7 @@ func (s *CanonicalStore) ListPendingScopeErases(
 }
 
 func pendingEraseAtKey(txn *badger.Txn, key []byte) (memory.ScopeEraseJournal, error) {
-	parts, _, err := decodeCanonicalLogicalKey(key)
+	parts, _, err := decodeCanonicalTupleKey(key)
 	if err != nil {
 		return memory.ScopeEraseJournal{}, err
 	}

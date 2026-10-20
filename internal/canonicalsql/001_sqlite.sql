@@ -1,22 +1,3 @@
-CREATE TABLE store_meta (
- singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
- store_uuid BLOB NOT NULL CHECK (typeof(store_uuid) = 'blob' AND length(store_uuid) = 16),
- schema_version INTEGER NOT NULL CHECK (schema_version = 1),
- privacy_protocol INTEGER NOT NULL CHECK (privacy_protocol = 1),
- mutation_clock BLOB NOT NULL CHECK (typeof(mutation_clock) = 'blob' AND length(mutation_clock) = 8)
-);
-CREATE TABLE restore_control (
- singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
- control BLOB NOT NULL CHECK (typeof(control) = 'blob' AND length(control) BETWEEN 1 AND 4194304)
-);
-CREATE TABLE row_stamp (
- family BLOB NOT NULL,
- binary_key BLOB NOT NULL CHECK (typeof(binary_key) = 'blob' AND length(binary_key) BETWEEN 1 AND 524288),
- last_seq BLOB NOT NULL CHECK (typeof(last_seq) = 'blob' AND length(last_seq) = 8),
- deleted BOOLEAN NOT NULL CHECK (deleted IN (0,1)),
- PRIMARY KEY(family,binary_key)
-);
-CREATE INDEX row_stamp_sequence ON row_stamp(last_seq,family,binary_key);
 CREATE TABLE scope_state (
  scope_key BLOB NOT NULL CHECK (typeof(scope_key) = 'blob' AND length(scope_key) BETWEEN 1 AND 65535),
  scope_kind BLOB NOT NULL CHECK (typeof(scope_kind) = 'blob' AND length(scope_kind) BETWEEN 1 AND 65535),

@@ -2,7 +2,6 @@ package canonicalcore_test
 
 import (
 	"context"
-	"io"
 	"sync"
 	"testing"
 	"time"
@@ -20,7 +19,6 @@ import (
 type coreOwner interface {
 	coreMutationOwner
 	corePrivacyOwner
-	coreMaintenanceOwner
 	m.ProjectionCheckpointStore
 	m.ScopeCheckpointStore
 	forgetops.CanonicalForgetStore
@@ -46,14 +44,6 @@ type corePrivacyOwner interface {
 	DenyRevision(ctx context.Context, scope m.Scope, id string, at time.Time) error
 	IsSourceDenied(ctx context.Context, scope m.Scope, id string) (bool, error)
 	IsRevisionDenied(ctx context.Context, scope m.Scope, id string) (bool, error)
-}
-
-type coreMaintenanceOwner interface {
-	ExportCanonicalLogical(ctx context.Context, output io.Writer) error
-	ImportCanonicalLogical(ctx context.Context, input io.Reader) error
-	WriteCanonicalBackup(ctx context.Context, output io.Writer, since uint64) (uint64, error)
-	RestoreCanonicalBackup(ctx context.Context, input io.Reader, pending int) error
-	VerifyCanonicalIntegrity(ctx context.Context) error
 }
 
 type coreReader interface {

@@ -27,7 +27,7 @@ func TestPublicIngestSequenceConflicts(t *testing.T) {
 					}
 				}
 
-				before, clock := probe.stamps(t), ingestClock(t, probe)
+				before := probe.snapshot(t)
 
 				switch name {
 				case "first-gap", "next-gap":
@@ -39,7 +39,7 @@ func TestPublicIngestSequenceConflicts(t *testing.T) {
 				}
 
 				assertMutationCode(t, store.SaveIngestSequence(t.Context(), record), memory.CodeConflict)
-				assertIngestUnchanged(t, probe, before, clock)
+				assertIngestUnchanged(t, probe, before)
 			})
 		})
 	}
@@ -60,7 +60,7 @@ func TestPublicIngestSequenceBinding(t *testing.T) {
 
 					corruptIngestBinding(t, probe, family, record, field)
 
-					before, clock := probe.stamps(t), ingestClock(t, probe)
+					before := probe.snapshot(t)
 
 					var err error
 					if family == canonicalsql.IngestSequence {
@@ -76,7 +76,7 @@ func TestPublicIngestSequenceBinding(t *testing.T) {
 					}
 
 					assertMutationCode(t, store.SaveIngestSequence(t.Context(), record), memory.CodeStoreFailure)
-					assertIngestUnchanged(t, probe, before, clock)
+					assertIngestUnchanged(t, probe, before)
 				})
 			})
 		}
@@ -146,25 +146,25 @@ func TestPublicIngestSequenceUnsigned(t *testing.T) {
 					t.Fatalf("unsigned receipt=%+v found=%t err=%v", got, found, err)
 				}
 
-				before, clock := probe.stamps(t), ingestClock(t, probe)
+				before := probe.snapshot(t)
 				if err := store.SaveIngestSequence(t.Context(), record); err != nil {
 					t.Fatal(err)
 				}
 
 				assertMutationCode(t, store.SaveIngestSequence(t.Context(), ingestRecord(1)), memory.CodeConflict)
-				assertIngestUnchanged(t, probe, before, clock)
+				assertIngestUnchanged(t, probe, before)
 			})
 		})
 	}
 }
 
 func TestPublicIngestSequenceAtomicFailure(t *testing.T) {
-	for _, table := range []string{"ingest_sequence", "ingest_cursor", "row_stamp"} {
+	for _, table := range []string{"ingest_sequence", "ingest_cursor"} {
 		t.Run(table, func(t *testing.T) {
 			storefixture.ForEach(t, func(t *testing.T, f *storefixture.Fixture) {
 				store := f.Store.(memory.IngestSequenceStore)
 				probe := newMutationProbe(t, f)
-				before, clock := probe.stamps(t), ingestClock(t, probe)
+				before := probe.snapshot(t)
 				release := probe.failInserts(t, table)
 				err := store.SaveIngestSequence(t.Context(), ingestRecord(1))
 
@@ -174,16 +174,11 @@ func TestPublicIngestSequenceAtomicFailure(t *testing.T) {
 					t.Fatal("native receipt/cursor/stamp failure was swallowed")
 				}
 
-				assertIngestUnchanged(t, probe, before, clock)
+				assertIngestUnchanged(t, probe, before)
 				assertIngestAbsent(t, store, ingestRecord(1))
 
 				if err := store.SaveIngestSequence(t.Context(), ingestRecord(1)); err != nil {
 					t.Fatal(err)
-				}
-
-				stamps := probe.stamps(t)
-				if len(stamps) != 2 || stamps[0].Cursor.Sequence != stamps[1].Cursor.Sequence {
-					t.Fatalf("receipt/cursor stamps=%+v", stamps)
 				}
 			})
 		})
@@ -250,21 +245,10 @@ func TestPublicIngestSequenceValidationAndCancellation(t *testing.T) {
 	})
 }
 
-func ingestClock(t *testing.T, probe mutationProbe) []byte {
+func assertIngestUnchanged(t *testing.T, probe mutationProbe, before [][][]byte) {
 	t.Helper()
 
-	clock, err := probe.clock()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return clock
-}
-
-func assertIngestUnchanged(t *testing.T, probe mutationProbe, before []canonicalsql.Stamp, clock []byte) {
-	t.Helper()
-
-	if !reflect.DeepEqual(before, probe.stamps(t)) || !reflect.DeepEqual(clock, ingestClock(t, probe)) {
+	if !reflect.DeepEqual(before, probe.snapshot(t)) {
 		t.Fatal("rejected receipt changed rows/stamps/clock")
 	}
 }

@@ -1,24 +1,4 @@
 CREATE SCHEMA IF NOT EXISTS boyan_canonical;
-CREATE TABLE boyan_canonical.store_meta (
- singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
- store_uuid BYTEA NOT NULL CHECK (length(store_uuid) = 16),
- schema_version INTEGER NOT NULL CHECK (schema_version = 1),
- privacy_protocol INTEGER NOT NULL CHECK (privacy_protocol = 1),
- mutation_clock BYTEA NOT NULL CHECK (length(mutation_clock) = 8)
-);
-CREATE TABLE boyan_canonical.restore_control (
- singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
- control BYTEA NOT NULL CHECK (length(control) BETWEEN 1 AND 4194304)
-);
-CREATE TABLE boyan_canonical.row_stamp (
- stamp_id BIGINT GENERATED ALWAYS AS IDENTITY (NO CYCLE) PRIMARY KEY,
- family BYTEA NOT NULL CHECK (family IN ('scope'::bytea,'operation'::bytea,'source'::bytea,'message'::bytea,'item'::bytea,'revision'::bytea,'lifecycle'::bytea,'head'::bytea,'change'::bytea,'delivery'::bytea,'delivery-claim'::bytea,'payload'::bytea,'provenance-forward'::bytea,'provenance-reverse'::bytea,'source-revision'::bytea,'denied-source'::bytea,'denied-revision'::bytea,'projection-manifest'::bytea,'projection-active'::bytea,'projection-retention'::bytea,'projection-checkpoint'::bytea,'forget-outcome'::bytea,'ingest-sequence'::bytea,'ingest-cursor'::bytea,'turn-certificate'::bytea,'boundary-certificate'::bytea,'boundary-capability'::bytea,'source-privacy'::bytea,'source-privacy-scope'::bytea,'erase-journal'::bytea,'erase-fence'::bytea,'erase-source-identity'::bytea,'source-privacy-ready'::bytea,'erase-guard'::bytea,'erase-source-ref'::bytea,'erase-lock-ref'::bytea,'erase-blob-lock'::bytea,'erased-blob'::bytea)),
- binary_key BYTEA NOT NULL CHECK (length(binary_key) BETWEEN 1 AND 524288),
- last_seq BYTEA NOT NULL CHECK (length(last_seq) = 8),
- deleted BOOLEAN NOT NULL
-);
-CREATE INDEX row_stamp_key_idx ON boyan_canonical.row_stamp USING HASH(binary_key);
-CREATE INDEX row_stamp_sequence_idx ON boyan_canonical.row_stamp(last_seq,family);
 CREATE TABLE boyan_canonical.scope_state (
  row_id BIGINT GENERATED ALWAYS AS IDENTITY (NO CYCLE) PRIMARY KEY,
  logical_key BYTEA NOT NULL CHECK (length(logical_key) BETWEEN 1 AND 524288),

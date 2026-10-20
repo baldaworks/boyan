@@ -15,7 +15,7 @@ func TestPostgresOwnerLostLockStaysPoisoned(t *testing.T) {
 	owner := openPostgresTestOwner(t, PostgresConfig{DSN: db.DSN, AllowLocalInsecure: true})
 	c := owner.connection
 	rawExec(t, c, "SELECT pg_catalog.pg_advisory_unlock_all()")
-	assertCode(t, owner.RestorePreflight(t.Context()), memory.CodeUnavailable)
+	assertCode(t, owner.CheckIntegrity(t.Context()), memory.CodeUnavailable)
 	rawExec(t, c, "SELECT pg_catalog.pg_advisory_lock(1651472750,1667329647)")
 	err := owner.Update(t.Context(), func(context.Context, *Tx) error {
 		t.Error("poisoned owner admitted callback")
@@ -43,14 +43,13 @@ func TestPostgresOwnerReadinessRejectsDuplicate(t *testing.T) {
 	}
 
 	corruptScopeFixture(t, c, "duplicate_row")
-	assertCode(t, owner.RestorePreflight(t.Context()), memory.CodeStoreFailure)
+	assertCode(t, owner.CheckIntegrity(t.Context()), memory.CodeStoreFailure)
 	err := owner.Update(t.Context(), func(ctx context.Context, tx *Tx) error {
 		_ = tx.Put(ctx, Key{Family: ScopeState, Scope: state.Scope}, envelope(t, ScopeState, state))
 
 		return nil // Swallowing duplicate rejection must not acknowledge commit.
 	})
 	assertCode(t, err, memory.CodeStoreFailure)
-	assertClock(t, c, 1, 1)
 
 	if err := owner.Close(); err != nil {
 		t.Fatal(err)

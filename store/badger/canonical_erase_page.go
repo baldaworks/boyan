@@ -57,7 +57,7 @@ func eraseWalkPage(txn *badger.Txn, prefix, cursor []byte, visit func([]byte) er
 }
 
 func eraseRecord(txn *badger.Txn, key []byte, kind string) (eraseRawRecord, error) {
-	parts, _, err := decodeCanonicalLogicalKey(key)
+	parts, _, err := decodeCanonicalTupleKey(key)
 	if err != nil {
 		return eraseRawRecord{}, err
 	}

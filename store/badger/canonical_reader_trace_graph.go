@@ -2,6 +2,7 @@ package badger
 
 import (
 	"context"
+
 	memory "github.com/baldaworks/boyan/pkg/memory"
 	"github.com/dgraph-io/badger/v4"
 )
@@ -33,7 +34,7 @@ func (r *CanonicalReader) loadTraceGraph(ctx context.Context, request memory.Tra
 			return traceGraph{}, err
 		}
 
-		text, err := r.loadTracePayload(ctx, node.view.revision.Payload, maxCanonicalLogicalLineBytes)
+		text, err := r.loadTracePayload(ctx, node.view.revision.Payload, maxCanonicalValueBytes)
 		if err != nil {
 			return traceGraph{}, err
 		}

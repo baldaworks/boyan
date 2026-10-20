@@ -1,10 +1,7 @@
 package canonicalcore_test
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -13,7 +10,7 @@ import (
 	core "github.com/baldaworks/boyan/internal/canonicalcore"
 	"github.com/baldaworks/boyan/internal/canonicalsql"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
+	badger "github.com/dgraph-io/badger/v4"
 )
 
 func TestLegacyBoundaryBoundsResolveBeforeModelAdmission(t *testing.T) {
@@ -35,20 +32,13 @@ func TestLegacyBoundaryBoundsResolveBeforeModelAdmission(t *testing.T) {
 					supersedeLegacyAncestor(t, f)
 				}
 
-				var reader coreReader
-
 				if factory != nil {
 					unproveSQLLegacyBounds(t, f, outcome, mode)
-					reader = f.reader
 				} else {
-					records, header, footer := exportLegacyFixture(t, f.store)
-					records = unproveLegacyBounds(t, records, outcome, mode)
-					imported, importedReader := newModelRetryStore(t, factory)
-					requireNoError(t, imported.ImportCanonicalLogical(context.Background(), bytes.NewReader(
-						marshalLegacyFixture(t, records, header, footer))), "import legacy fixture: %v")
-
-					reader = importedReader
+					unproveBadgerLegacyBounds(t, f, outcome, mode)
 				}
+
+				reader := f.reader
 
 				view, err := reader.LoadCanonicalBoundaryViewAt(context.Background(), f.export.Scope, f.expiry)
 
@@ -73,9 +63,7 @@ func TestLegacyBoundaryBoundsResolveBeforeModelAdmission(t *testing.T) {
 	})
 }
 
-// The old fixture edits Badger logical bytes. SQL exercises the same hostile
-// revision values directly after a complete valid native boundary; compatibility
-// with historical archive bytes is deliberately not part of the replacement.
+// Exercise hostile revision values directly after a complete valid native boundary.
 func unproveSQLLegacyBounds(t *testing.T, f *inheritanceFixture, outcome m.BoundaryOutcome, mode string) {
 	t.Helper()
 	err := coreRawConnection(t, f.store).Update(t.Context(), func(tx *canonicalsql.Tx) error {
@@ -170,106 +158,74 @@ func supersedeLegacyAncestor(t *testing.T, f *inheritanceFixture) {
 	requireNoError(t, err, "supersede native ancestor: %v")
 }
 
-func exportLegacyFixture(t *testing.T, store coreOwner) ([]b.CanonicalLogicalExportRecord,
-	b.CanonicalLogicalExportHeader, b.CanonicalLogicalExportFooter) {
+func unproveBadgerLegacyBounds(t *testing.T, f *inheritanceFixture, outcome m.BoundaryOutcome, mode string) {
 	t.Helper()
 
-	var stream bytes.Buffer
-	requireNoError(t, store.ExportCanonicalLogical(context.Background(), &stream), "export fixture: %v")
-	lines := bytes.Split(bytes.TrimSpace(stream.Bytes()), []byte{'\n'})
+	prefix, err := m.TupleKey(0x53, 1, "revision", f.export.Scope.Key, string(f.export.Scope.Kind))
+	requireNoError(t, err, "revision prefix: %v")
+	err = f.store.(interface{ DB() *badger.DB }).DB().Update(func(txn *badger.Txn) error {
+		iterator := txn.NewIterator(badger.DefaultIteratorOptions)
+		defer iterator.Close()
 
-	var (
-		header b.CanonicalLogicalExportHeader
-		footer b.CanonicalLogicalExportFooter
-	)
+		for iterator.Seek(prefix); iterator.ValidForPrefix(prefix); iterator.Next() {
+			item := iterator.Item()
 
-	requireNoError(t, json.Unmarshal(lines[0], &header), "header: %v")
-	requireNoError(t, json.Unmarshal(lines[len(lines)-1], &footer), "footer: %v")
+			data, err := item.ValueCopy(nil)
+			if err != nil {
+				return err
+			}
 
-	records := make([]b.CanonicalLogicalExportRecord, 0, len(lines)-2)
-	for _, line := range lines[1 : len(lines)-1] {
-		var record b.CanonicalLogicalExportRecord
-		requireNoError(t, json.Unmarshal(line, &record), "record: %v")
-		records = append(records, record)
-	}
+			envelope, err := m.UnmarshalRecordEnvelope(data)
+			if err != nil {
+				return err
+			}
 
-	return records, header, footer
-}
+			var revision m.MemoryRevision
+			if err := json.Unmarshal(envelope.Payload, &revision); err != nil {
+				return err
+			}
 
-func unproveLegacyBounds(t *testing.T, records []b.CanonicalLogicalExportRecord,
-	outcome m.BoundaryOutcome, mode string) []b.CanonicalLogicalExportRecord {
-	t.Helper()
+			revision = unprovedLegacyRevision(revision, outcome.Scenarios.Revisions[0].RevisionID,
+				outcome.Profile.Revisions[0].RevisionID, mode)
+			if err := putBadgerLegacyRevision(txn, f.export.Scope, revision); err != nil {
+				return err
+			}
 
-	scenario := outcome.Scenarios.Revisions[0].RevisionID
-	profile := outcome.Profile.Revisions[0].RevisionID
+			if mode == "budget" && revision.RevisionID == outcome.Scenarios.Revisions[0].RevisionID {
+				for n := range m.MaxSourcesPerRevision + 2 {
+					ancestor := revision
+					ancestor.RevisionID = fmt.Sprintf("legacy-budget-%04d", n)
 
-	for index, record := range records {
-		if record.RecordType != "revision" {
-			continue
-		}
-
-		envelope, err := m.UnmarshalRecordEnvelope(record.Envelope)
-		requireNoError(t, err, "revision envelope: %v")
-
-		var revision m.MemoryRevision
-		requireNoError(t, json.Unmarshal(envelope.Payload, &revision), "revision: %v")
-
-		revision = unprovedLegacyRevision(revision, scenario, profile, mode)
-
-		records[index] = legacyRevisionRecord(t, record, revision)
-		if mode == "budget" && revision.RevisionID == scenario {
-			for n := range m.MaxSourcesPerRevision + 2 {
-				ancestor := revision
-				ancestor.RevisionID = fmt.Sprintf("legacy-budget-%04d", n)
-				ancestor.Parents = []string{fmt.Sprintf("legacy-budget-%04d", n+1)}
-				records = append(records, legacyRevisionRecord(t, record, ancestor))
+					ancestor.Parents = []string{fmt.Sprintf("legacy-budget-%04d", n+1)}
+					if err := putBadgerLegacyRevision(txn, f.export.Scope, ancestor); err != nil {
+						return err
+					}
+				}
 			}
 		}
-	}
 
-	return records
+		return nil
+	})
+	requireNoError(t, err, "hostile legacy Badger revision fixture: %v")
 }
 
-func legacyRevisionRecord(t *testing.T, record b.CanonicalLogicalExportRecord,
-	revision m.MemoryRevision) b.CanonicalLogicalExportRecord {
-	t.Helper()
+func putBadgerLegacyRevision(txn *badger.Txn, scope m.Scope, revision m.MemoryRevision) error {
+	key, err := m.TupleKey(0x53, 1, "revision", scope.Key, string(scope.Kind), revision.RevisionID)
+	if err != nil {
+		return err
+	}
 
 	payload, err := json.Marshal(revision)
-	requireNoError(t, err, "revision JSON: %v")
-	record.Envelope, err = m.MarshalRecordEnvelope(record.RecordType, payload)
-	requireNoError(t, err, "revision envelope: %v")
-
-	record.Components = append([]string(nil), record.Components...)
-	record.Components[len(record.Components)-1] = revision.RevisionID
-
-	return record
-}
-
-func marshalLegacyFixture(t *testing.T, records []b.CanonicalLogicalExportRecord,
-	header b.CanonicalLogicalExportHeader, footer b.CanonicalLogicalExportFooter) []byte {
-	t.Helper()
-
-	var stream bytes.Buffer
-
-	encoder := json.NewEncoder(&stream)
-	requireNoError(t, encoder.Encode(header), "header encode: %v")
-
-	hash := sha256.New()
-
-	for _, record := range records {
-		line, err := json.Marshal(record)
-		requireNoError(t, err, "record encode: %v")
-
-		line = append(line, '\n')
-		stream.Write(line)
-		hash.Write(line)
+	if err != nil {
+		return err
 	}
 
-	footer.RecordCount = uint64(len(records))
-	footer.SHA256 = hex.EncodeToString(hash.Sum(nil))
-	requireNoError(t, encoder.Encode(footer), "footer encode: %v")
+	data, err := m.MarshalRecordEnvelope("revision", payload)
+	if err != nil {
+		return err
+	}
 
-	return stream.Bytes()
+	return txn.Set(key, data)
 }
 
 func legacyFixtureInvalid(mode string) bool {

@@ -3,7 +3,6 @@ package canonicalsql
 import (
 	"bytes"
 	"context"
-	"strings"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
@@ -14,13 +13,8 @@ func (tx *Tx) pageMetadataStatement(def familyDef) string {
 )
 SELECT k.ordinal,
  (SELECT count(*) FROM (SELECT 1 FROM ` + tx.connection.table(def.table) + `
-                       WHERE logical_key=k.binary_key LIMIT 2) exact),
- s.ids,s.sequences,s.deleted
-FROM requested k LEFT JOIN LATERAL (
- SELECT array_agg(stamp_id) AS ids,array_agg(sequence) AS sequences,array_agg(deleted) AS deleted
- FROM (SELECT stamp_id,CASE WHEN length(last_seq)=8 THEN last_seq ELSE NULL END AS sequence,deleted
-       FROM ` + tx.connection.table("row_stamp") + ` WHERE family=$2 AND binary_key=k.binary_key LIMIT 2) bounded
-) s ON true ORDER BY k.ordinal`
+                       WHERE logical_key=k.binary_key LIMIT 2) exact)
+FROM requested k ORDER BY k.ordinal`
 }
 
 func (tx *Tx) checkActiveHeadIdentities(ctx context.Context, page []Row) error {
@@ -40,7 +34,7 @@ func (tx *Tx) checkPageIdentities(ctx context.Context, f Family, def familyDef, 
 		keys[i] = stampKey(values)
 	}
 
-	r, err := tx.q.query(ctx, tx.pageMetadataStatement(def), keys, []byte(f))
+	r, err := tx.q.query(ctx, tx.pageMetadataStatement(def), keys)
 	if err != nil {
 		return tx.fail(databaseError(ctx, "check page identities", err))
 	}
@@ -73,23 +67,14 @@ func (tx *Tx) checkPageIdentities(ctx context.Context, f Family, def familyDef, 
 func checkPageMetadata(r rows, expected int) error {
 	var (
 		ordinal, matches int
-		ids              []int64
-		sequences        [][]byte
-		deleted          []bool
 	)
 
-	if err := r.Scan(&ordinal, &matches, &ids, &sequences, &deleted); err != nil {
+	if err := r.Scan(&ordinal, &matches); err != nil {
 		return err
 	}
 
-	if ordinal != expected || matches != 1 || len(ids) > 1 || len(ids) != len(sequences) || len(ids) != len(deleted) {
+	if ordinal != expected || matches != 1 {
 		return corruptRow()
-	}
-
-	if len(ids) == 1 {
-		_, err := decodePointStamp(&ids[0], sequences[0], &deleted[0])
-
-		return err
 	}
 
 	return nil
@@ -100,46 +85,34 @@ func checkPageMetadata(r rows, expected int) error {
 // marker, and each original-byte row/stamp probe remains independently LIMIT2.
 func (tx *Tx) activeRelatedBranch(f Family) string {
 	def, _ := familyDefinition(f)
-	keyColumn, familyTag, parameter := "item_key", "0", "$3"
+	keyColumn, familyTag := "item_key", "0"
 	aliases := "row_id,scope_key,scope_kind,id,logical_key,scope_partition,envelope,size"
 	projection := "r.row_id,r.scope_key,r.scope_kind,r.id,r.logical_key,r.scope_partition," +
 		"NULL::bytea,r.envelope,r.size,NULL::bytea,NULL::bytea"
 
 	if f == Revision {
-		keyColumn, familyTag, parameter = "revision_key", "1", "$4"
+		keyColumn, familyTag = "revision_key", "1"
 		aliases = "row_id,scope_key,scope_kind,id,logical_key,scope_partition," +
 			"item_partition,envelope,size,item_id,revision_u64"
 		projection = "r.row_id,r.scope_key,r.scope_kind,r.id,r.logical_key,r.scope_partition," +
 			"r.item_partition,r.envelope,r.size,r.item_id,r.revision_u64"
 	}
 
-	// row_id + raw/derived columns + envelope/size + Revision's two extras.
-	const physicalColumns = 11
-
-	return "SELECT k.ordinal," + familyTag + " AS family,0 AS probe," + projection +
-		",NULL::bigint AS stamp_id,NULL::bytea AS last_seq,NULL::boolean AS deleted FROM requested k " +
+	return "SELECT k.ordinal," + familyTag + " AS family," + projection + " FROM requested k " +
 		"LEFT JOIN LATERAL (SELECT " + pgSelection(f, def) + " FROM " + tx.connection.table(def.table) +
-		" WHERE logical_key=k." + keyColumn + " LIMIT 2) AS r(" + aliases + ") ON true UNION ALL " +
-		"SELECT k.ordinal," + familyTag + ",1," + strings.Repeat("NULL,", physicalColumns) +
-		"s.stamp_id,s.last_seq,s.deleted FROM requested k LEFT JOIN LATERAL (SELECT stamp_id," +
-		"CASE WHEN length(last_seq)=8 THEN last_seq ELSE NULL END AS last_seq,deleted FROM " +
-		tx.connection.table("row_stamp") + " WHERE family=" + parameter + " AND binary_key=k." +
-		keyColumn + " LIMIT 2) s ON true"
+		" WHERE logical_key=k." + keyColumn + " LIMIT 2) AS r(" + aliases + ") ON true"
 }
 
 func (tx *Tx) activeRelatedStatement() string {
 	return "WITH requested AS MATERIALIZED (SELECT item_key,revision_key,ordinal " +
 		"FROM unnest($1::bytea[],$2::bytea[]) WITH ORDINALITY AS k(item_key,revision_key,ordinal)) " +
 		tx.activeRelatedBranch(Item) + " UNION ALL " + tx.activeRelatedBranch(Revision) +
-		" ORDER BY ordinal,family,probe"
+		" ORDER BY ordinal,family"
 }
 
 type activeRelatedRecord struct {
-	ordinal, family, probe int
-	physical               *physicalRowScan
-	stampID                *int64
-	sequence               []byte
-	deleted                *bool
+	ordinal, family int
+	physical        *physicalRowScan
 }
 
 type activeRelatedStream struct {
@@ -156,8 +129,7 @@ func (s *activeRelatedStream) advance() error {
 
 	def, _ := familyDefinition(Revision)
 	r := &activeRelatedRecord{physical: newPhysicalRowScan(Revision, def)}
-	dest := append([]any{&r.ordinal, &r.family, &r.probe}, r.physical.destinations()...)
-	dest = append(dest, &r.stampID, &r.sequence, &r.deleted)
+	dest := append([]any{&r.ordinal, &r.family}, r.physical.destinations()...)
 
 	if err := s.Scan(dest...); err != nil {
 		return err
@@ -218,7 +190,7 @@ func (s *activeRelatedStream) point(ordinal int, key Key) ([]byte, error) {
 		}
 	}
 
-	if !point.seenRow || !point.seenStamp {
+	if !point.seenRow {
 		return nil, corruptRow()
 	}
 
@@ -231,45 +203,18 @@ func (s *activeRelatedStream) point(ordinal int, key Key) ([]byte, error) {
 
 // State is confined to one ordered native point, never cached across reads.
 type activePointState struct {
-	row                *physicalRow
-	seenRow, seenStamp bool
+	row     *physicalRow
+	seenRow bool
 }
 
 func (p *activePointState) accept(r *activeRelatedRecord, key Key) error {
-	switch r.probe {
-	case 0:
-		if p.seenRow {
-			return corruptRow()
-		}
-
-		p.seenRow = true
-		row, err := r.decodeRow(key)
-		p.row = row
-
-		return err
-	case 1:
-		if !p.seenRow || p.seenStamp {
-			return corruptRow()
-		}
-
-		p.seenStamp = true
-
-		return r.checkStamp()
-	default:
+	if p.seenRow {
 		return corruptRow()
 	}
-}
 
-func (r *activeRelatedRecord) checkStamp() error {
-	if r.stampID == nil {
-		if r.sequence != nil || r.deleted != nil {
-			return corruptRow()
-		}
-
-		return nil
-	}
-
-	_, err := decodePointStamp(r.stampID, r.sequence, r.deleted)
+	p.seenRow = true
+	row, err := r.decodeRow(key)
+	p.row = row
 
 	return err
 }
@@ -307,7 +252,7 @@ func (tx *Tx) postgresActiveMemory(ctx context.Context, scope memory.Scope,
 		revisions[i] = activeRelatedKey(scope, Revision, head.RevisionID)
 	}
 
-	r, err := tx.q.query(ctx, tx.activeRelatedStatement(), items, revisions, []byte(Item), []byte(Revision))
+	r, err := tx.q.query(ctx, tx.activeRelatedStatement(), items, revisions)
 	if err != nil {
 		return nil, databaseError(ctx, "read active related records", err)
 	}

@@ -74,7 +74,7 @@ func (o *Owner) LoadPayload(ctx context.Context, ref memory.PayloadRef) ([]byte,
 	return data, nil
 }
 
-// DeletePayload removes raw content after logical forgetting, with an archive stamp.
+// DeletePayload removes raw content after logical forgetting.
 func (o *Owner) DeletePayload(ctx context.Context, ref memory.PayloadRef) error {
 	if ctx == nil {
 		return invalid("invalid canonical SQL context")

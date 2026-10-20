@@ -20,7 +20,7 @@ func TestOwnerAdmissionCancellationAndRecursion(t *testing.T) {
 			done <- owner.View(t.Context(), func(ctx context.Context, _ *Tx) error {
 				close(entered)
 
-				code, _, _ := memory.ClassifyError(owner.RestorePreflight(ctx))
+				code, _, _ := memory.ClassifyError(owner.CheckIntegrity(ctx))
 				if code != memory.CodeInvalidDerived {
 					t.Error("recursive admission did not fail closed")
 				}
@@ -52,7 +52,7 @@ func TestOwnerAdmissionCancellationAndRecursion(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if err := owner.RestorePreflight(t.Context()); err != nil {
+		if err := owner.CheckIntegrity(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -87,7 +87,7 @@ func TestOwnerCloseDrainsRollbackBeforeUnlock(t *testing.T) {
 
 		<-canceled
 
-		assertCode(t, owner.RestorePreflight(t.Context()), memory.CodeUnavailable)
+		assertCode(t, owner.CheckIntegrity(t.Context()), memory.CodeUnavailable)
 
 		// Inspect lock lifetime without admitting another transaction on the owner.
 		assertOwnerStillLocked(t, owner)
@@ -117,8 +117,6 @@ func TestOwnerCloseDrainsRollbackBeforeUnlock(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-
-		assertClock(t, reopened.connection, 0, 0)
 	})
 }
 
@@ -159,6 +157,10 @@ func TestOwnerSerializesScopeCAS(t *testing.T) {
 		}
 
 		reopened := reopen()
-		assertClock(t, reopened.connection, 1, 1)
+
+		state, err := reopened.LoadScopeState(t.Context(), testScope())
+		if err != nil || state.Version != 1 {
+			t.Fatalf("reopened CAS state=%+v %v", state, err)
+		}
 	})
 }

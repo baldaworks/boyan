@@ -104,9 +104,9 @@ SDK's HTTP 400 response; ingest retains its structured error envelope.
 - `GET /readyz` checks that Boyan can accept work safely
 
 Readiness fails if the standalone runtime reports a current readiness
-diagnostic. Startup first rejects incomplete loading restores or resumes validated
-restore preparation, then finishes pending canonical erases and prepares source
-privacy, then reconciles permanent canonical denials across every persisted SQL
+diagnostic. Startup first checks canonical structural integrity, then finishes
+pending canonical erases and prepares source privacy, then reconciles permanent
+canonical denials across every persisted SQL
 scope before lexical repair, sequenced writers and public readers can serve
 work. Required cleanup/repair errors fail startup with stopped backup/rebuild
 guidance; optional semantic initialization failure does not. It reconciles retained
@@ -289,9 +289,8 @@ verification. There is no general foreign-record migration or operator repair
 command. Historical crash windows that never recorded their selected targets
 cannot reconstruct an unknowable old snapshot.
 
-Physical backups and supported logical exports retain erase recovery journals
-and fences, certificates and erased-payload tombstones. Restoring interrupted state
-still requires normal startup recovery. Payload API absence is logical cleanup;
+Reopening interrupted state requires normal startup recovery of retained erase
+journals and fences. Payload API absence is logical cleanup;
 it does not promise forensic removal from WAL, pinned MVCC views, freelist,
 filesystem snapshots, backups or untouched legacy projections. Canonical
 structural/deny evidence is deliberately retained. Disabling embeddings does
@@ -322,21 +321,17 @@ a bounded exact namespace check. Scope forget/reset, altered derivation or
 producer fingerprints cannot bypass this restriction. There is no automatic
 backfill, metadata deletion procedure or migration/repair CLI.
 
-Take a trustworthy backup before upgrading a writer. Supported physical and
-logical roundtrips preserve boundary proof, capability markers and inherited
-bounds/trust metadata, including forgotten replay evidence. Old proof-free
-imports remain unproven. Integrity checks reject malformed new structural proof
-records. Native restore and logical import validate integrity and reconstruct
-privacy before success. They are not atomic replacements; follow the
-[restore recovery rules](#source-privacy-and-restore-upgrades) rather than serving
-partially loaded state.
+Take a trustworthy filesystem backup before upgrading a writer. Preserve
+boundary proof, capability markers and inherited bounds/trust metadata,
+including forgotten replay evidence. Normal proof validation rejects malformed
+structural proof records.
 
 Do not run an older writer against a store written under these contracts; it can
 bypass certification or inherited-bound enforcement. A deployed rollback needs
 a trustworthy pre-upgrade backup. Never strip certificates, capability markers
 or grounding/privacy metadata to bypass a conflict.
 
-## Source privacy and restore upgrades
+## Source privacy upgrades
 
 Take a trustworthy pre-upgrade backup. Do not run an older writer against an
 upgraded store, including during rollback: it can add history without required
@@ -353,13 +348,12 @@ standard classification. Missing, opaque, ambiguous or unsupported history
 remains unknown. Unattributable opaque history can mark its exact scope key/kind
 incomplete and deny later new sources there; unrelated scopes remain independent.
 Known sensitive/unknown classification and scope-incomplete restrictions remain
-monotone through writes, reconstruction and restore.
+monotone through writes and privacy preparation.
 
 Older stores require `PrepareSourcePrivacy(ctx)` before direct canonical Trace
 or writers can operate; unprepared Trace returns an empty `unavailable` result.
 For ordinary stores, standalone startup calls preparation after pending erase
-recovery and before serving work. Restoring stores first complete the narrow
-validated-restore preflight; loading restores cannot advance erase journals.
+recovery and before serving work, following structural integrity preflight.
 The exclusive pass scans authoritative sources, messages and
 revisions in pages of at most 32 keys, bounds per-source membership at 32 IDs,
 and checks 4 MiB encoded-value/payload bounds before copying bytes. It publishes
@@ -368,39 +362,17 @@ stored history, while page memory stays bounded. Cancellation/failure leaves
 readiness unpublished; the next attempt restarts the full bounded pass. Trace
 itself performs source-local bounded reads rather than replaying full history.
 
-Supported native full/incremental backups and logical exports retain privacy and
-proof metadata. Integrity validates original imported metadata, including member
-ownership and complete-capture bindings, before forced reconstruction. Copied
-standard labels, membership bits and ready markers never establish authority.
-Restrictive destination and retained incoming versions survive native restore,
-including tombstones; incremental chains use the returned backup cursor as
-`since`, without adding one.
+Boyan provides no application backup/restore, logical export/import or archive
+scanner. During the remaining Badger transition, an existing
+`.boyan-restore-privacy` sidecar from earlier development code causes a read-only
+startup refusal; it is not a supported recovery path. Do not delete the marker
+or manually publish readiness to bypass the refusal.
 
-Restore maintains `.boyan-restore-privacy`, a fixed local loading/validated fence
-outside the copied Badger MVCC keyspace. Trace, recall and readiness remain
-unavailable while fenced, including after reopening, so copied higher-version
-ready markers cannot publish partially loaded data. Native restore spools one
-unlinked, mode-0600 temporary artifact for two sequential passes. Temporary disk
-use grows linearly with backup size. Encoded native frames have a 256 MiB
-operational limit, checked before allocation and on rewritten output; this is
-Boyan's bound, not an upstream Badger hard maximum. Privacy values retain their
-separate 4 MiB bound. Oversized native frames return `limit_exceeded` and leave
-the destination fenced.
-
-A complete load/replay passes integrity and syncs Badger before syncing the
-validated fence. Forced privacy preparation then syncs Badger again before
-removing the fence and syncing its directory. A crash or cancellation during
-loading requires a complete valid backup/import retry, or restoration into a
-fresh destination from trustworthy data; `PrepareSourcePrivacy` alone cannot
-certify a partial stream. A loading-fenced logical destination accepts a complete
-valid retry even if the interrupted stream imported pending erase metadata.
-Erase recovery and mutations remain fenced during loading, including failed
-startup attempts, so they cannot alter that metadata before retry validation.
-Ordinary live stores retain their pending-erase import guard. An interruption
-after validation can resume preparation
-through startup or `PrepareSourcePrivacy(ctx)`, after rechecking integrity. Do
-not delete the fence or manually publish readiness. These are library/startup
-recovery mechanisms; this release adds no restore or repair CLI.
+The unshipped canonical SQL initial schema excludes archive bookkeeping.
+Databases created with an earlier development schema checksum or migration
+history are rejected before changing their state. Use an explicitly selected
+fresh database location for this build; existing data is neither transferred,
+reset nor deleted. Earlier code can still be used to inspect that earlier state.
 
 Concurrent derivation calls use one cryptographically random ephemeral ADK
 session ID per invocation, independently of stage, operation and scope. Occupied
@@ -645,8 +617,8 @@ mv -- /var/lib/boyan/search /srv/boyan-backups/search-damaged-20261018
 ```
 
 The complete copy includes canonical Badger, receipts, privacy/proof capabilities,
-source/erase journals, restore fences, SQLite database and every WAL/SHM/journal,
-plus any legacy `bleve/`/`embeddings/` bytes. Confirm backup permissions/access
+source/erase journals, any retained safety sidecars, SQLite database and every
+WAL/SHM/journal, plus any legacy `bleve/`/`embeddings/` bytes. Confirm backup permissions/access
 and successful copy comparison before moving anything. Only the operator moves
 the named `search/` directory; Boyan never automatically renames/deletes it.
 Restart current compatible code with the same canonical root. Required lexical
@@ -667,7 +639,7 @@ pre-upgrade backup restored into a separate root, with the matching writer.
 Such restoration loses later changes and may omit later denials: retain current
 state and assess that boundary before serving. Rebuilding an old index, copying
 only `badger/`, disabling embeddings or stripping markers cannot make an
-incompatible writer safe. The existing boundary/privacy/restore upgrade
+incompatible writer safe. The existing boundary/privacy upgrade
 restrictions above remain mandatory.
 
 ## Embeddings verification

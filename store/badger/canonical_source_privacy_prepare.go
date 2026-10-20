@@ -28,29 +28,22 @@ func (s *CanonicalStore) PrepareSourcePrivacy(ctx context.Context) error {
 		return invalidSourcePrivacy()
 	}
 
-	if s.restoreBlocked.Load() {
-		return s.resumeValidatedPrivacyRestore(ctx)
-	}
-
-	return s.prepareSourcePrivacyLocked(ctx, false)
+	return s.prepareSourcePrivacyLocked(ctx)
 }
 
-// The caller owns maintenanceMu. Restore can force reconstruction without
-// trusting a copied readiness marker or acquiring the maintenance lock twice.
-func (s *CanonicalStore) prepareSourcePrivacyLocked(ctx context.Context, force bool) error {
+// The caller owns maintenanceMu.
+func (s *CanonicalStore) prepareSourcePrivacyLocked(ctx context.Context) error {
 	if err := canonicalContextError(ctx); err != nil {
 		return err
 	}
 
-	if !force {
-		err := s.db.View(requireSourcePrivacyReady)
-		if err == nil {
-			return nil
-		}
+	err := s.db.View(requireSourcePrivacyReady)
+	if err == nil {
+		return nil
+	}
 
-		if code, _, ok := memory.ClassifyError(err); !ok || code != memory.CodeUnavailable {
-			return err
-		}
+	if code, _, ok := memory.ClassifyError(err); !ok || code != memory.CodeUnavailable {
+		return err
 	}
 
 	if err := s.db.Update(func(txn *badger.Txn) error { return txn.Delete(sourcePrivacyReadinessKey()) }); err != nil {
@@ -150,7 +143,7 @@ func (s *CanonicalStore) applyPrivacyPreparationRecord(ctx context.Context, key 
 		return err
 	}
 
-	components, _, err := decodeCanonicalLogicalKey(key)
+	components, _, err := decodeCanonicalTupleKey(key)
 	if err != nil || len(components) != canonicalRecordComponents {
 		return invalidSourcePrivacy()
 	}

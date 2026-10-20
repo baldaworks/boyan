@@ -42,31 +42,6 @@ func TestPrivacyDenialExactScopeAndLoadingFence(t *testing.T) {
 		}
 
 		assertPrivacyDenials(t, owner, scope)
-
-		rawExec(t,
-			owner.connection,
-			"INSERT INTO "+owner.connection.table("restore_control")+"(singleton,control) VALUES(1,$1)",
-			[]byte("loading"))
-
-		data := []byte("blocked")
-
-		ref := privacyRef("blocked", data)
-		for _, err := range []error{owner.PrepareSourcePrivacy(t.Context()),
-			owner.SourcePrivacyReady(t.Context()),
-			owner.PutPayload(t.Context(),
-				data,
-				ref),
-			owner.DeletePayload(t.Context(),
-				ref)} {
-			assertCode(t, err, memory.CodeUnavailable)
-		}
-
-		_, err := owner.LoadPayload(t.Context(), ref)
-		assertCode(t, err, memory.CodeUnavailable)
-		_, err = owner.IsSourceDenied(t.Context(), scope, "id")
-		assertCode(t, err, memory.CodeUnavailable)
-		_, err = owner.IsRevisionDenied(t.Context(), scope, "id")
-		assertCode(t, err, memory.CodeUnavailable)
 	})
 }
 
@@ -81,18 +56,6 @@ func runPayloadGate(t *testing.T, owner *Owner, kind string) {
 	}
 
 	seedPayloadGate(t, owner, ref, kind)
-
-	var before []Stamp
-
-	if err := owner.View(t.Context(), func(ctx context.Context, tx *Tx) error {
-		var err error
-
-		before, err = tx.ScanStamps(ctx, nil, 32)
-
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
 
 	attempt, attemptRef := data, ref
 	if kind == "immutable" {
@@ -115,8 +78,6 @@ func runPayloadGate(t *testing.T, owner *Owner, kind string) {
 	if err != nil || !bytes.Equal(got, data) {
 		t.Fatalf("failed write changed content: %v", err)
 	}
-
-	assertPayloadStamps(t, owner, before)
 }
 
 func seedPayloadGate(t *testing.T, owner *Owner, ref memory.PayloadRef, kind string) {
@@ -149,30 +110,6 @@ func seedPayloadGate(t *testing.T, owner *Owner, ref memory.PayloadRef, kind str
 		}
 
 		return putPrivacyRecord(ctx, tx, key, family, value)
-	}); err != nil {
-		t.Fatal(err)
-	}
-}
-func assertPayloadStamps(t *testing.T, owner *Owner, before []Stamp) {
-	t.Helper()
-
-	if err := owner.View(t.Context(), func(ctx context.Context, tx *Tx) error {
-		after, err := tx.ScanStamps(ctx, nil, 32)
-		if err != nil {
-			return err
-		}
-
-		if len(after) != len(before) {
-			t.Fatal("failed write changed stamp count")
-		}
-
-		for i := range after {
-			if after[i].Cursor.Sequence != before[i].Cursor.Sequence {
-				t.Fatal("failed write advanced stamp")
-			}
-		}
-
-		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}

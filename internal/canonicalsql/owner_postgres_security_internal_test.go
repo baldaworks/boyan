@@ -93,7 +93,8 @@ func TestPostgresOwnerPermissionAndMigrationCleanup(t *testing.T) {
 
 	owner := openPostgresTestOwner(t, config)
 	rawExec(t, owner.connection, "UPDATE boyan_canonical.schema_migration SET checksum='unsupported'")
-	rawExec(t, owner.connection, "INSERT INTO boyan_canonical.restore_control VALUES(1,$1)", []byte("loading"))
+	rawExec(t, owner.connection, "CREATE TABLE boyan_canonical.prior_state(value TEXT)")
+	rawExec(t, owner.connection, "INSERT INTO boyan_canonical.prior_state VALUES('preserved')")
 
 	if err := owner.Close(); err != nil {
 		t.Fatal(err)
@@ -126,12 +127,12 @@ func assertFailedPostgresOpenPreservedState(t *testing.T, db *canonicalsqltest.D
 		t.Fatal(err)
 	}
 
-	err = db.Postgres.QueryRow(t.Context(), "SELECT control FROM boyan_canonical.restore_control").Scan(&marker)
+	err = db.Postgres.QueryRow(t.Context(), "SELECT value FROM boyan_canonical.prior_state").Scan(&marker)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if checksum != "unsupported" || string(marker) != "loading" {
+	if checksum != "unsupported" || string(marker) != "preserved" {
 		t.Fatal("failed migration changed durable state")
 	}
 
@@ -164,7 +165,7 @@ func openPostgresTestOwner(t *testing.T, config PostgresConfig) *Owner {
 func TestPostgresOwnerFixedSchemaAndSecondOwnerBeforeMigration(t *testing.T) {
 	db := canonicalsqltest.PostgresDatabase(t)
 	if _, err := db.Postgres.Exec(t.Context(),
-		"CREATE TABLE public.restore_control(singleton integer,control bytea)"); err != nil {
+		"CREATE TABLE public.scope_state(untrusted bytea)"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -176,7 +177,7 @@ func TestPostgresOwnerFixedSchemaAndSecondOwnerBeforeMigration(t *testing.T) {
 	config := PostgresConfig{DSN: db.DSN + "&search_path=public,pg_catalog", AllowLocalInsecure: true}
 
 	owner := openPostgresTestOwner(t, config)
-	if err := owner.RestorePreflight(t.Context()); err != nil {
+	if err := owner.CheckIntegrity(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 

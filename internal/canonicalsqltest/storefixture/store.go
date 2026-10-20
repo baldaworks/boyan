@@ -16,7 +16,7 @@ import (
 // Store is the implemented lifecycle shared by canonical owners. Canonical
 // domain conformance belongs to the later tasks implementing those ports.
 type Store interface {
-	RestorePreflight(ctx context.Context) error
+	CheckIntegrity(ctx context.Context) error
 	Close() error
 }
 

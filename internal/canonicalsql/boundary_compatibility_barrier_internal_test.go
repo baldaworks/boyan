@@ -16,7 +16,7 @@ func TestCompatibilityFinalAuthorityContract(t *testing.T) {
 	for _, kind := range []string{"unchanged", "source-denial", "revision-denial", "sensitive",
 		"revision-sensitive", "missing-source", "missing-revision", "missing-item", "missing-head",
 		"scope-change", "head-change", "head-corruption", "raw-content", "canceled", "unprepared",
-		"restore-loading", "erase-guard", "missing-message", "missing-source-payload"} {
+		"erase-guard", "missing-message", "missing-source-payload"} {
 		t.Run(kind, func(t *testing.T) {
 			forEachOwner(t, func(t *testing.T, owner *Owner, _ func() *Owner) {
 				runCompatibilityFinalAuthority(t, owner, kind)
@@ -111,7 +111,7 @@ func compatibilityFinalErrorClass(kind string) (memory.ErrorCode, memory.ErrorCl
 		return memory.CodeStoreFailure, memory.ErrorClassPermanent
 	case "scope-change", "head-change", "erase-guard":
 		return memory.CodeConflict, memory.ErrorClassRetryable
-	case "unprepared", "restore-loading":
+	case "unprepared":
 		return memory.CodeUnavailable, memory.ErrorClassRetryable
 	default:
 		return "", ""
@@ -167,11 +167,6 @@ func alterCompatibilityBarrier(t *testing.T, owner *Owner, h privacyHistory, kin
 		}
 	}); err != nil {
 		t.Fatal(err)
-	}
-
-	if kind == "restore-loading" {
-		rawExec(t, owner.connection,
-			"INSERT INTO "+owner.connection.table("restore_control")+"(singleton,control) VALUES(1,$1)", []byte("loading"))
 	}
 }
 

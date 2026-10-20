@@ -14,25 +14,25 @@ type mutationProbe struct {
 	connection *canonicalsql.Connection
 	exec       func(string, ...any) error
 	table      func(string) string
-	clock      func() ([]byte, error)
+	rows       func(string) ([][]byte, error)
 }
 
 func newMutationProbe(t *testing.T, fixture *storefixture.Fixture) mutationProbe {
 	t.Helper()
 
-	if fixture.Database.Postgres != nil {
-		conn := fixture.Database.Postgres
-
+	if conn := fixture.Database.Postgres; conn != nil {
 		return mutationProbe{connection: canonicalsql.NewPostgres(conn), exec: func(statement string, args ...any) error {
 			_, err := conn.Exec(t.Context(), statement, args...)
 
 			return err
-		}, table: func(name string) string { return "boyan_canonical." + name }, clock: func() ([]byte, error) {
-			var clock []byte
+		}, table: func(name string) string { return "boyan_canonical." + name }, rows: func(table string) ([][]byte, error) {
+			r, err := conn.Query(t.Context(), "SELECT envelope FROM boyan_canonical."+table+" ORDER BY envelope")
+			if err != nil {
+				return nil, err
+			}
+			defer r.Close()
 
-			err := conn.QueryRow(t.Context(), "SELECT mutation_clock FROM boyan_canonical.store_meta").Scan(&clock)
-
-			return clock, err
+			return readProbeEnvelopes(r)
 		}}
 	}
 
@@ -54,13 +54,34 @@ func newMutationProbe(t *testing.T, fixture *storefixture.Fixture) mutationProbe
 		_, err := conn.ExecContext(t.Context(), statement, args...)
 
 		return err
-	}, table: func(name string) string { return name }, clock: func() ([]byte, error) {
-		var clock []byte
+	}, table: func(name string) string { return name }, rows: func(table string) ([][]byte, error) {
+		r, err := conn.QueryContext(t.Context(), "SELECT envelope FROM "+table+" ORDER BY envelope")
+		if err != nil {
+			return nil, err
+		}
+		defer r.Close()
 
-		err := conn.QueryRowContext(t.Context(), "SELECT mutation_clock FROM store_meta").Scan(&clock)
-
-		return clock, err
+		return readProbeEnvelopes(r)
 	}}
+}
+
+func readProbeEnvelopes(r interface {
+	Next() bool
+	Scan(dest ...any) error
+	Err() error
+}) ([][]byte, error) {
+	var all [][]byte
+
+	for r.Next() {
+		var value []byte
+		if err := r.Scan(&value); err != nil {
+			return nil, err
+		}
+
+		all = append(all, value)
+	}
+
+	return all, r.Err()
 }
 
 func (p mutationProbe) read(t *testing.T, scope memory.Scope, family canonicalsql.Family, id string, target any) {
@@ -167,24 +188,6 @@ func (p mutationProbe) failInserts(t *testing.T, table string) func() {
 	}
 }
 
-func (p mutationProbe) stamps(t *testing.T) []canonicalsql.Stamp {
-	t.Helper()
-
-	var result []canonicalsql.Stamp
-
-	if err := p.connection.View(t.Context(), func(tx *canonicalsql.Tx) error {
-		var err error
-
-		result, err = tx.ScanStamps(t.Context(), nil, memory.MaxCanonicalReadRecords)
-
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	return result
-}
-
 func assertMutationCode(t *testing.T, err error, want memory.ErrorCode) {
 	t.Helper()
 
@@ -201,4 +204,29 @@ func assertMutationState(t *testing.T, store mutationStore, scope memory.Scope, 
 	if err != nil || state.Version != want || state.ChangeSeq != want {
 		t.Fatalf("scope=%+v error=%v want=%d", state, err, want)
 	}
+}
+
+func (p mutationProbe) snapshot(t *testing.T) [][][]byte {
+	t.Helper()
+
+	var all [][][]byte
+
+	for _, table := range []string{
+		"scope_state", "operation", "source", "message", "item", "revision", "lifecycle", "head",
+		"scope_change", "delivery", "delivery_claim", "payload", "provenance_forward", "provenance_reverse",
+		"source_revision", "denied_source", "denied_revision", "projection_manifest", "projection_active",
+		"projection_retention", "projection_checkpoint", "forget_outcome", "ingest_sequence", "ingest_cursor",
+		"turn_certificate", "boundary_certificate", "boundary_capability", "source_privacy", "source_privacy_scope",
+		"erase_journal", "erase_fence", "erase_source_identity", "source_privacy_ready", "erase_guard",
+		"erase_source_ref", "erase_lock_ref", "erase_blob_lock", "erased_blob",
+	} {
+		values, err := p.rows(table)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		all = append(all, values)
+	}
+
+	return all
 }

@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/baldaworks/boyan/internal/canonicalsqltest"
 	memory "github.com/baldaworks/boyan/pkg/memory"
 	"github.com/baldaworks/boyan/store/sqlite"
 )
@@ -24,32 +23,15 @@ func TestPublicOwnerAndReaderLifecycle(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 
 	reader := sqlite.NewCanonicalReader(store)
-	if err := reader.RestorePreflight(t.Context()); err != nil {
+	if err := reader.CheckIntegrity(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-
-	raw, err := canonicalsqltest.OpenSQLite(t.Context(), path)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := raw.SQLite.ExecContext(t.Context(),
-		"INSERT INTO restore_control(singleton,control) VALUES(1,$1)", []byte("loading")); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := raw.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	assertUnavailable(t, store.RestorePreflight(t.Context()))
-	assertUnavailable(t, reader.RestorePreflight(t.Context()))
 
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
 
-	assertUnavailable(t, reader.RestorePreflight(t.Context()))
+	assertUnavailable(t, reader.CheckIntegrity(t.Context()))
 
 	reopened, err := sqlite.Open(t.Context(), sqlite.Config{Path: path})
 	if err != nil {
@@ -58,7 +40,9 @@ func TestPublicOwnerAndReaderLifecycle(t *testing.T) {
 
 	defer func() { _ = reopened.Close() }()
 
-	assertUnavailable(t, reopened.RestorePreflight(t.Context()))
+	if err := reopened.CheckIntegrity(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestPublicOwnerInvalidAndCanceled(t *testing.T) {
@@ -71,8 +55,8 @@ func TestPublicOwnerInvalidAndCanceled(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assertUnavailable(t, store.RestorePreflight(t.Context()))
-	assertUnavailable(t, sqlite.NewCanonicalReader(nil).RestorePreflight(t.Context()))
+	assertUnavailable(t, store.CheckIntegrity(t.Context()))
+	assertUnavailable(t, sqlite.NewCanonicalReader(nil).CheckIntegrity(t.Context()))
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()

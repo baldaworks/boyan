@@ -27,9 +27,8 @@ func (config Config) Validate() error {
 // one dedicated connection; it never reconnects or switches canonical backends.
 type Store struct{ owner *canonicalsql.Owner }
 
-// Open acquires exclusive ownership and migrates compatible SQL state. A store
-// with interrupted restore control can open for later controlled recovery;
-// RestorePreflight must succeed before application readiness.
+// Open acquires exclusive ownership and migrates compatible SQL state.
+// CheckIntegrity must succeed before application readiness.
 func Open(ctx context.Context, config Config) (*Store, error) {
 	owner, err := canonicalsql.OpenSQLiteOwner(ctx, canonicalsql.SQLiteConfig{
 		Path: config.Path, BusyTimeout: config.BusyTimeout,
@@ -41,9 +40,9 @@ func Open(ctx context.Context, config Config) (*Store, error) {
 	return &Store{owner: owner}, nil
 }
 
-// RestorePreflight rejects interrupted or incomplete restores before serving.
-func (s *Store) RestorePreflight(ctx context.Context) error {
-	return s.canonicalOwner().RestorePreflight(ctx)
+// CheckIntegrity validates structural canonical state before serving.
+func (s *Store) CheckIntegrity(ctx context.Context) error {
+	return s.canonicalOwner().CheckIntegrity(ctx)
 }
 
 // CheckReadiness verifies current ownership and durable serving fences without
@@ -70,11 +69,11 @@ type Reader struct{ store *Store }
 // NewCanonicalReader creates a reader bound to the same canonical owner.
 func NewCanonicalReader(store *Store) *Reader { return &Reader{store: store} }
 
-// RestorePreflight checks the reader's authority before application startup.
-func (r *Reader) RestorePreflight(ctx context.Context) error {
+// CheckIntegrity checks the reader's authority before application startup.
+func (r *Reader) CheckIntegrity(ctx context.Context) error {
 	if r == nil {
-		return (*Store)(nil).RestorePreflight(ctx)
+		return (*Store)(nil).CheckIntegrity(ctx)
 	}
 
-	return r.store.RestorePreflight(ctx)
+	return r.store.CheckIntegrity(ctx)
 }

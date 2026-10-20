@@ -1,13 +1,6 @@
 package badger
 
-func isExportableCanonicalRecordType(recordType string) bool {
-	return recordType != badgerRecordProjectionManifest &&
-		recordType != badgerRecordProjectionActive &&
-		recordType != badgerRecordProjectionRetention &&
-		recordType != badgerRecordProjectionCheckpoint
-}
-
-func canonicalLogicalComponentCount(recordType string) (int, bool) {
+func canonicalTupleComponentCount(recordType string) (int, bool) {
 	switch recordType {
 	case badgerRecordSourcePrivacyReady:
 		return 1, false
