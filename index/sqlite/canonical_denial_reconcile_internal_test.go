@@ -1,4 +1,4 @@
-//nolint:cyclop,gocognit,funlen,lll // Real SQLite/Badger fixture matrices keep exact ownership and finite-page assertions together.
+//nolint:cyclop,gocognit,funlen,lll // Real SQL fixture matrices keep exact ownership and finite-page assertions together.
 package sqlite
 
 import (
@@ -8,13 +8,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/baldaworks/boyan/internal/semantic"
 	"github.com/baldaworks/boyan/pkg/memory"
-	canonicalbadger "github.com/baldaworks/boyan/store/badger"
 )
 
 func TestCanonicalDenialReconcileRealPublicationAndLatePublish(t *testing.T) {
@@ -516,23 +514,6 @@ func TestCanonicalDenialReconcileZeroCoverageAfterLostSQLProof(t *testing.T) {
 		assertPrivacyCount(t, store, `SELECT count(*) FROM semantic_coverage`, 0)
 		assertPrivacyCount(t, store, `SELECT complete FROM semantic_build WHERE build_id='zero-owner'`, 0)
 	})
-}
-
-func denialCanonicalStore(t *testing.T) denialCanonicalOwner {
-	t.Helper()
-
-	s, err := canonicalbadger.OpenCanonicalStore(filepath.Join(t.TempDir(), "canonical"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	t.Cleanup(func() {
-		if err := s.Close(); err != nil {
-			t.Error(err)
-		}
-	})
-
-	return s
 }
 
 func denialCanonicalRevision(t *testing.T, s denialCanonicalOwner, scope memory.Scope, id string, sources ...string) {

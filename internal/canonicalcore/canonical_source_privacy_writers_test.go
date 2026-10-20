@@ -11,7 +11,7 @@ import (
 )
 
 // These exercise real producers as well as the direct mutation regressions in
-// store/badger. None can bypass the common atomic classification writer.
+// canonical SQL. None can bypass the common atomic classification writer.
 func TestSourcePrivacyNativeDerivationAndReconciliationWriters(t *testing.T) {
 	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
 		for _, sameSource := range []bool{true, false} {

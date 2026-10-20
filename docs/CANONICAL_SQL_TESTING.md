@@ -6,7 +6,7 @@ an import cycle in primitive tests. The owner fixture tests lifecycle and the
 implemented privacy/preparation, denial-read and payload contracts. Shared
 privacy cases use actual owners with bounded structural history fixtures.
 Preservation checks run mutation, reader and erase cases against both
-engines before retiring the corresponding Badger tests.
+engines; the retired Badger package is no longer built.
 
 The SQLite owner opens a separate canonical file through `store/sqlite.Open`.
 It holds an OS exclusive lock on the database file itself (including aliases),
@@ -25,7 +25,7 @@ admission and checks ownership on that connection. Disconnect, protocol failure
 or missing ownership permanently fences that owner until full close/reopen;
 there is no automatic reconnect or ambiguous-commit retry. Preflight checks
 stored structural integrity. Both owners expose the same
-small lifecycle test factory, without claiming the unfinished CanonicalStore port.
+small lifecycle test factory plus the implemented canonical memory ports.
 
 PostgreSQL configuration accepts a resolved private DSN, a bounded connect
 timeout (default 5s, maximum 30s), and `AllowLocalInsecure`. Remote DSNs require
@@ -69,12 +69,12 @@ establish infrastructure; they do not claim canonical conformance.
 
 ## Preservation registration
 
-`coverage.json` is a fixed, executable registration of the pre-port surfaces.
+`coverage.json` is a fixed, executable registration of the current native SQL surfaces.
 `TestPreservationInventory` compares it against a deterministic standard-library
-AST scan. It registers all Badger durable family constants (including metadata
-outside `canonical_keys_constants.go`), key constructors/direct tuple sites,
+AST scan. It registers all38 typed SQL durable family constants, key constructors/direct tuple sites,
 write primitives/record helpers, raw accesses/fault hooks and every test/helper
-in Badger and its consumer packages. Complete package registration includes
+in canonicalsql, both public SQL adapters and their transitive consumer packages.
+Complete package registration includes
 shared fixtures that construct a backend indirectly. Benchmarks are recorded as
 preservation evidence, not executed by the ordinary test command.
 
@@ -90,12 +90,24 @@ go test -count=1 -run TestPreservationInventory ./internal/canonicalsqltest
 go test -count=1 -run TestPreservationInventory ./internal/canonicalsqltest -args -write-coverage
 ```
 
-Do not remove retained-behavior registrations or old coverage merely to make
-this check pass.
-After a later task ports a case, retain its replacement and dual-backend result
-in that task's evidence before changing its registration. TASK-019 owns residual
-consumer/raw fixture migration; TASK-020 owns final Badger retirement. Protected
-audit/benchmark artifacts and user drafts remain unchanged.
+Do not remove retained-behavior registrations merely to make this check pass.
+The pre-retirement2668-entry inventory remains immutable at commit `4b146d7`,
+path `internal/canonicalsqltest/coverage.json`; it records retired implementation
+symbols, not2668 independent behavioral assertions. TASK-019's Beads evidence
+records concrete SQL counterparts; TASK-020 removes the obsolete Badger
+implementation/fixtures while preserving native assertion bodies. Closed
+maintenance tasks13–15/24/27 are historical retired scope, not promised features.
+Current family/case registration is not a substitute for reviewing those bodies
+or required dual-backend results.
+
+Original benchmark sources are preserved as noncompiled `.go.txt` under
+`internal/canonicalsqltest/testdata/provenance` and
+`internal/sqlitegate/testdata/provenance`. Live matched harnesses now use SQL;
+old measurements are not a baseline for the changed authority. No new benchmark
+campaign is required. Static synthetic populated-old-Badger evidence lives in
+`internal/standaloneruntime/testdata`; startup tests hash its files before/after
+SQL lifecycle and check the old operation was not imported. They never open a
+Badger engine. Protected audit results and user drafts remain unchanged.
 
 | Durable behavior / corruption category | Primary migration owners |
 | --- | --- |

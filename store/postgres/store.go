@@ -1,6 +1,6 @@
 // Package postgres owns a PostgreSQL canonical database through one pinned
-// session. Domain ports are added as their shared SQL algorithms become
-// available; the local SQLite search projection remains separate.
+// session. Shared SQL algorithms preserve the memory ports; the local SQLite
+// search projection remains separate.
 package postgres
 
 import (

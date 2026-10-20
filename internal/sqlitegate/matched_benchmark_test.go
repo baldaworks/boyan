@@ -1,8 +1,8 @@
 //nolint:cyclop,funlen,gocognit,lll // Keep the paired workload matrix and exact input fields adjacent.
 package sqlitegate_test
 
-// Matched input and consumer harness. The identical file is added through a Go
-// overlay to the read-only old archive; only backend adapters differ.
+// Matched input and consumer harness, now using canonical SQL. Historical
+// benchmark sources used by the old overlay remain in testdata/provenance.
 
 import (
 	"context"
@@ -41,7 +41,7 @@ type matchedCorpus struct {
 	conversation string
 }
 
-// Instrumentation delegates every call to real Badger. No metadata is rewritten.
+// Instrumentation delegates every call to the real SQL owner. No metadata is rewritten.
 type countedCanonical struct {
 	m.RecallCanonicalReader
 
@@ -344,10 +344,6 @@ func logMatchedInputs(tb testing.TB, c *matchedCorpus) {
 }
 
 func TestMatchedCanonicalInputs(t *testing.T) {
-	t.Run("badger", func(t *testing.T) {
-		c, backend := matchedFixture(t, "small")
-		testMatchedCanonicalInputs(t, c, backend)
-	})
 	storefixture.ForEach(t, func(t *testing.T, fixture *storefixture.Fixture) {
 		c, backend := matchedSQLFixture(t, "small", fixture)
 		testMatchedCanonicalInputs(t, c, backend)
@@ -394,10 +390,6 @@ func testMatchedCanonicalInputs(t *testing.T, c *matchedCorpus, b matchedBackend
 }
 
 func TestMatchedDenseOracle(t *testing.T) {
-	t.Run("badger", func(t *testing.T) {
-		c, backend := matchedFixture(t, "semantic8192")
-		testMatchedDenseOracle(t, c, backend)
-	})
 	storefixture.ForEach(t, func(t *testing.T, fixture *storefixture.Fixture) {
 		c, backend := matchedSQLFixture(t, "semantic8192", fixture)
 		testMatchedDenseOracle(t, c, backend)

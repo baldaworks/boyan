@@ -10,15 +10,7 @@ import (
 	"github.com/baldaworks/boyan/index/sqlite"
 	"github.com/baldaworks/boyan/internal/semantic"
 	"github.com/baldaworks/boyan/pkg/memory"
-	"github.com/baldaworks/boyan/store/badger"
 )
-
-var _ interface {
-	IsSourceDenied(ctx context.Context, scope memory.Scope, sourceID string) (bool, error)
-	IsRevisionDenied(ctx context.Context, scope memory.Scope, revisionID string) (bool, error)
-	LoadCanonicalRevisions(ctx context.Context,
-		request memory.CanonicalRevisionReadRequest) ([]memory.MemoryRevision, error)
-} = (*badger.CanonicalStore)(nil)
 
 func TestStandaloneCanonicalPrivacyBindingUsesRealAuthority(t *testing.T) {
 	forEachSQLRuntimeConfig(t, func(t *testing.T, selection Config) {

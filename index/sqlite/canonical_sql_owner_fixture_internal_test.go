@@ -19,11 +19,10 @@ type denialCanonicalOwner interface {
 
 type denialOwnerFactory func(*testing.T) denialCanonicalOwner
 
-// Keep the historical fixture until retirement; execute the identical behavior
-// against each real SQL authority, allocating a fresh store for every leaf.
+// Execute identical behavior against each real SQL authority, allocating a
+// fresh store for every leaf.
 func runDenialAuthorities(t *testing.T, run func(*testing.T, denialOwnerFactory)) {
 	t.Helper()
-	t.Run("badger", func(t *testing.T) { run(t, denialCanonicalStore) })
 
 	for _, backend := range []canonicalsqltest.Backend{canonicalsqltest.SQLite, canonicalsqltest.Postgres} {
 		t.Run(string(backend), func(t *testing.T) {

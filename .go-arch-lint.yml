@@ -50,7 +50,6 @@ components:
       - internal/semanticprojection
       - internal/canonicalsqltest
       - internal/canonicalsqltest/storefixture
-      - store/badger
       - store/sqlite
       - store/postgres
       - index/sqlite

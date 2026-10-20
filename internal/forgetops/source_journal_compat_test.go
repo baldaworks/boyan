@@ -11,7 +11,6 @@ import (
 
 	"github.com/baldaworks/boyan/internal/canonicalsqltest"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	db "github.com/dgraph-io/badger/v4"
 )
 
 func TestSourceJournalCompatibility(t *testing.T) {
@@ -226,48 +225,7 @@ func sourceJournalLegacyCompatibility(t *testing.T, backend canonicalsqltest.Bac
 // does not replace storage behavior or synthesize SourceID lookup results.
 func sourceJournalRewrite(t *testing.T, store *sourceJournalStore, recordType string, change func([]byte) []byte) {
 	t.Helper()
-
-	if store.database != nil {
-		sourceJournalSQLRewrite(t, store.database, recordType, change)
-
-		return
-	}
-
-	var key, value []byte
-
-	err := store.legacy.DB().View(func(txn *db.Txn) error {
-		iterator := txn.NewIterator(db.DefaultIteratorOptions)
-		defer iterator.Close()
-
-		for iterator.Rewind(); iterator.Valid(); iterator.Next() {
-			encoded, err := iterator.Item().ValueCopy(nil)
-			if err != nil {
-				return err
-			}
-
-			envelope, err := m.UnmarshalRecordEnvelope(encoded)
-			if err != nil {
-				return err
-			}
-
-			if envelope.RecordType == recordType {
-				key, value = iterator.Item().KeyCopy(nil), envelope.Payload
-
-				return nil
-			}
-		}
-
-		return nil
-	})
-	sourceJournalNoError(t, err)
-
-	if key == nil {
-		t.Fatalf("fault target %q missing", recordType)
-	}
-
-	encoded, err := m.MarshalRecordEnvelope(recordType, change(value))
-	sourceJournalNoError(t, err)
-	sourceJournalNoError(t, store.legacy.DB().Update(func(txn *db.Txn) error { return txn.Set(key, encoded) }))
+	sourceJournalSQLRewrite(t, store.database, recordType, change)
 }
 
 func sourceJournalError(t *testing.T, err error, code m.ErrorCode) {

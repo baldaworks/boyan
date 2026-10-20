@@ -12,7 +12,6 @@ import (
 	"github.com/baldaworks/boyan/internal/canonicalsqltest"
 	"github.com/baldaworks/boyan/internal/forgetops"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	db "github.com/dgraph-io/badger/v4"
 )
 
 // Resolving before journal replay fails here against the real payload-dependent
@@ -212,31 +211,7 @@ func sourceJournalPayloadAbsent(t *testing.T, store *sourceJournalStore, ref m.P
 func sourceJournalBytes(t *testing.T, store *sourceJournalStore) map[string]string {
 	t.Helper()
 
-	if store.database != nil {
-		return sourceJournalSQLBytes(t, store.database)
-	}
-
-	result := make(map[string]string)
-	err := store.legacy.DB().View(func(txn *db.Txn) error {
-		iterator := txn.NewIterator(db.DefaultIteratorOptions)
-		defer iterator.Close()
-
-		for iterator.Rewind(); iterator.Valid(); iterator.Next() {
-			item := iterator.Item()
-
-			value, err := item.ValueCopy(nil)
-			if err != nil {
-				return err
-			}
-
-			result[string(item.Key())] = string(value)
-		}
-
-		return nil
-	})
-	sourceJournalNoError(t, err)
-
-	return result
+	return sourceJournalSQLBytes(t, store.database)
 }
 
 func sourceJournalNoError(t *testing.T, err error) {

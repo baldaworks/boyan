@@ -20,6 +20,10 @@ func ExampleNewHost() {
 	defer func() { _ = os.RemoveAll(root) }()
 
 	config := boyan.DefaultConfig()
+	// Canonical authority defaults to SQLite, separately from the search file.
+	// Stop/Close and construct a new host with the same configuration to reopen.
+	// For PostgreSQL use config.Canonical.Backend = "postgres" and supply the
+	// private DSN via BOYAN_POSTGRES_DSN; search remains local SQLite.
 	config.StateDir = filepath.Join(root, "state")
 	config.HTTP.Listen = "127.0.0.1:0"
 	config.Derivation.Provider = "memory"

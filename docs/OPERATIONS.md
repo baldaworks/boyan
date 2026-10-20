@@ -39,10 +39,82 @@ are invalid. Zero-valued optional bounds retain their documented default behavio
 - `http.shutdown_timeout`: `10s`
 - `http.max_body_bytes`: `1048576`
 - `log.level`: `info`
-- `maintenance.value_log_gc_interval`: `6h`
-- `maintenance.discard_ratio`: `0.5`
+- `maintenance.value_log_gc_interval`: `6h` (deprecated, inert for SQL)
+- `maintenance.discard_ratio`: `0.5` (deprecated, inert for SQL)
 - `derivation.timeout`: `30s`
 - `derivation.max_output_bytes`: `262144`
+
+## Canonical SQL configuration
+
+SQLite is the default canonical authority, separate from the local search file:
+
+```yaml
+canonical:
+  backend: sqlite
+  sqlite:
+    path: '' # state_dir/canonical/canonical.sqlite
+    busy_timeout: 1s
+```
+
+Use an ordinary on-disk path, not a SQLite URI or `:memory:`. The path must not
+alias search, legacy Badger or unsafe symlink/special-file locations. The owner
+holds an exclusive inode lock and one pinned connection in WAL/FULL mode.
+Writes use BEGIN IMMEDIATE; reads use a consistent transaction snapshot.
+Busy timeout is 1s by default, bounded to 1ms–5s; it is not an operation deadline.
+
+For PostgreSQL, omit the SQLite block:
+
+```yaml
+canonical:
+  backend: postgres
+  postgres:
+    dsn_env: BOYAN_POSTGRES_DSN
+    connect_timeout: 5s
+    allow_local_insecure: false
+```
+
+Provision the database and role separately. The role needs CONNECT and permission
+to create/use `boyan_canonical`, create its tables/indexes and read/write them;
+Boyan does not create databases or roles. Use a dedicated database owned by the
+application role, not a shared writable application schema. Supply its resolved
+DSN via the named environment secret before starting; YAML/config contains only
+the environment name. Do not print the DSN or put it in command arguments/logs.
+Remote connections require `sslmode=verify-full` and trusted roots (for example
+`sslrootcert=/run/secrets/postgres-ca.pem`). Only explicitly opted-in local Unix
+socket/loopback connections may use `sslmode=disable`; set
+`allow_local_insecure: true` for those. Multiple hosts and TLS downgrade
+fallbacks are unsupported. Connect timeout defaults to5s, maximum30s.
+
+PostgreSQL uses one direct pgx session, fixed schema-qualified SQL with
+`pg_catalog` search path and a session advisory ownership lock. Do not use a
+transaction-pooling proxy or another writer. Losing that connection/lock fences
+the owner unavailable: stop/close the host and construct a new host with the
+same configuration to reconnect. There is no automatic reconnect, backend
+fallback or retry of an uncertain commit. Retry the original durable operation
+identity/input after recovery to determine its saved outcome.
+
+Full framed binary keys preserve long identities and uint64 values. PostgreSQL
+uses nonunique native HASH lookup indexes plus checked full original tuples,
+envelopes and duplicate rejection under exclusive ownership, not hash-only
+equality or database logical-key uniqueness. Ordered range pages may require a
+server sort/spill of their matching partition; page size bounds returned data,
+not server sorting work. Neither engine promises a new latency/scale SLA.
+
+Start with `boyan serve --config ./boyan.yaml`; stop via the supervisor's normal
+termination signal, then start the same command/config to reopen. Embedded hosts
+use Start, Stop/Close, then a new NewHost with the same config. Startup validates
+structural state, resumes original pending erases, prepares privacy, reconciles
+denials and repairs the search projection before readiness. Never clear journals,
+fences or readiness markers to bypass a failure. SQLite closes/checkpoints after
+draining users; PostgreSQL closes the owning session. Search always remains
+local SQLite FTS5/optional sqlite-vec, even with PostgreSQL canonical storage.
+
+The engine-specific `store/badger` API is retired; temporal/history memory is
+preserved in SQL. Existing old Badger directories remain untouched and are not
+imported. No application backup/restore/export/import or old-state conversion is
+provided. Earlier unshipped SQL checksums/migration histories are refused without
+rewriting their schema/data. Explicitly select a fresh SQL location; never reset,
+drop or delete earlier state as a startup workaround.
 
 ## Environment examples
 
@@ -108,7 +180,7 @@ diagnostic. Startup first checks canonical structural integrity, then finishes
 pending canonical erases and prepares source privacy, then reconciles permanent
 canonical denials across every persisted SQL
 scope before lexical repair, sequenced writers and public readers can serve
-work. Required cleanup/repair errors fail startup with stopped backup/rebuild
+work. Required cleanup/repair errors fail startup with stopped inspection/rebuild
 guidance; optional semantic initialization failure does not. It reconciles retained
 index metadata and synchronously repairs durable scopes in bounded pages before
 accepting work. Missing, dirty and never-created indexes recover without a
@@ -138,14 +210,17 @@ Current layout:
 
 ```text
 <state_dir>/
-├── badger/
+├── canonical/
+│   └── canonical.sqlite # default authority; private WAL/SHM may also exist
 └── search/
     ├── search.sqlite
     ├── search.sqlite-wal   # when present
     └── search.sqlite-shm   # when present
 ```
 
-Do not point two Boyan processes at the same writable state root.
+PostgreSQL instead holds canonical state in its operator-selected database;
+the local search root is still required. Legacy `badger/` is not current authority.
+Do not point two Boyan processes at the same writable state root or SQL authority.
 The search directory is private (0700); database and auxiliary files are 0600.
 Unsafe ownership, symlinks and nonregular database/auxiliary paths prevent opening.
 Concurrent external mutation by the same OS owner is unsupported. Static
@@ -176,7 +251,8 @@ Set `log.level` to `debug`, `info`, `warn`, or `error`.
 3. Drain sequenced ingest.
 4. Drain the semantic Manager/startup pager and its terminal guards, then lexical
    projection work, the derivation invoker and the shared SQLite Store.
-5. Stop canonical maintenance and close Badger after all storage users drain.
+5. Close the canonical SQL owner after all storage users drain; release its
+   SQLite file lock or PostgreSQL session lock. There is no value-log GC worker.
 
 `http.shutdown_timeout` bounds how long the caller waits. A timeout reports a
 typed error and leaves one cleanup owner running while the process stays alive;
@@ -204,7 +280,7 @@ rebuild fail explicitly without advancing a false checkpoint.
 Committed activation is reconciled with the physical marker at startup. Cleanup
 preserves all referenced and in-flight generations, keeps at most one previous
 generation per scope, and removes abandoned builders after their handles close.
-Badger remains authoritative; deleting canonical records is not an index repair
+Canonical SQL remains authoritative; deleting canonical records is not an index repair
 procedure.
 
 The `sqlite` checkpoint is additive: legacy `bleve` checkpoints/retention entries
@@ -224,7 +300,7 @@ Lexical writes/copy group at most 128 complete record mutations with a normal
 memberships. A canonical-valid oversized record is isolated in its own
 transaction; hydration/copy loads one record at a time. This is scheduling,
 not lexical admission, aggregate canonical size, heap, disk/WAL, deletion-work
-or latency quota. A source reader's 4 MiB bound and Badger transaction accounting
+or latency quota. A source reader's 4 MiB bound and SQL envelope bounds
 do not establish an aggregate canonical-record maximum. One large record or
 membership cascade can still occupy a writer and grow WAL substantially.
 SQL's effective value/row/variable limits remain; an unrepresentable record or
@@ -363,10 +439,8 @@ readiness unpublished; the next attempt restarts the full bounded pass. Trace
 itself performs source-local bounded reads rather than replaying full history.
 
 Boyan provides no application backup/restore, logical export/import or archive
-scanner. During the remaining Badger transition, an existing
-`.boyan-restore-privacy` sidecar from earlier development code causes a read-only
-startup refusal; it is not a supported recovery path. Do not delete the marker
-or manually publish readiness to bypass the refusal.
+scanner. Retired Badger archive sidecars are not a SQL recovery procedure; never
+manually publish readiness or alter privacy/proof metadata to bypass a refusal.
 
 The unshipped canonical SQL initial schema excludes archive bookkeeping.
 Databases created with an earlier development schema checksum or migration
@@ -515,7 +589,7 @@ with lexical fallback instead of server-side truncation.
 
 ## Semantic lifecycle and rollback
 
-Canonical Badger is authoritative; SQLite FTS5 is the required search projection.
+The selected canonical SQL store is authoritative; SQLite FTS5 is the required search projection.
 The shared database opens during host construction using `context.Background`,
 before `Host.Start`. Required structural integrity/schema failure prevents
 construction and preserves operator files. Enabled open validates semantic data
@@ -586,8 +660,9 @@ To disable semantic augmentation, stop the deployment, omit the overlay, explici
 set `embeddings.enabled: false` (and remove any enabling environment override),
 then start the default deployment with `--remove-orphans` to remove TEI. Do not
 use `down -v`: it would remove the canonical state volume. While Boyan is
-stopped, preserve the entire state volume, including `badger/`, `search/` and
-legacy directories. The TEI model cache is separate. Disabling retains existing
+stopped, preserve canonical SQL state, the entire local state volume and legacy
+directories. PostgreSQL authority is external to that volume. The TEI model
+cache is separate. Disabling retains existing
 semantic rows and does not bypass required shared-database corruption or denial
 cleanup failures. Re-enabling rebuilds compatible semantic state asynchronously.
 Use the stopped recovery procedure below for damaged search storage; disabling
@@ -599,48 +674,37 @@ Stop Boyan and every embedding host/writer through its supervisor, then verify
 the process is absent and no process has the state files open. On Linux,
 `lsof +D /absolute/state/root` can inspect remaining handles; exit 1 with no
 output means none were found, while a diagnostic is not proof of quiescence.
-Keep writers stopped for the full backup/move. A live copy of the main SQLite
-file alone omits WAL and is not a complete backup.
+Keep writers stopped during inspection or movement. Preserve complete canonical
+SQL state, receipts, privacy/proof capabilities, erase journals and the whole
+local state root, including SQLite WAL/SHM and untouched legacy files. A live
+copy of a SQLite main file alone is incomplete; copying the local root does not
+capture PostgreSQL authority. Database/filesystem preservation is the operator's
+responsibility, not a Boyan archive API or transfer format.
 
-For example, after verifying the exact paths and stopped state, use new,
-nonexistent destinations outside the live root (substitute your real paths):
-
-```bash
-set -eu
-test -d /var/lib/boyan/badger
-test -d /var/lib/boyan/search
-test ! -e /srv/boyan-backups/before-search-recovery-20261018
-cp -a -- /var/lib/boyan /srv/boyan-backups/before-search-recovery-20261018
-diff -qr -- /var/lib/boyan /srv/boyan-backups/before-search-recovery-20261018
-test ! -e /srv/boyan-backups/search-damaged-20261018
-mv -- /var/lib/boyan/search /srv/boyan-backups/search-damaged-20261018
-```
-
-The complete copy includes canonical Badger, receipts, privacy/proof capabilities,
-source/erase journals, any retained safety sidecars, SQLite database and every
-WAL/SHM/journal, plus any legacy `bleve/`/`embeddings/` bytes. Confirm backup permissions/access
-and successful copy comparison before moving anything. Only the operator moves
-the named `search/` directory; Boyan never automatically renames/deletes it.
-Restart current compatible code with the same canonical root. Required lexical
+After validating exact paths, an operator may move only the stopped disposable
+`search/` directory to a new, nonexistent location outside the state root for
+diagnosis. Never move/delete canonical state or use a symlinked/ambiguous target.
+Boyan never automatically renames/deletes damaged storage.
+Restart current compatible code with the same canonical configuration. Required lexical
 state rebuilds from current canonical records and permanent denials; semantic
 readiness additionally needs the compatible provider. Verify `/readyz` and
 expected exact-scope recall/minimum behavior. Preserve the damaged copy for
-diagnosis and the complete backup; do not delete canonical data, receipts,
+diagnosis; do not delete canonical data, receipts,
 fences, capabilities, old checkpoints or legacy directories.
 
 For code rollback, first establish that the chosen writer supports every
 canonical privacy/proof schema/capability and receipt contract present. A
 compatible version can reopen/rebuild its disposable projection after stopped
-backup. The SQLite migration itself changes no canonical schema, but this does
-not establish compatibility for any older release. Never let an older writer
+preservation. A search-only schema change does not establish compatibility for
+an older canonical SQL writer. Never let an older writer
 open newer unsupported canonical or SQLite state, even as a compatibility test.
-If compatibility is absent or unproved, rollback requires a trustworthy complete
-pre-upgrade backup restored into a separate root, with the matching writer.
-Such restoration loses later changes and may omit later denials: retain current
-state and assess that boundary before serving. Rebuilding an old index, copying
-only `badger/`, disabling embeddings or stripping markers cannot make an
-incompatible writer safe. The existing boundary/privacy upgrade
-restrictions above remain mandatory.
+If compatibility is absent or unproved, do not downgrade the current state.
+Keep it stopped for diagnosis; there is no automatic reverse migration or
+application restore procedure. An operator-selected earlier state can omit later
+changes and denials; it is not interchangeable with current authority.
+Rebuilding an old index, copying only a directory, disabling embeddings or
+stripping markers cannot make an incompatible writer safe. The existing
+boundary/privacy upgrade restrictions above remain mandatory.
 
 ## Embeddings verification
 

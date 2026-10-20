@@ -11,10 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	m "github.com/baldaworks/boyan/pkg/memory"
-	"github.com/baldaworks/boyan/store/badger"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -123,15 +121,9 @@ func TestSQLRuntimeCanceledConstruction(t *testing.T) {
 func TestSQLRuntimePreservesPopulatedOldBadger(t *testing.T) {
 	forEachSQLRuntimeConfig(t, func(t *testing.T, cfg Config) {
 		oldPath := filepath.Join(cfg.StateDir, "badger")
-		old, err := badger.OpenCanonicalStore(oldPath)
-		requireNoError(t, err, "old fixture: %v")
-		requireNoError(t, old.PrepareSourcePrivacy(t.Context()), "old fixture preparation: %v")
+		seedPopulatedOldBadger(t, oldPath)
 
 		scope := m.Scope{Key: "old:identity", Kind: m.ScopeKindPersonal}
-		_, err = old.CommitCanonicalOperation(t.Context(), m.CanonicalOperationCommitRequest{
-			Scope: scope, OperationID: "old-identity", Fingerprint: "old-fingerprint", CommittedAt: time.Now().UTC()})
-		requireNoError(t, err, "old populated identity: %v")
-		requireNoError(t, old.Close(), "close old: %v")
 		before := hashOldRuntimeTree(t, oldPath)
 		runtime, err := New(cfg)
 		requireNoError(t, err, "fresh SQL: %v")

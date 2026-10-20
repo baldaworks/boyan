@@ -11,7 +11,6 @@ import (
 	"github.com/baldaworks/boyan/internal/canonicalsqltest"
 	"github.com/baldaworks/boyan/internal/canonicalsqltest/storefixture"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	b "github.com/baldaworks/boyan/store/badger"
 )
 
 type sourceJournalOwner interface {
@@ -24,7 +23,6 @@ type sourceJournalOwner interface {
 type sourceJournalStore struct {
 	sourceJournalOwner
 
-	legacy      *b.CanonicalStore
 	database    *canonicalsqltest.Database
 	resolutions int
 	erases      int
@@ -46,7 +44,7 @@ func (s *sourceJournalStore) RunScopeErase(ctx context.Context,
 func runSourceJournalAuthorities(t *testing.T, run func(*testing.T, canonicalsqltest.Backend)) {
 	t.Helper()
 
-	for _, backend := range []canonicalsqltest.Backend{"badger", canonicalsqltest.SQLite, canonicalsqltest.Postgres} {
+	for _, backend := range []canonicalsqltest.Backend{canonicalsqltest.SQLite, canonicalsqltest.Postgres} {
 		t.Run(string(backend), func(t *testing.T) { run(t, backend) })
 	}
 }
@@ -55,19 +53,6 @@ func openSourceJournalStore(t *testing.T, backend canonicalsqltest.Backend) (
 	*sourceJournalStore, func() (*sourceJournalStore, error),
 ) {
 	t.Helper()
-
-	if backend == "badger" {
-		path := t.TempDir()
-		open := func() (*sourceJournalStore, error) {
-			owner, err := b.OpenCanonicalStore(path)
-
-			return &sourceJournalStore{sourceJournalOwner: owner, legacy: owner}, err
-		}
-		store, err := open()
-		sourceJournalNoError(t, err)
-
-		return store, open
-	}
 
 	fixture := storefixture.New(t, backend)
 	open := func() (*sourceJournalStore, error) {
@@ -240,15 +225,6 @@ func sourceJournalSQLRewrite(t *testing.T, database *canonicalsqltest.Database,
 
 func sourceJournalEnvelopes(t *testing.T, store *sourceJournalStore) []string {
 	t.Helper()
-
-	if store.database == nil {
-		var result []string
-		for _, encoded := range sourceJournalBytes(t, store) {
-			result = append(result, encoded)
-		}
-
-		return result
-	}
 
 	if store.database.Postgres != nil {
 		rows, err := store.database.Postgres.Query(t.Context(), "SELECT envelope FROM boyan_canonical.source")

@@ -1,4 +1,4 @@
-package projection //nolint:testpackage // Exercises the real coordinator and Badger/SQLite publication boundary.
+package projection //nolint:testpackage // Exercises the real coordinator and canonical/search publication boundary.
 
 import (
 	"context"

@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/baldaworks/boyan/internal/canonicalsqltest"
+	"github.com/baldaworks/boyan/internal/canonicalsqltest/storefixture"
 	"github.com/baldaworks/boyan/pkg/memory"
 )
 
@@ -162,7 +164,16 @@ func TestMatchedSQLSourceZeroAndWriterCosts(t *testing.T) {
 
 	for repetition := range 10 {
 		t.Run(fmt.Sprint(repetition), func(t *testing.T) {
-			canonical := denialCanonicalStore(t)
+			fixture := storefixture.New(t, canonicalsqltest.SQLite)
+
+			canonical := fixture.Store.(interface {
+				denialCanonicalOwner
+				PrepareSourcePrivacy(ctx context.Context) error
+			})
+			if err := canonical.PrepareSourcePrivacy(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+
 			store, root := openTestStore(t, true)
 			denialCanonicalRevision(t, canonical, lexicalTestScope, "zero", "denied-source")
 			seedDenialSemantic(t, store, lexicalTestScope, "zero-owner", "zero", false, false)

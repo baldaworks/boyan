@@ -2,7 +2,7 @@
 
 ## Optional semantic augmentation
 
-Optional embeddings augment the required SQLite FTS5 channel; canonical Badger
+Optional embeddings augment the required SQLite FTS5 channel; canonical SQL
 remains authoritative. `internal/embedding` owns bounded OpenAI-compatible
 calls; `internal/semantic` owns versioned preparation, fingerprinting,
 normalization and fusion; `index/sqlite` stores lexical and optional semantic
@@ -70,8 +70,7 @@ operations.
 
 `cmd/boyan serve` composes one process with these runtime-owned pieces:
 
-- Badger canonical store
-- canonical maintenance worker
+- SQLite or PostgreSQL canonical store (one selected authority)
 - canonical reader
 - shared SQLite search projection and projection runtime
 - isolated derivation invoker
@@ -132,10 +131,10 @@ storage, and runtime-backed derivation:
 - `internal/canonicalops`
 - `internal/forgetops`
 - `internal/derivation`
-- `store/badger`
+- `store/sqlite` and `store/postgres`, sharing `internal/canonicalsql`
 - `index/sqlite`
 
-This layer binds the memory engine to Badger, SQLite, and provider-backed
+This layer binds the memory engine to canonical SQL, SQLite search, and provider-backed
 derivation runtimes.
 
 ### Standalone shell
@@ -255,21 +254,27 @@ Boyan owns one explicit state root:
 
 ```text
 <state_dir>/
-├── badger/
+├── canonical/
+│   └── canonical.sqlite # default authority; WAL/SHM may also exist
 └── search/
     └── search.sqlite   # plus private WAL/SHM when present
 ```
 
-- `badger/` is authoritative canonical state.
+- `canonical/canonical.sqlite` is the default authority; PostgreSQL instead
+  stores that authority in its fixed `boyan_canonical` schema.
 - `search/` is disposable and rebuildable from current canonical records.
 - Legacy `bleve/` and `embeddings/` directories and old `bleve` checkpoints remain untouched.
 
-One process owns the writable state root, including Badger and SQLite. Boyan
-does not support shared writer access.
+One process owns the writable state root and selected canonical SQL authority.
+Boyan does not support shared writer access or arbitrary external SQL writers.
+SQLite uses an inode lock and a pinned WAL/FULL connection; PostgreSQL uses a
+pinned session advisory lock, not a reconnecting pool. Loss of that session
+fences the owner unavailable until Close/Open. See
+[configuration and lifecycle](docs/OPERATIONS.md#canonical-sql-configuration).
 
 ## Canonical and projection boundary
 
-Badger is authoritative. Projection text is never returned directly without
+The selected SQL store is authoritative. Projection text is never returned directly without
 canonical hydration through the recall or trace path.
 
 Clean projection generations resume from their durable watermark. Unchanged
@@ -338,7 +343,7 @@ immutable payload references; missing or ambiguous proof fails explicitly.
 
 ## Source privacy and bounded trace
 
-Badger atomically merges source privacy with every canonical writer. The
+Canonical SQL atomically merges source privacy with every canonical writer. The
 fixed-version aggregate binds exact scope, source, immutable payload and bounded
 message membership. Sensitive classification is sticky; incomplete evidence is
 unknown and cannot become standard through a later subset. Classification uses
@@ -350,7 +355,7 @@ Any sensitive or unknown source denies the entire graph, including a benign
 root. Source messages use validated certificate membership or prepared complete
 membership with at most 32 message IDs per source read directly by key, ordered
 by the existing role/ID rules; there is no whole-scope message scan. After all
-content reads, one final Badger transaction rechecks captured scope version, immutable source/revision
+content reads, one fresh canonical SQL transaction rechecks captured scope version, immutable source/revision
 bindings, denial and erase guards, privacy readiness and context. This is the
 read's linearization point; later commits do not revoke a completed read.
 
@@ -431,7 +436,7 @@ semantic-parent trust marker. Legacy ancestry uses bounded exact reads;
 structural supersession remains distinct from semantic grounding. Event time
 stays descriptive.
 
-Badger owns immutable, versioned Boundary certificates keyed by exact
+Canonical SQL owns immutable, versioned Boundary certificates keyed by exact
 Scope(key, kind) and ExportID, plus an immutable per-scope capability marker.
 The marker is initialized only with a first successful certified stage after a
 bounded exact encoded legacy-operation namespace check. Both empty-operation

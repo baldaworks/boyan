@@ -26,7 +26,7 @@ type CoverageEntry struct {
 	Owner  string `json:"owner"`
 }
 
-// DiscoverCoverage inventories current Badger ownership and consumer tests.
+// DiscoverCoverage inventories native SQL ownership and complete consumer tests.
 //
 //nolint:cyclop // The fixed inventory explicitly selects declarations and consumer test files.
 func DiscoverCoverage(source fs.FS) ([]CoverageEntry, error) {
@@ -40,7 +40,8 @@ func DiscoverCoverage(source fs.FS) ([]CoverageEntry, error) {
 	var entries []CoverageEntry
 
 	for name, file := range files {
-		isStore := path.Dir(name) == "store/badger"
+		dir := path.Dir(name)
+		isStore := dir == "internal/canonicalsql" || dir == "store/sqlite" || dir == "store/postgres"
 
 		isTest := strings.HasSuffix(name, "_test.go")
 		if !isStore && !(isTest && consumers[path.Dir(name)]) {
@@ -125,7 +126,7 @@ func coverageSources(source fs.FS) (map[string]*ast.File, map[string][]string, e
 func coverageConsumers(imports map[string][]string) map[string]bool {
 	// Include complete consumer packages, so a shared helper in another file
 	// cannot hide an indirectly constructed backend from the inventory.
-	consumers := map[string]bool{"store/badger": true}
+	consumers := map[string]bool{"internal/canonicalsql": true, "store/sqlite": true, "store/postgres": true}
 
 	for changed := true; changed; {
 		changed = false
@@ -159,7 +160,7 @@ func coverageFamilies(name string, declaration *ast.GenDecl) []CoverageEntry {
 		}
 
 		for i, identifier := range values.Names {
-			if !strings.HasPrefix(identifier.Name, "badgerRecord") || i >= len(values.Values) {
+			if expressionName(values.Type) != "Family" || i >= len(values.Values) {
 				continue
 			}
 
@@ -216,7 +217,7 @@ func coverageFunction(name string, function *ast.FuncDecl, isTest bool) []Covera
 
 	lower := strings.ToLower(function.Name.Name)
 
-	namedKey := containsAny(lower, "key", "prefix") && returnsBytes(function)
+	namedKey := returnsKeyOrRange(function) || (containsAny(lower, "key", "prefix") && returnsBytes(function))
 	if len(keys) != 0 || namedKey || function.Name.Name == "payloadScope" {
 		add("key", uniqueNames(keys), "TASK-002")
 	}
@@ -231,6 +232,12 @@ func coverageFunction(name string, function *ast.FuncDecl, isTest bool) []Covera
 //nolint:cyclop // Recognizes the existing raw call and key forms without a type-analysis framework.
 func coverageCalls(function *ast.FuncDecl) (writes, keys, raw []string) {
 	ast.Inspect(function.Body, func(node ast.Node) bool {
+		if literal, ok := node.(*ast.CompositeLit); ok {
+			if kind := expressionName(literal.Type); kind == "Key" || kind == "Range" {
+				keys = append(keys, kind)
+			}
+		}
+
 		if selector, ok := node.(*ast.SelectorExpr); ok {
 			member := selector.Sel.Name
 			if member == "db" || member == "DB" || strings.HasPrefix(member, "before") || strings.HasPrefix(member, "after") {
@@ -256,7 +263,12 @@ func coverageCalls(function *ast.FuncDecl) (writes, keys, raw []string) {
 			raw = append(raw, callee)
 		}
 
-		if strings.HasPrefix(callee, "badger.") {
+		switch short {
+		case "exec", "Exec", "ExecContext", "query", "Query", "QueryContext", "QueryRow", "QueryRowContext":
+			raw = append(raw, callee)
+		}
+
+		if strings.HasPrefix(callee, "db.") || strings.HasPrefix(callee, "tx.") {
 			raw = append(raw, callee)
 		}
 
@@ -304,6 +316,18 @@ func returnsBytes(function *ast.FuncDecl) bool {
 	return false
 }
 
+func returnsKeyOrRange(function *ast.FuncDecl) bool {
+	if function.Type.Results != nil {
+		for _, result := range function.Type.Results.List {
+			if kind := expressionName(result.Type); kind == "Key" || kind == "Range" {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 func uniqueNames(names []string) string {
 	sort.Strings(names)
 
@@ -319,6 +343,9 @@ func uniqueNames(names []string) string {
 
 func isWriteCall(name string) bool {
 	switch name {
+	case "Put", "CompareAndSwapScope", "pgPut", "pgDelete", "exec", "Exec", "ExecContext":
+		return true
+
 	case "Set", "SetEntry", "Delete", "Load", "Update", "NewWriteBatch", "DropAll", "DropPrefix",
 		"Write", "WriteString", "WriteFile", "Rename", "Remove", "Sync":
 		return true
@@ -360,7 +387,7 @@ func coverageOwner(file, symbol string) string {
 		return "TASK-017"
 	case strings.Contains(file, "orderedingest/"):
 		return "TASK-010"
-	case !strings.HasPrefix(file, "store/badger/"):
+	case !strings.HasPrefix(file, "internal/canonicalsql/"):
 		return "TASK-019"
 	case strings.Contains(name, "logical"):
 		return "TASK-015"

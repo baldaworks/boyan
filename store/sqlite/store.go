@@ -1,6 +1,6 @@
 // Package sqlite owns an exclusive, durable SQLite canonical file. The search
-// projection is a separate database owned by index/sqlite. Domain ports are
-// added as their shared canonical SQL implementation becomes available.
+// projection is a separate database owned by index/sqlite. Shared canonical SQL
+// algorithms preserve temporal/history, replay and privacy memory contracts.
 package sqlite
 
 import (

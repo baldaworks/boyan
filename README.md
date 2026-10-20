@@ -4,7 +4,7 @@ Boyan is a standalone local service for grounded temporal memory for AI agents.
 
 It owns:
 
-- canonical temporal memory state in Badger
+- canonical temporal memory state in SQLite (default) or PostgreSQL
 - a rebuildable SQLite FTS5 search projection with optional sqlite-vec retrieval
 - HTTP/JSON ingest for completed turns and explicit boundaries
 - Streamable HTTP MCP tools for search, trace, and controlled forgetting
@@ -97,7 +97,8 @@ By default Boyan stores data in `./.state/boyan` with this layout:
 
 ```text
 .state/boyan/
-├── badger/
+├── canonical/
+│   └── canonical.sqlite # authoritative SQLite; private WAL/SHM may also exist
 └── search/
     └── search.sqlite   # private database; WAL/SHM may also exist
 ```
@@ -108,7 +109,7 @@ Embeddings are optional and disabled by default. Enable the pinned local CPU
 TEI profile with the [sidecar overlay](deploy/sidecar/embeddings.compose.yaml),
 or configure an OpenAI-compatible endpoint. Hybrid recall combines lexical and
 semantic candidates while canonically revalidating every result. Both channels
-share private `<state_dir>/search/search.sqlite`; canonical Badger remains the
+share private `<state_dir>/search/search.sqlite`; the selected canonical SQL backend remains the
 authority. Required database integrity, canonical-denial retirement and lexical
 repair must succeed before serving. Optional semantic initialization/build
 failures and provider outages allow ordinary lexical fallback; enabled
@@ -150,6 +151,16 @@ Boyan now exposes one first-class in-process host surface in `pkg/boyan`.
 
 See [`pkg/boyan/example_test.go`](pkg/boyan/example_test.go) for a compiling public example.
 
+Canonical SQLite and search are separate databases. PostgreSQL replaces only
+canonical authority, not the local search projection. See the fresh backend
+configuration, ownership/TLS and reopen procedures in
+[operations](docs/OPERATIONS.md#canonical-sql-configuration).
+`store/badger` and its engine-specific public API are retired; temporal/history
+memory is retained in SQL. Existing Badger files are neither imported nor
+deleted. There is no old-state transfer or application backup/restore/export/import.
+Earlier unshipped SQL schema histories are refused without rewriting their state;
+select a fresh database explicitly rather than resetting old data.
+
 ## Usage surfaces
 
 Boyan separates audience-facing usage surfaces from internal implementation
@@ -168,8 +179,7 @@ See [docs/API.md](docs/API.md) and [docs/openapi.yaml](docs/openapi.yaml).
 Trace denies the whole raw source when its validated history is sensitive or
 unknown, even when the requested revision is benign; benign recall remains
 available. These labels describe stored classification, not automatic secret
-detection. Startup prepares supported older stores before serving work. Take a
-trustworthy pre-upgrade backup and follow the
+detection. Startup prepares supported stores before serving work. Follow the
 [source privacy upgrade restrictions](docs/OPERATIONS.md#source-privacy-upgrades);
 older writers must never access upgraded state.
 

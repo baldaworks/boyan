@@ -10,7 +10,6 @@ import (
 	"github.com/baldaworks/boyan/internal/canonicalsqltest/storefixture"
 	"github.com/baldaworks/boyan/internal/forgetops"
 	m "github.com/baldaworks/boyan/pkg/memory"
-	canonical "github.com/baldaworks/boyan/store/badger"
 	"github.com/baldaworks/boyan/store/postgres"
 	"github.com/baldaworks/boyan/store/sqlite"
 )
@@ -35,23 +34,17 @@ func openMatchedCanonical(ctx context.Context, dir string, factories []matchedCa
 		return factories[0](ctx, dir)
 	}
 
-	store, err := canonical.OpenCanonicalStore(filepath.Join(dir, "badger"))
+	store, err := sqlite.Open(ctx, sqlite.Config{Path: filepath.Join(dir, "canonical.sqlite")})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	reader, err := canonical.NewCanonicalReader(store)
-	if err != nil {
-		_ = store.Close()
-
-		return nil, nil, err
-	}
-
-	return store, reader, nil
+	return store, sqlite.NewCanonicalReader(store), nil
 }
 
-// Only the two ordinary correctness tests use native owners. The historical
-// benchmark default, input profile and recorded results remain unchanged.
+// Correctness tests use each native owner. Live benchmarks default to SQLite;
+// retired Badger benchmark sources/results remain immutable historical evidence
+// in testdata/provenance, not a baseline for the changed authority.
 func matchedSQLFixture(t *testing.T, name string, fixture *storefixture.Fixture) (*matchedCorpus, matchedBackend) {
 	t.Helper()
 
