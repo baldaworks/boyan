@@ -477,6 +477,12 @@ go test -race ./...
 go build ./...
 ```
 
+These untagged test commands run isolated units without database/service fixtures.
+Run real SQLite/PostgreSQL, persistence, recovery and service tests separately
+with `-tags=integration`; see the required normal and full race commands in
+[Canonical SQL testing](CANONICAL_SQL_TESTING.md). PostgreSQL parity requires
+both `BOYAN_REQUIRE_POSTGRES=1` and an explicitly selected test DSN.
+
 ## Current non-goals
 
 The current standalone service does not claim:
@@ -719,7 +725,7 @@ Invoke the separate real-provider evaluation with:
 
 ```bash
 BOYAN_TEI_EVAL_ENDPOINT=http://127.0.0.1:8080/v1/embeddings \
-  go test ./internal/semanticeval -run TestReferenceTEI -count=1 -v
+  go test -tags=integration ./internal/semanticeval -run TestReferenceTEI -count=1 -v
 ```
 
 Run from a namespace that can reach the provider and its `/info` identity probe.

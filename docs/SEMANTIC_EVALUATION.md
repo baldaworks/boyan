@@ -47,7 +47,7 @@ production ranking helpers. Its vectors test integration contracts only and
 provide no evidence about learned multilingual model quality. Run it with:
 
 ```bash
-go test ./internal/semanticeval -count=1 -v
+go test -tags=integration ./internal/semanticeval -count=1 -v
 ```
 
 The real evaluation uses the immutable reference
@@ -60,7 +60,7 @@ stopping or altering TEI. Evaluation is actual Boyan retrieval, not raw cosine.
 
 ```bash
 BOYAN_TEI_EVAL_ENDPOINT=http://127.0.0.1:8080/v1/embeddings \
-  go test ./internal/semanticeval -run TestReferenceTEI -count=1 -v
+  go test -tags=integration ./internal/semanticeval -run TestReferenceTEI -count=1 -v
 ```
 
 The endpoint must expose `/info` with `model_id` and immutable `model_sha`.

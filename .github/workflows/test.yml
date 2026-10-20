@@ -5,9 +5,26 @@ on:
     branches: [master, main]
   pull_request:
     branches: [master, main]
+  release:
+    types: [published]
 
 jobs:
   test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+      - name: Unit tests
+        run: go test ./...
+      - name: Unit race tests
+        run: go test -race ./...
+
+  integration:
+    if: >-
+      (github.event_name == 'pull_request' && github.base_ref == 'main') ||
+      (github.event_name == 'release' && github.event.action == 'published')
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -24,6 +41,7 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     env:
+      GOMAXPROCS: "4"
       BOYAN_REQUIRE_POSTGRES: "1"
       BOYAN_TEST_POSTGRES_DSN: postgres://boyan_test:boyan_test@127.0.0.1:5432/postgres?sslmode=disable
     steps:
@@ -31,5 +49,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: "go.mod"
-      - name: Test
-        run: go test -v -race ./...
+      - name: Integration tests
+        run: go test -count=1 -json -tags=integration -timeout=10m -p=1 ./...
+      - name: Full integration race tests
+        run: go test -count=1 -json -race -tags=integration -timeout=10m -p=1 ./...
