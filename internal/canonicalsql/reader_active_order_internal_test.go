@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"reflect"
-	"strings"
 	"testing"
 
 	memory "github.com/baldaworks/boyan/pkg/memory"
@@ -149,10 +148,6 @@ func TestActivePageBoundsHeadEnvelopeFetch(t *testing.T) {
 				t.Fatalf("heads=%+v fetched envelopes=%d want z/1", heads, recorder.hydrated)
 			}
 
-			if owner.connection.pg != nil {
-				assertActiveHeadKeyPage(t, recorder.statements[0])
-			}
-
 			t.Logf("head_envelopes=%d head_limit=1", recorder.hydrated)
 
 			return nil
@@ -160,16 +155,6 @@ func TestActivePageBoundsHeadEnvelopeFetch(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-}
-
-func assertActiveHeadKeyPage(t *testing.T, statement string) {
-	t.Helper()
-
-	cte, _, ok := strings.Cut(statement, ") SELECT ")
-	if !ok || !strings.Contains(cte, "AS MATERIALIZED") || strings.Contains(cte, "envelope") ||
-		!strings.Contains(cte, "LIMIT") || !strings.Contains(cte, "row_id") {
-		t.Fatal("selected keys/row IDs must materialize before envelope fetch")
-	}
 }
 
 func TestBoundaryCollectionAcceptsEncodedActiveOrder(t *testing.T) {

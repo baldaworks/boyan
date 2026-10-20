@@ -21,10 +21,6 @@ func TestStoreReaderShareLifecycleAndFence(t *testing.T) {
 
 	reader := postgres.NewCanonicalReader(store)
 
-	if err := reader.CheckIntegrity(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-
 	for _, check := range []func() error{
 		func() error { return store.CheckIntegrity(t.Context()) },
 		func() error { return reader.CheckIntegrity(t.Context()) },

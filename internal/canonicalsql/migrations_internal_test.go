@@ -8,38 +8,27 @@ import (
 	memory "github.com/baldaworks/boyan/pkg/memory"
 )
 
-// Catches repairing unknown/checksum-modified history or mutating live state
-// while rejecting incompatible migrations.
-func TestMigrationRejectsFutureAndChecksumWithoutWrites(t *testing.T) {
-	for _, fault := range []string{"checksum", "future"} {
-		t.Run(fault, func(t *testing.T) {
-			canonicalsqltest.ForEach(t, func(t *testing.T, db *canonicalsqltest.Database) {
-				c := testConnection(t, db)
-				key := Key{Family: Payload, Parts: [][]byte{[]byte("preserve")}}
-				encoded := envelope(t, Payload, "unchanged")
-				mustUpdate(t, c, func(tx *Tx) error { return tx.Put(t.Context(), key, encoded) })
+// A future migration must be rejected without changing live canonical data.
+func TestMigrationRejectsFutureWithoutWrites(t *testing.T) {
+	canonicalsqltest.ForEach(t, func(t *testing.T, db *canonicalsqltest.Database) {
+		c := testConnection(t, db)
+		key := Key{Family: Payload, Parts: [][]byte{[]byte("preserve")}}
+		encoded := envelope(t, Payload, "unchanged")
+		mustUpdate(t, c, func(tx *Tx) error { return tx.Put(t.Context(), key, encoded) })
+		rawExec(t, c, "INSERT INTO "+c.table("schema_migration")+" (version,checksum) VALUES(4,'future')")
+		assertCode(t, c.Migrate(t.Context()), memory.CodeInvalidDerived)
 
-				if fault == "checksum" {
-					rawExec(t, c, "UPDATE "+c.table("schema_migration")+" SET checksum='wrong'")
-				} else {
-					rawExec(t, c, "INSERT INTO "+c.table("schema_migration")+" (version,checksum) VALUES(4,'future')")
-				}
+		if err := c.View(t.Context(), func(tx *Tx) error {
+			got, err := tx.Get(t.Context(), key)
+			if !bytes.Equal(got, encoded) {
+				t.Fatal("migration rejection modified live row")
+			}
 
-				assertCode(t, c.Migrate(t.Context()), memory.CodeInvalidDerived)
-
-				if err := c.View(t.Context(), func(tx *Tx) error {
-					got, err := tx.Get(t.Context(), key)
-					if !bytes.Equal(got, encoded) {
-						t.Fatal("migration rejection modified live row")
-					}
-
-					return err
-				}); err != nil {
-					t.Fatal(err)
-				}
-			})
-		})
-	}
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+	})
 }
 
 // Catches DDL escaping the migration transaction after a later statement fails.

@@ -1,7 +1,6 @@
 package canonicalsql
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/baldaworks/boyan/internal/canonicalsqltest"
@@ -57,35 +56,25 @@ func TestPostgresExactResolverRejectsCorruption(t *testing.T) {
 }
 
 func TestPostgresPrivateSequenceExhaustionRollsBack(t *testing.T) {
-	for _, target := range []string{"source.row_id"} {
-		t.Run(target, func(t *testing.T) {
-			canonicalsqltest.ForEach(t, func(t *testing.T, db *canonicalsqltest.Database) {
-				if db.Postgres == nil {
-					return
-				}
+	db := canonicalsqltest.PostgresDatabase(t)
+	c := testConnection(t, db)
+	rawExec(t, c, "SELECT setval(pg_get_serial_sequence($1,$2),9223372036854775807,true)", c.table("source"), "row_id")
 
-				c := testConnection(t, db)
-				parts := strings.Split(target, ".")
-				rawExec(t, c, "SELECT setval(pg_get_serial_sequence($1,$2),9223372036854775807,true)", c.table(parts[0]), parts[1])
+	key := Key{Family: Source, Scope: testScope(), Parts: [][]byte{[]byte("new")}}
+	err := c.Update(t.Context(), func(tx *Tx) error {
+		_ = tx.Put(t.Context(), key, envelope(t, Source, true))
 
-				key := Key{Family: Source, Scope: testScope(), Parts: [][]byte{[]byte("new")}}
-				err := c.Update(t.Context(), func(tx *Tx) error {
-					_ = tx.Put(t.Context(), key, envelope(t, Source, true))
+		return nil
+	})
+	assertCode(t, err, memory.CodeLimitExceeded)
 
-					return nil
-				})
-				assertCode(t, err, memory.CodeLimitExceeded)
+	if err := c.View(t.Context(), func(tx *Tx) error {
+		_, err := tx.Get(t.Context(), key)
+		assertCode(t, err, memory.CodeNotFound)
 
-				if err := c.View(t.Context(), func(tx *Tx) error {
-					_, err := tx.Get(t.Context(), key)
-					assertCode(t, err, memory.CodeNotFound)
-
-					return nil
-				}); err != nil {
-					t.Fatal(err)
-				}
-			})
-		})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 

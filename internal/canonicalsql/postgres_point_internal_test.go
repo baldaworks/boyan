@@ -32,44 +32,37 @@ func TestPostgresRowLimitPrecedesStampCorruption(t *testing.T) {
 // A late related-row failure must discard the already decoded first item and
 // poison the admitted writer even if its caller swallows the read error.
 func TestPostgresActiveRelatedFailureRollsBackWholePage(t *testing.T) {
-	for _, fault := range []string{"late-item"} {
-		t.Run(fault, func(t *testing.T) {
-			db := canonicalsqltest.PostgresDatabase(t)
-			owner := openPostgresTestOwner(t, PostgresConfig{DSN: db.DSN, AllowLocalInsecure: true})
-			scope := testScope()
-			seedActivePage(t, owner, scope, []string{"first", "second"})
-			c := owner.connection
+	db := canonicalsqltest.PostgresDatabase(t)
+	owner := openPostgresTestOwner(t, PostgresConfig{DSN: db.DSN, AllowLocalInsecure: true})
+	scope := testScope()
+	seedActivePage(t, owner, scope, []string{"first", "second"})
+	c := owner.connection
+	rawExec(t, c, "UPDATE "+c.table("item")+" SET envelope=$1 WHERE id=$2", []byte("bad"), []byte("second"))
 
-			if fault == "late-item" {
-				rawExec(t, c, "UPDATE "+c.table("item")+" SET envelope=$1 WHERE id=$2", []byte("bad"), []byte("second"))
-			}
+	err := owner.Update(t.Context(), func(ctx context.Context, tx *Tx) error {
+		key := Key{Family: Payload, Parts: [][]byte{[]byte("rollback")}}
+		if err := tx.Put(ctx, key, envelope(t, Payload, "must roll back")); err != nil {
+			return err
+		}
 
-			err := owner.Update(t.Context(), func(ctx context.Context, tx *Tx) error {
-				key := Key{Family: Payload, Parts: [][]byte{[]byte("rollback")}}
-				if err := tx.Put(ctx, key, envelope(t, Payload, "must roll back")); err != nil {
-					return err
-				}
+		page, err := scanActiveMemoryTx(ctx, tx, memory.ActiveMemoryScanRequest{Scope: scope, Limit: 2})
+		assertCode(t, err, memory.CodeStoreFailure)
 
-				page, err := scanActiveMemoryTx(ctx, tx, memory.ActiveMemoryScanRequest{Scope: scope, Limit: 2})
-				assertCode(t, err, memory.CodeStoreFailure)
+		if page != nil {
+			t.Fatal("late corruption returned a partial page")
+		}
 
-				if page != nil {
-					t.Fatal("late corruption returned a partial page")
-				}
+		return nil
+	})
+	assertCode(t, err, memory.CodeStoreFailure)
 
-				return nil
-			})
-			assertCode(t, err, memory.CodeStoreFailure)
+	var payloads int
+	if err := scanOne(t.Context(), c.q, "SELECT count(*) FROM "+c.table("payload"), nil, &payloads); err != nil {
+		t.Fatal(err)
+	}
 
-			var payloads int
-			if err := scanOne(t.Context(), c.q, "SELECT count(*) FROM "+c.table("payload"), nil, &payloads); err != nil {
-				t.Fatal(err)
-			}
-
-			if payloads != 0 {
-				t.Fatal("swallowed stream failure committed a payload")
-			}
-		})
+	if payloads != 0 {
+		t.Fatal("swallowed stream failure committed a payload")
 	}
 }
 
