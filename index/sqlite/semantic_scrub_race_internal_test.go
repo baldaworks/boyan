@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:lll // Real SQL mutations target the unlocked candidate/page boundary.
 package sqlite
 

@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,funlen,gocognit // Real metadata lifecycles retain every transition and restart assertion.
 package storefixture_test
 

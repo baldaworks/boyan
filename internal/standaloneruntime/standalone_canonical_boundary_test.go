@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // Exercises the actual standalone adapter against native SQL data.
 
 import (

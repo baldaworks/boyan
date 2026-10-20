@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // Exercises shutdown and durable readiness gates.
 
 import (

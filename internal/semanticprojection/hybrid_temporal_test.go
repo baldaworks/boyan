@@ -1,3 +1,5 @@
+//go:build integration
+
 package semanticprojection //nolint:testpackage // Shared timing boundary used by the actual SQLite successor.
 
 import (

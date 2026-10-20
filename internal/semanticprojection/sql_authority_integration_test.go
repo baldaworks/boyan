@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,gocognit,lll,testpackage // Finite real-owner integration cases keep privacy and physical-row assertions together.
 package semanticprojection
 

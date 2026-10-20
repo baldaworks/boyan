@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // Exercises applier within the package.
 
 import (

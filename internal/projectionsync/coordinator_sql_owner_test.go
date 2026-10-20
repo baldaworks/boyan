@@ -1,3 +1,5 @@
+//go:build integration
+
 package projectionsync //nolint:testpackage // Exercises the actual coordinator with public SQL owners.
 
 import (

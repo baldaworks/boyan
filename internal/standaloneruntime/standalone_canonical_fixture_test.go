@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // SQL fixture mutation remains outside runtime ports.
 
 import (

@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // Verifies actual runtime storage and lifecycle ownership.
 
 import (

@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:lll // Keep hand-authored SQL fixtures and literal filter expectations readable.
 package sqlite
 

@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // Shared extractor fixture exercises private runtime composition.
 
 import (

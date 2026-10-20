@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,funlen,gocognit,lll,testpackage // Real SQL fault matrices retain explicit boundary and row-family assertions.
 package semanticprojection
 

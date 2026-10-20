@@ -1,3 +1,5 @@
+//go:build integration
+
 package semanticprojection //nolint:testpackage // Retains audit timing through actual SQL and hydration.
 
 import (

@@ -1,3 +1,5 @@
+//go:build integration
+
 // Original Badger coordinator assertion bodies, executed through both native SQL owners.
 
 package storefixture_test

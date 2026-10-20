@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // Exercises SQL reconstruction with canonical privacy.
 
 import (

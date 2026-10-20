@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // Real SQL recovery faults exercise runtime cleanup and durable fences.
 
 import (

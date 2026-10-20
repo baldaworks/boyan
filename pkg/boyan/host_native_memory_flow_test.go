@@ -1,3 +1,5 @@
+//go:build integration
+
 package boyan_test
 
 import (

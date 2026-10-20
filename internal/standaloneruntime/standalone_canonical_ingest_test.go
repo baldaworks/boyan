@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // Uses the production pipeline with deterministic model outputs.
 
 import (

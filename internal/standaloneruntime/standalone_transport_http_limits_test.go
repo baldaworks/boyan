@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // Exercises standaloneHTTPConfig within the package.
 
 import (

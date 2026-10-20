@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,gocognit,funlen,lll // Real SQL fault matrices retain independent state and rollback assertions.
 package sqlite
 

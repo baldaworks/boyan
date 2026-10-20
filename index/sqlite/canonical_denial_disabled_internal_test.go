@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:lll // Fixed SQL assertions distinguish retained invalid-vector bytes from exact degraded epoch metadata.
 package sqlite
 

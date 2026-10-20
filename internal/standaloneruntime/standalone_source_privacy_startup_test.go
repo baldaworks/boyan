@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // Tests private startup readiness ordering against an old store.
 
 import (

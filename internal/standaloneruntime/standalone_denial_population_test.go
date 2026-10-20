@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // Independent canonical fixture, not a frozen regression overlay.
 
 import (

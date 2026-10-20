@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,funlen // Real lease lifecycle retains restart, ownership and terminal transitions.
 package storefixture_test
 

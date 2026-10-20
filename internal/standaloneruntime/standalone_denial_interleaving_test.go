@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // Real producer admission and service drain interleavings.
 
 import (

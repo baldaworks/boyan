@@ -1,3 +1,5 @@
+//go:build integration
+
 package orderedingest_test
 
 import (

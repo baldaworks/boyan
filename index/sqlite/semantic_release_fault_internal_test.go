@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,gocognit,lll // Real SQL failures cover each durable release boundary and exact family rollback.
 package sqlite
 

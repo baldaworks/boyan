@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,funlen,lll // Real SQLite ownership regressions retain the distinct TASK022 reviewer assertions.
 package sqlite
 

@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,funlen,lll // Real SQL staging pauses exercise scope ownership and cancellation.
 package sqlite
 

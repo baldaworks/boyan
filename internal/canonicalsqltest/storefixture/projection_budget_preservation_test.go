@@ -1,3 +1,5 @@
+//go:build integration
+
 // Retains the original canonical-to-search identity assertions on both SQL authorities.
 
 package storefixture_test

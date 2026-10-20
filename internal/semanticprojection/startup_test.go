@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,funlen,gocognit,lll,nestif,testpackage // Real SQL startup matrices retain explicit ownership and lifecycle assertions.
 package semanticprojection
 

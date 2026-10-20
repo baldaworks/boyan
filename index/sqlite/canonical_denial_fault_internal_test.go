@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,gocognit,funlen,lll // Fault matrices retain explicit boundary and rollback expectations beside real SQL fixtures.
 package sqlite
 

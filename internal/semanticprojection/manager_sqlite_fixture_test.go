@@ -1,3 +1,5 @@
+//go:build integration
+
 package semanticprojection //nolint:testpackage // Retains neutral orchestration controls against real SQLite.
 
 import (

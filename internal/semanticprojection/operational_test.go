@@ -1,3 +1,5 @@
+//go:build integration
+
 package semanticprojection //nolint:testpackage // Verifies private status ownership and counters with real builds.
 
 import (

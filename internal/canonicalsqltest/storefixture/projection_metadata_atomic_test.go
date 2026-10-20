@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,funlen,gocognit // Real fault rollback and paged traversal keep transaction invariants together.
 package storefixture_test
 

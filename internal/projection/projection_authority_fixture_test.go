@@ -1,3 +1,5 @@
+//go:build integration
+
 package projection //nolint:testpackage // Shared native authority factories preserve the original behavior matrices.
 
 import (

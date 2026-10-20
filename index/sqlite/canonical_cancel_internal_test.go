@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,lll // Real SQL callbacks cancel while an atomic record mutation is in flight.
 package sqlite
 

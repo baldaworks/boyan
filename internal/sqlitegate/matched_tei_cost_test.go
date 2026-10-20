@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,funlen,lll // Keep the fixed local-provider identity, resource qualifiers and observations adjacent.
 package sqlitegate_test
 

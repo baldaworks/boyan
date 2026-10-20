@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,gocognit,funlen,lll // Real SQL fixture matrices keep exact ownership and finite-page assertions together.
 package sqlite
 

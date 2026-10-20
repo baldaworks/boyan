@@ -1,3 +1,5 @@
+//go:build integration
+
 package mcp //nolint:testpackage // Verify the real SDK output and schema.
 
 import (

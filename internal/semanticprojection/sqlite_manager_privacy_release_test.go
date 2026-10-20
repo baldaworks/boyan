@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,testpackage // Real terminal interleaving uses the private build hook and fixture.
 package semanticprojection
 

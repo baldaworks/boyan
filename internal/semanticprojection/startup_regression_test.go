@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:funlen,lll,testpackage // Deterministic waiter gates retain the distinct TASK023 reviewer assertions.
 package semanticprojection
 

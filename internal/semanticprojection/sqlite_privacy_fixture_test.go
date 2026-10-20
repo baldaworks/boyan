@@ -1,3 +1,5 @@
+//go:build integration
+
 package semanticprojection //nolint:testpackage // Component fixtures share accepted fake canonical records.
 
 import (

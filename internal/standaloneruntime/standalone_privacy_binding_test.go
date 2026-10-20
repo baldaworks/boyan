@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // Proves the actual runtime composition binds real canonical authority.
 
 import (

@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,lll,gocognit,funlen // Fault-driven lifecycle scenarios retain explicit real SQL and boundary assertions.
 package sqlite
 

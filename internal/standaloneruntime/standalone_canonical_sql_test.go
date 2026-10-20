@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // Verifies the runtime's selected authority and lifecycle.
 
 import (

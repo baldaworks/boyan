@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // Static old bytes prove SQL startup never migrates or mutates them.
 
 import (

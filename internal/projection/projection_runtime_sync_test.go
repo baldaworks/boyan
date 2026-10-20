@@ -1,3 +1,5 @@
+//go:build integration
+
 package projection //nolint:testpackage // Exercises shared private test fixtures within the package.
 
 import (

@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:lll // Keep corruption SQL and expected errors next to each other.
 package sqlite
 

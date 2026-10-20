@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // Exercises native owner failures at actual runtime boundaries.
 
 import (

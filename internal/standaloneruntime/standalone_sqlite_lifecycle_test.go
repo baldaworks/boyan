@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // Exercises shared SQL drain and optional initialization failure.
 
 import (

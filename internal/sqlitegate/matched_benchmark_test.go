@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,funlen,gocognit,lll // Keep the paired workload matrix and exact input fields adjacent.
 package sqlitegate_test
 

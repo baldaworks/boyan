@@ -1,3 +1,5 @@
+//go:build integration
+
 // Package storefixture runs cases through implemented public canonical owners.
 // It is separate from the raw fixture package to avoid primitive-test cycles.
 package storefixture

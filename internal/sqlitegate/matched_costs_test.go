@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,funlen,gocognit,gocyclo,lll,maintidx // Finite operation samples retain setup, outcome and resource observations together.
 package sqlitegate_test
 

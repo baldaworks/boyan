@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,funlen,lll // Channel and actual SQL barriers establish operation ordering without sleep assumptions.
 package sqlite
 

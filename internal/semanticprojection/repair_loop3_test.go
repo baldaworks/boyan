@@ -1,3 +1,5 @@
+//go:build integration
+
 package semanticprojection //nolint:testpackage // Exercises deterministic private lifecycle and race seams.
 
 import (

@@ -1,3 +1,5 @@
+//go:build integration
+
 package semanticeval_test
 
 import (

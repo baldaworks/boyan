@@ -1,3 +1,5 @@
+//go:build integration
+
 package projection //nolint:testpackage // Actual native authority preserves incomplete recovery retention.
 
 import (

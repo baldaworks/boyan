@@ -1,3 +1,5 @@
+//go:build integration
+
 // Package sqlitegate_test holds the dependency feasibility gate only.
 // It is deliberately disconnected from runtime composition and owns no production schema.
 package sqlitegate_test

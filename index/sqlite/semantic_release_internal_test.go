@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,lll // Real SQL state-machine cases assert the exact candidate and all owned families.
 package sqlite
 

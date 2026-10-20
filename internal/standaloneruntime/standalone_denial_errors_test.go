@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // Checks original outcomes through the actual application service.
 
 import (

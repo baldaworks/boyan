@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,gocognit,lll,testpackage // Real SQL boundary matrices keep fault outcomes adjacent.
 package semanticprojection
 

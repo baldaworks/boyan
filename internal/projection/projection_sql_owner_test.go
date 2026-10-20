@@ -1,3 +1,5 @@
+//go:build integration
+
 package projection //nolint:testpackage // Reuses the actual disposable SQLite runtime fixture.
 
 import (

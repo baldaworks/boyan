@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,lll // Explicit SQL fixtures test scrub's scope, certificate and paging contracts.
 package sqlite
 

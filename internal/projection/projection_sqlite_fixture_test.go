@@ -1,3 +1,5 @@
+//go:build integration
+
 package projection //nolint:testpackage // Shared real canonical/SQLite runtime fixtures.
 
 import (

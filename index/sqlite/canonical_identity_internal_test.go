@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,lll // Exact identity and rollback fixtures keep explicit real SQL assertions.
 package sqlite
 

@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // Startup must retire the existing database before readiness.
 
 import (

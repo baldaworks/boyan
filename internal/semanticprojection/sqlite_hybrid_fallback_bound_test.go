@@ -1,3 +1,5 @@
+//go:build integration
+
 package semanticprojection //nolint:testpackage // Preserve the independent fallback hydration cap against actual SQL.
 
 import (

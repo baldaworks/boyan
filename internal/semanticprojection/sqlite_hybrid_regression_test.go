@@ -1,3 +1,5 @@
+//go:build integration
+
 package semanticprojection //nolint:testpackage // Promotes the TASK013 final-channel Close probe.
 
 import (

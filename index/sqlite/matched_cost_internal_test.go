@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,funlen,gocognit,lll // Internal WAL/grouping observations require actual writer and connection limits.
 package sqlite
 

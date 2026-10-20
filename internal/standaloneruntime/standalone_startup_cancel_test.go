@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // Verifies shutdown cancellation reaches synchronous startup repair.
 
 import (

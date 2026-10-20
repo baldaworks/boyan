@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,funlen,lll // Exact production-backed fixture fields stay directly comparable to the old adapter template.
 package sqlitegate_test
 

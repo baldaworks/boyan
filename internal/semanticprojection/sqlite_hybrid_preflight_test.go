@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,funlen,gocognit,gocyclo,lll,nestif,testpackage // Real SQL admission matrices keep boundary setup and observable outcomes together.
 package semanticprojection
 

@@ -1,3 +1,5 @@
+//go:build integration
+
 package standaloneruntime //nolint:testpackage // Verifies storage recovery precedes production projection startup.
 
 import (

@@ -1,3 +1,5 @@
+//go:build integration
+
 package projection //nolint:testpackage // Exercises the real coordinator and canonical/search publication boundary.
 
 import (

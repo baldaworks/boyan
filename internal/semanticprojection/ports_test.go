@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:testpackage // Exercise consumer ports with the existing real SQLite fixtures.
 package semanticprojection
 

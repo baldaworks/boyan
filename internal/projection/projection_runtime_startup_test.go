@@ -1,3 +1,5 @@
+//go:build integration
+
 package projection //nolint:testpackage // Exercises optional startup pagination and lifecycle admission.
 
 import (

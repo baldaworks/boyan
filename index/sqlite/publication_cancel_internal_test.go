@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,lll,funlen,gocognit // Real SQL callbacks cancel each publication boundary with one shared rollback oracle.
 package sqlite
 

@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:lll // Fixed eight-family SQL queries keep ownership predicates auditable.
 package standaloneruntime //nolint:testpackage // Exercises actual service ownership and retained SQL rows.
 

@@ -14,9 +14,16 @@ import (
 var writeCoverage = flag.Bool("write-coverage", false, "regenerate the reviewed preservation inventory")
 
 // Adding an unregistered family, key, write site or consumer case must be visible.
+//
 //nolint:funlen // Keep the native key/write/raw-call positive and atomic-read negative controls in one discovery probe.
 func TestDiscoverCoverageFindsPrivateAndConsumerSurfaces(t *testing.T) {
 	files := fstest.MapFS{
+		"internal/consumer/tagged_test.go": {Data: []byte(`//go:build integration
+
+package consumer
+import canonical "github.com/baldaworks/boyan/internal/canonicalsql"
+func TestInactiveIntegration(t *testing.T) { owner.connection.q.exec(ctx, sql, args) }
+`)},
 		"internal/canonicalsql/extra.go": {Data: []byte(`package canonicalsql
 const Hidden Family = "source-privacy-ready"
 func hiddenMarker() []byte { return memory.TupleKey(83, 1, badgerRecordHidden) }
@@ -51,28 +58,30 @@ func inspectRawSQLite() { conn.QueryContext(ctx, sql, args) }
 	}
 
 	want := map[string]bool{
-		"family:Hidden":                false,
-		"key:hiddenMarker":             false,
-		"writer:erase":                 false,
-		"writer:writeFence":            false,
-		"key:privacyKey":               false,
-		"key:eraseOwnedPrefix":         false,
-		"key:readInlineKey":            false,
-		"writer:writeRow":              false,
-		"writer:compareScope":          false,
-		"writer:pgPut":                 false,
-		"writer:pgDelete":              false,
-		"writer:primitivePut":          false,
-		"writer:primitiveDelete":       false,
-		"case:TestInterleaving":        false,
-		"raw-fixture:TestInterleaving": false,
-		"fixture:corruptFixture":       false,
-		"raw-fixture:corruptFixture":   false,
-		"raw-fixture:corruptRawOwner":  false,
-		"raw-fixture:corruptRawPG":     false,
-		"raw-fixture:inspectRawPG":     false,
-		"raw-fixture:corruptRawSQLite": false,
-		"raw-fixture:inspectRawSQLite": false,
+		"family:Hidden":                       false,
+		"key:hiddenMarker":                    false,
+		"writer:erase":                        false,
+		"writer:writeFence":                   false,
+		"key:privacyKey":                      false,
+		"key:eraseOwnedPrefix":                false,
+		"key:readInlineKey":                   false,
+		"writer:writeRow":                     false,
+		"writer:compareScope":                 false,
+		"writer:pgPut":                        false,
+		"writer:pgDelete":                     false,
+		"writer:primitivePut":                 false,
+		"writer:primitiveDelete":              false,
+		"case:TestInterleaving":               false,
+		"case:TestInactiveIntegration":        false,
+		"raw-fixture:TestInactiveIntegration": false,
+		"raw-fixture:TestInterleaving":        false,
+		"fixture:corruptFixture":              false,
+		"raw-fixture:corruptFixture":          false,
+		"raw-fixture:corruptRawOwner":         false,
+		"raw-fixture:corruptRawPG":            false,
+		"raw-fixture:inspectRawPG":            false,
+		"raw-fixture:corruptRawSQLite":        false,
+		"raw-fixture:inspectRawSQLite":        false,
 	}
 
 	for _, entry := range entries {

@@ -1,3 +1,5 @@
+//go:build integration
+
 //nolint:cyclop,funlen,lll // Real producer states and exact owner/peer postconditions belong together.
 package sqlite
 
