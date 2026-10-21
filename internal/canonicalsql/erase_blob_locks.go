@@ -72,8 +72,8 @@ func eraseLockPage(ctx context.Context, txn *Tx, journal *memory.ScopeEraseJourn
 
 	shared := false
 
-	cursor, done, err := eraseWalkPage(ctx, txn, prefix, journal.Cursor, func(key Key) error {
-		foreign, err := eraseLockRecord(ctx, txn, journal, key, kind)
+	cursor, done, err := eraseWalkPage(ctx, txn, prefix, journal.Cursor, func(row Row) error {
+		foreign, err := eraseLockRecord(ctx, txn, journal, row, kind)
 		shared = shared || foreign
 
 		return err
@@ -123,8 +123,8 @@ func eraseCheckOwnershipPage(ctx context.Context, txn *Tx, journal *memory.Scope
 
 	shared := false
 
-	cursor, done, err := eraseWalkPage(ctx, txn, prefix, journal.Cursor, func(key Key) error {
-		foreign, err := eraseForeignBlobReference(ctx, txn, *journal, key, kind)
+	cursor, done, err := eraseWalkPage(ctx, txn, prefix, journal.Cursor, func(row Row) error {
+		foreign, err := eraseForeignBlobReference(ctx, txn, *journal, row, kind)
 		if err != nil {
 			return err
 		}
@@ -172,8 +172,8 @@ func eraseReleasePage(ctx context.Context, txn *Tx, journal *memory.ScopeEraseJo
 		return err
 	}
 
-	cursor, done, err := eraseWalkPage(ctx, txn, prefix, journal.Cursor, func(key Key) error {
-		return eraseReleaseBlob(ctx, txn, *journal, key)
+	cursor, done, err := eraseWalkPage(ctx, txn, prefix, journal.Cursor, func(row Row) error {
+		return eraseReleaseBlob(ctx, txn, *journal, row.Key)
 	})
 	if err != nil {
 		return err
@@ -223,10 +223,10 @@ func erasePayloadTxn(ctx context.Context, txn *Tx, ref memory.PayloadRef) error 
 func eraseForeignBlobReference(
 	ctx context.Context, txn *Tx,
 	journal memory.ScopeEraseJournal,
-	key Key,
+	row Row,
 	kind Family,
 ) (bool, error) {
-	record, err := eraseRecord(ctx, txn, key, kind)
+	record, err := erasePageRecord(ctx, txn, row, kind)
 	if err != nil {
 		return false, err
 	}
@@ -273,9 +273,9 @@ func eraseReleaseBlob(ctx context.Context, txn *Tx, journal memory.ScopeEraseJou
 	return txn.Delete(ctx, key)
 }
 
-func eraseLockRecord(ctx context.Context, txn *Tx, journal *memory.ScopeEraseJournal, key Key,
+func eraseLockRecord(ctx context.Context, txn *Tx, journal *memory.ScopeEraseJournal, row Row,
 	kind Family) (bool, error) {
-	record, err := eraseRecord(ctx, txn, key, kind)
+	record, err := erasePageRecord(ctx, txn, row, kind)
 	if err != nil {
 		return false, err
 	}

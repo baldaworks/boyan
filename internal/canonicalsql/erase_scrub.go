@@ -13,8 +13,8 @@ func eraseScrubPage(ctx context.Context, txn *Tx, journal *memory.ScopeEraseJour
 		return err
 	}
 
-	cursor, done, err := eraseWalkPage(ctx, txn, prefix, journal.Cursor, func(key Key) error {
-		return eraseScrubRecord(ctx, txn, *journal, key, kind)
+	cursor, done, err := eraseWalkPage(ctx, txn, prefix, journal.Cursor, func(row Row) error {
+		return eraseScrubRecord(ctx, txn, *journal, row, kind)
 	})
 	if err != nil {
 		return err
@@ -66,8 +66,8 @@ func eraseCheckDenied(ctx context.Context, txn *Tx, scope memory.Scope, record e
 	return nil
 }
 
-func eraseScrubRecord(ctx context.Context, txn *Tx, journal memory.ScopeEraseJournal, key Key, kind Family) error {
-	record, err := eraseRecord(ctx, txn, key, kind)
+func eraseScrubRecord(ctx context.Context, txn *Tx, journal memory.ScopeEraseJournal, row Row, kind Family) error {
+	record, err := erasePageRecord(ctx, txn, row, kind)
 	if err != nil {
 		return err
 	}

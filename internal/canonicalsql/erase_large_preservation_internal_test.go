@@ -18,7 +18,7 @@ func TestScopeEraseBoundsSummaryAcross1025HistoricalSourcesAndRevisions(t *testi
 		refs := seedEraseHistory(t, store, scope, 1025)
 		request := memory.ScopeEraseRequest{Scope: scope, OperationID: "erase", Fingerprint: "fp", ForgottenAt: time.Now()}
 
-		journal, err := store.RunScopeErase(context.Background(), request)
+		journal, err := runObservedErase(t, store, request)
 		requireEraseTestNoError(t, err)
 
 		if journal.SourceCount != 1025 || journal.RevisionCount != 1025 || !journal.ReferencesTruncated ||

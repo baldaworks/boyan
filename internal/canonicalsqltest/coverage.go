@@ -381,6 +381,9 @@ func familyOwner(family string) string {
 func coverageOwner(file, symbol string) string {
 	name := strings.ToLower(file + " " + symbol)
 	switch {
+	case file == "internal/canonicalsql/erase_row_internal_test.go" ||
+		file == "internal/canonicalsql/erase_work_internal_test.go":
+		return "TASK-035"
 	case strings.HasPrefix(file, "index/sqlite/"):
 		return "TASK-018"
 	case containsAny(file, "standaloneruntime/", "pkg/boyan/"):

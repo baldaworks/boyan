@@ -19,8 +19,8 @@ func eraseDenyPage(ctx context.Context, txn *Tx, journal *memory.ScopeEraseJourn
 		return err
 	}
 
-	cursor, done, err := eraseWalkPage(ctx, txn, prefix, journal.Cursor, func(key Key) error {
-		record, err := eraseRecord(ctx, txn, key, kind)
+	cursor, done, err := eraseWalkPage(ctx, txn, prefix, journal.Cursor, func(row Row) error {
+		record, err := erasePageRecord(ctx, txn, row, kind)
 		if err != nil {
 			return err
 		}

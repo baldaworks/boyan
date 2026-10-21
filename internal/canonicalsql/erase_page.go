@@ -55,7 +55,7 @@ func eraseOwnedPrefix(j memory.ScopeEraseJournal, family Family) (Range, error) 
 }
 
 // The frame transports the exclusive raw tuple; SQL always orders its components.
-func eraseWalkPage(ctx context.Context, tx *Tx, scan Range, cursor []byte, visit func(Key) error) ([]byte,
+func eraseWalkPage(ctx context.Context, tx *Tx, scan Range, cursor []byte, visit func(Row) error) ([]byte,
 	bool, error) {
 	if len(cursor) > 0 {
 		key, err := keyFromFrame(scan.Family, cursor)
@@ -74,7 +74,7 @@ func eraseWalkPage(ctx context.Context, tx *Tx, scan Range, cursor []byte, visit
 	var last []byte
 
 	for _, row := range rows {
-		if err := visit(row.Key); err != nil {
+		if err := visit(row); err != nil {
 			return nil, false, err
 		}
 
@@ -94,7 +94,42 @@ func eraseWalkPage(ctx context.Context, tx *Tx, scan Range, cursor []byte, visit
 	return last, !more, err
 }
 
+// Only the fixed canonical erase visitors consume scanned bytes. They must not
+// mutate Source, Message or Revision rows, including later rows in this page.
+func erasePageRecord(ctx context.Context, tx *Tx, row Row, kind Family) (eraseRawRecord, error) {
+	key := row.Key
+	if key.Family != kind || len(key.Parts) != 1 || key.Scope.Validate() != nil {
+		return eraseRawRecord{Key: key, Scope: key.Scope}, corruptRow()
+	}
+
+	if err := tx.check(ctx, true); err != nil {
+		return eraseRawRecord{Key: key, Scope: key.Scope}, err
+	}
+
+	return decodeEraseRecord(ctx, tx, row, kind)
+}
+
+// Enumeration and source identity lookup retain their original fresh-read path.
 func eraseRecord(ctx context.Context, tx *Tx, key Key, kind Family) (eraseRawRecord, error) {
+	if key.Family != kind || len(key.Parts) != 1 || key.Scope.Validate() != nil {
+		return eraseRawRecord{Key: key, Scope: key.Scope}, corruptRow()
+	}
+
+	if kind != Source && kind != Message && kind != Revision {
+		return eraseRawRecord{Key: key, Scope: key.Scope, ID: string(key.Parts[0])}, corruptRow()
+	}
+
+	data, err := tx.Get(ctx, key)
+	if err != nil {
+		return eraseRawRecord{Key: key, Scope: key.Scope, ID: string(key.Parts[0])}, err
+	}
+
+	return decodeEraseRecord(ctx, tx, Row{Key: key, Envelope: data}, kind)
+}
+
+func decodeEraseRecord(ctx context.Context, tx *Tx, row Row, kind Family) (eraseRawRecord, error) {
+	key := row.Key
+
 	r := eraseRawRecord{Key: key, Scope: key.Scope}
 	if key.Family != kind || len(key.Parts) != 1 || key.Scope.Validate() != nil {
 		return r, corruptRow()
@@ -106,11 +141,11 @@ func eraseRecord(ctx context.Context, tx *Tx, key Key, kind Family) (eraseRawRec
 
 	switch kind {
 	case Source:
-		err = decodeEraseSource(ctx, tx, &r)
+		err = decodeEraseSource(ctx, tx, &r, row.Envelope)
 	case Message:
-		err = decodeEraseMessage(ctx, tx, &r)
+		err = decodeEraseMessage(ctx, tx, &r, row.Envelope)
 	case Revision:
-		err = decodeEraseRevision(ctx, tx, &r)
+		err = decodeEraseRevision(ctx, tx, &r, row.Envelope)
 	default:
 		err = corruptRow()
 	}
@@ -154,9 +189,19 @@ func listedCanonicalSourcePayload(ctx context.Context, tx *Tx, id string) ([]byt
 	return data, err
 }
 
-func decodeEraseSource(ctx context.Context, tx *Tx, r *eraseRawRecord) error {
+func decodeEraseRow(ctx context.Context, tx *Tx, key Key, family Family, data []byte, target any) error {
+	// Get formerly enforced these checks on every visit, even after Scan had
+	// materialized the page. Keep them before interpreting the stored envelope.
+	if err := tx.check(ctx, false); err != nil {
+		return err
+	}
+
+	return decodePrivacyRecord(key, family, data, target)
+}
+
+func decodeEraseSource(ctx context.Context, tx *Tx, r *eraseRawRecord, data []byte) error {
 	r.Source = &memory.CanonicalSourceRecord{}
-	if err := getPrivacyRecord(ctx, tx, r.Key, Source, r.Source); err != nil {
+	if err := decodeEraseRow(ctx, tx, r.Key, Source, data, r.Source); err != nil {
 		return err
 	}
 
@@ -168,9 +213,9 @@ func decodeEraseSource(ctx context.Context, tx *Tx, r *eraseRawRecord) error {
 
 	return nil
 }
-func decodeEraseMessage(ctx context.Context, tx *Tx, r *eraseRawRecord) error {
+func decodeEraseMessage(ctx context.Context, tx *Tx, r *eraseRawRecord, data []byte) error {
 	r.Message = &memory.MessageRecord{}
-	if err := getPrivacyRecord(ctx, tx, r.Key, Message, r.Message); err != nil {
+	if err := decodeEraseRow(ctx, tx, r.Key, Message, data, r.Message); err != nil {
 		return err
 	}
 
@@ -182,9 +227,9 @@ func decodeEraseMessage(ctx context.Context, tx *Tx, r *eraseRawRecord) error {
 
 	return nil
 }
-func decodeEraseRevision(ctx context.Context, tx *Tx, r *eraseRawRecord) error {
+func decodeEraseRevision(ctx context.Context, tx *Tx, r *eraseRawRecord, data []byte) error {
 	r.Revision = &memory.MemoryRevision{}
-	if err := getPrivacyRecord(ctx, tx, r.Key, Revision, r.Revision); err != nil {
+	if err := decodeEraseRow(ctx, tx, r.Key, Revision, data, r.Revision); err != nil {
 		return err
 	}
 
