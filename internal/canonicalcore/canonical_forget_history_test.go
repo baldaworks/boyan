@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,9 +15,10 @@ import (
 	m "github.com/baldaworks/boyan/pkg/memory"
 )
 
-func TestScopeForgetNative1025TurnsReturnsCompleteBoundedSummary(t *testing.T) {
+//nolint:funlen // Summary, replay and projection checkpoints share one genuine 1025-turn history.
+func TestScopeForgetNative1025TurnsSummaryProjectionAndReplay(t *testing.T) {
 	runCoreAuthorities(t, func(t *testing.T, factory coreFactory) {
-		_, processor, turn, _, store := nativeFlow(t, factory)
+		reader, processor, turn, _, store := nativeFlow(t, factory)
 		ingestNativeHistory(t, processor, turn, 1024)
 
 		ctx := context.Background()
@@ -28,6 +30,14 @@ func TestScopeForgetNative1025TurnsReturnsCompleteBoundedSummary(t *testing.T) {
 		}
 
 		refs := nativeFixturePayloadRefs(t, store)
+		t.Log("checkpoint: genuine 1025-turn history, one active item and payload references captured")
+
+		path := filepath.Join(t.TempDir(), "index")
+		idx, runtime := openLargeForgetProjection(t, path, store, reader)
+		requireNoError(t, runtime.Sync(ctx, turn.Scope), "initial sync: %v")
+		assertLargeForgetIndex(t, idx, turn.Scope, 0, "")
+		t.Log("checkpoint: initial projection synced with one physical hit")
+
 		adapter, err := forgetops.NewCanonicalForgetAdapter(store)
 		requireNoError(t, err, "adapter: %v")
 
@@ -54,6 +64,8 @@ func TestScopeForgetNative1025TurnsReturnsCompleteBoundedSummary(t *testing.T) {
 		}
 
 		requireNativePayloadsAbsent(t, store, refs)
+		t.Logf("checkpoint: complete bounded summary sources=%d revisions=%d bytes=%d; original payloads absent",
+			outcome.SourceCount, outcome.RevisionCount, len(encoded))
 
 		replay, err := adapter.ForgetScope(ctx, command)
 		requireNoError(t, err, "replay large forget: %v")
@@ -61,6 +73,32 @@ func TestScopeForgetNative1025TurnsReturnsCompleteBoundedSummary(t *testing.T) {
 		if replay.ScopeVersion != outcome.ScopeVersion || replay.SourceCount != outcome.SourceCount {
 			t.Fatalf("replay differs: %+v", replay)
 		}
+
+		t.Log("checkpoint: immediate identical-command replay preserves version and source count")
+
+		next, err := m.NewTurn(turn.Scope, turn.Conversation, "after-large-forget", turn.CompletedAt.Add(2*time.Hour),
+			"Я живу в Казани", "OK")
+		requireNoError(t, err, "later turn: %v")
+		later, err := processor.ProcessTurn(ctx, next, testProcessorDerivation())
+		requireNoError(t, err, "later ingest: %v")
+		requireNoError(t, runtime.Sync(ctx, turn.Scope), "bounded invalidation rebuild: %v")
+		assertLargeForgetIndex(t, idx, turn.Scope, later.ChangeSeq, later.RevisionIDs[0])
+		t.Log("checkpoint: live projection contains exactly the fresh later revision")
+		requireNoError(t, runtime.Close(ctx), "runtime close: %v")
+		requireNoError(t, idx.Close(), "index close: %v")
+
+		idx, runtime = openLargeForgetProjection(t, path, store, reader)
+		requireNoError(t, runtime.Start(ctx), "projection restart: %v")
+		replay, err = adapter.ForgetScope(ctx, command)
+		requireNoError(t, err, "old erase replay: %v")
+
+		if replay.ScopeVersion != outcome.ScopeVersion {
+			t.Fatal("replay changed outcome")
+		}
+
+		requireNoError(t, runtime.Sync(ctx, turn.Scope), "replay sync: %v")
+		assertLargeForgetIndex(t, idx, turn.Scope, later.ChangeSeq, later.RevisionIDs[0])
+		t.Log("checkpoint: same-path projection reopened against live canonical owner; original replay retains fresh later hit")
 	})
 }
 
