@@ -21,6 +21,7 @@ func openLargeForgetProjection(t *testing.T, path string, store coreOwner,
 	idx, err := index.Open(t.Context(), path, index.Options{})
 	requireNoError(t, err, "index: %v")
 	t.Cleanup(func() { requireNoError(t, idx.Close(), "index cleanup: %v") })
+
 	applier, err := index.NewSQLiteCanonicalApplier(idx, reader, store)
 	requireNoError(t, err, "applier: %v")
 	runtime, err := projection.NewProjectionRuntime(store, store, applier, "sqlite", 128)

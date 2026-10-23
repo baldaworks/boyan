@@ -98,7 +98,9 @@ func TestScopeForgetNative1025TurnsSummaryProjectionAndReplay(t *testing.T) {
 
 		requireNoError(t, runtime.Sync(ctx, turn.Scope), "replay sync: %v")
 		assertLargeForgetIndex(t, idx, turn.Scope, later.ChangeSeq, later.RevisionIDs[0])
-		t.Log("checkpoint: same-path projection reopened against live canonical owner; original replay retains fresh later hit")
+		t.Log(
+			"checkpoint: same-path projection reopened against live canonical owner; original replay retains fresh later hit",
+		)
 	})
 }
 

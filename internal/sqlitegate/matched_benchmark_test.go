@@ -286,6 +286,7 @@ func seedMatchedCorpus(ctx context.Context, name string, count int, factories ..
 
 	for start := 0; start < len(c.revisions); start += pageSize {
 		page := c.revisions[start:min(start+pageSize, len(c.revisions))]
+
 		ids := make([]string, len(page))
 		for i, rev := range page {
 			ids[i] = rev.RevisionID
