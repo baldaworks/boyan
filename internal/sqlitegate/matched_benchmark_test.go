@@ -277,21 +277,40 @@ func seedMatchedCorpus(ctx context.Context, name string, count int, factories ..
 		c.revisions = append(c.revisions, revision)
 	}
 
-	for _, rev := range c.revisions {
-		records, err := reader.LoadRecallRecords(ctx, c.scope, []string{rev.RevisionID})
-		if err != nil || len(records) != 1 {
-			return nil, fmt.Errorf("seed hydrate %s count=%d: %w", rev.RevisionID, len(records), err)
+	pageSize := 1
+	if name == "semantic8192" && len(factories) != 0 {
+		// This fixed native seed has no concurrent writer. Retain a fresh
+		// hydration/barrier pair per bounded page before building the index.
+		pageSize = 128
+	}
+
+	for start := 0; start < len(c.revisions); start += pageSize {
+		page := c.revisions[start:min(start+pageSize, len(c.revisions))]
+		ids := make([]string, len(page))
+		for i, rev := range page {
+			ids[i] = rev.RevisionID
 		}
 
-		if err := records[0].Validate(m.RecallRequest{Scope: c.scope, Query: "test", Limit: 10, AsOf: &matchedAt}, matchedAt); err != nil {
-			return nil, err
+		records, err := reader.LoadRecallRecords(ctx, c.scope, ids)
+		if err != nil || len(records) != len(ids) {
+			return nil, fmt.Errorf("seed hydrate %s count=%d want=%d: %w", ids[0], len(records), len(ids), err)
 		}
 
-		if records[0].Category == nil || *records[0].Category != category || records[0].Text != controls[len(c.records)%len(controls)].text || len(records[0].ConversationIDs) != 1 || records[0].ConversationIDs[0] != c.conversation {
-			return nil, fmt.Errorf("canonical representation mismatch")
-		}
+		for i, record := range records {
+			if record.RevisionID != ids[i] {
+				return nil, fmt.Errorf("seed hydrate revision %s want=%s", record.RevisionID, ids[i])
+			}
 
-		c.records = append(c.records, records[0])
+			if err := record.Validate(m.RecallRequest{Scope: c.scope, Query: "test", Limit: 10, AsOf: &matchedAt}, matchedAt); err != nil {
+				return nil, err
+			}
+
+			if record.Category == nil || *record.Category != category || record.Text != controls[len(c.records)%len(controls)].text || len(record.ConversationIDs) != 1 || record.ConversationIDs[0] != c.conversation {
+				return nil, fmt.Errorf("canonical representation mismatch")
+			}
+
+			c.records = append(c.records, record)
+		}
 	}
 
 	return c, nil
