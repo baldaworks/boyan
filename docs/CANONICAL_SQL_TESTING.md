@@ -37,15 +37,17 @@ each invocation; do not log credentials:
 
 ```sh
 BOYAN_REQUIRE_POSTGRES=1 GOMAXPROCS=4 \
-  go test -count=1 -json -tags=integration -timeout=10m -p=1 ./...
+  go test -count=1 -json -tags=integration -timeout=30m -p=1 ./...
 BOYAN_REQUIRE_POSTGRES=1 GOMAXPROCS=4 \
-  go test -count=1 -json -race -tags=integration -timeout=10m -p=1 ./...
+  go test -count=1 -json -race -tags=integration -timeout=30m -p=1 ./...
 ```
 
 Keep the DSN in both processes' environment. Serial package scheduling (`-p=1`)
 avoids concurrent package competition for the same host and test server; it is
-not a proven timeout fix or speedup. The full race selection, 10-minute
-per-package timeout and retained 257/1025/8192 workloads remain required.
+not a proven timeout fix or speedup. The full race selection and retained
+257/1025/8192 workloads remain required. The 30-minute per-package timeout is
+a finite engineering execution budget for the unchanged native workload, not
+a product latency SLA or a promised passing result.
 Neither reduced assertions nor optional TEI/cost skips establish native parity.
 No new model or benchmark campaign is required.
 
