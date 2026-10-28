@@ -546,7 +546,7 @@ func validateActivePage(scope memory.Scope, after string, page []memory.ActiveCa
 
 	for _, active := range page {
 		if active.Item.Scope != scope || active.Item.Validate() != nil || active.RevisionID == "" ||
-			active.Revision == 0 || active.Item.ItemID <= previous {
+			active.Revision == 0 || !activeItemAfter(active.Item.ItemID, previous) {
 			return ErrStaleView
 		}
 
@@ -559,6 +559,11 @@ func validateActivePage(scope memory.Scope, after string, page []memory.ActiveCa
 	}
 
 	return nil
+}
+
+// Active scans order tuple components by their byte-length prefix, then bytes.
+func activeItemAfter(id, after string) bool {
+	return len(id) > len(after) || len(id) == len(after) && id > after
 }
 
 func (manager *Manager) publishFailure(ctx context.Context, target buildTarget, buildErr error) {

@@ -786,7 +786,7 @@ func newFakeCanonical(scope memory.Scope, sequence uint64, records ...memory.Rec
 		})
 	}
 	sort.Slice(canonical.active, func(i, j int) bool {
-		return canonical.active[i].Item.ItemID < canonical.active[j].Item.ItemID
+		return activeItemAfter(canonical.active[j].Item.ItemID, canonical.active[i].Item.ItemID)
 	})
 
 	return canonical
@@ -844,7 +844,7 @@ func (canonical *fakeCanonical) ScanActiveMemory(
 	}
 	result := make([]memory.ActiveCanonicalMemory, 0, request.Limit)
 	for _, active := range canonical.active {
-		if active.Item.ItemID <= request.AfterItemID {
+		if !activeItemAfter(active.Item.ItemID, request.AfterItemID) {
 			continue
 		}
 		result = append(result, active)

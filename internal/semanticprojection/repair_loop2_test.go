@@ -119,6 +119,44 @@ func TestRepairRejectsInvalidAndUnboundedActivePagesBeforeInference(t *testing.T
 	}
 }
 
+func TestActivePageUsesEncodedItemOrder(t *testing.T) {
+	scope := testScope("encoded-cursor")
+
+	active := func(id string) memory.ActiveCanonicalMemory {
+		return memory.ActiveCanonicalMemory{
+			Item:       memory.MemoryItem{ItemID: id, Scope: scope, Kind: memory.MemoryKindState, MemoryKey: "key"},
+			RevisionID: "revision-" + id, Revision: 1,
+		}
+	}
+	if err := validateActivePage(scope, "z", []memory.ActiveCanonicalMemory{active("aa"), active("aaa")}); err != nil {
+		t.Fatalf("encoded page rejected: %v", err)
+	}
+
+	if err := validateActivePage(scope, "aa", []memory.ActiveCanonicalMemory{active("z")}); !errors.Is(err, ErrStaleView) {
+		t.Fatalf("backwards cursor error = %v", err)
+	}
+}
+
+func TestRepairAcceptsVariableLengthItemIDs(t *testing.T) {
+	scope := testScope("encoded-items")
+	canonical := newFakeCanonical(scope, 7,
+		testRecord(scope, "z", "revision-z", "first", memory.SensitivityStandard, memory.RetentionClassStandard),
+		testRecord(scope, "aa", "revision-aa", "second", memory.SensitivityStandard, memory.RetentionClassStandard),
+	)
+	manifests := &fakeManifestSource{manifest: activeManifest(scope, "sqlite-generation-7", 7)}
+	provider := &fakeProvider{vector: []float32{1, 0}}
+	store := openSemanticStore(t, canonical)
+	manager := newTestManager(t, canonical, manifests, provider, store, testModelSpace("model-a"))
+
+	if err := manager.Repair(t.Context(), scope); err != nil {
+		t.Fatalf("Repair() error = %v", err)
+	}
+
+	if inputs := provider.Inputs(); len(inputs) != 2 {
+		t.Fatalf("provider inputs = %#v, want both active items", inputs)
+	}
+}
+
 //nolint:lll,wsl_v5 // Full active identities make the cursor failure self-contained.
 func TestRepairRejectsUnstableActivePageCursorBeforeInference(t *testing.T) {
 	scope := testScope("bad-cursor")
