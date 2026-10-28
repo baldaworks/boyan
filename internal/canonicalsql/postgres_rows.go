@@ -163,7 +163,9 @@ func (s *physicalRowScan) decode(f Family, def familyDef) (physicalRow, error) {
 
 // Native HASH is deliberately nonunique. Always recheck full original bytes,
 // validate raw/derived/envelope bindings, and reject a second exact match.
-func (tx *Tx) resolvePoint(ctx context.Context, key Key, def familyDef, values [][]byte) (*physicalRow, error) {
+func (tx *Tx) resolvePoint(
+	ctx context.Context, key Key, def familyDef, values [][]byte,
+) (value *physicalRow, resultErr error) {
 	statement := "SELECT " + pgSelection(key.Family, def) + " FROM " + tx.connection.table(def.table) +
 		" WHERE logical_key=$1 LIMIT 2"
 
@@ -171,7 +173,11 @@ func (tx *Tx) resolvePoint(ctx context.Context, key Key, def familyDef, values [
 	if err != nil {
 		return nil, tx.fail(databaseError(ctx, "resolve row", err))
 	}
-	defer r.Close()
+	defer func() {
+		if err := tx.closePointRows(ctx, r, resultErr); err != nil {
+			value, resultErr = nil, err
+		}
+	}()
 
 	var result *physicalRow
 
@@ -195,10 +201,6 @@ func (tx *Tx) resolvePoint(ctx context.Context, key Key, def familyDef, values [
 
 	if err := r.Err(); err != nil {
 		return nil, tx.fail(databaseError(ctx, "resolve row", err))
-	}
-
-	if err := r.Close(); err != nil {
-		return nil, tx.fail(databaseError(ctx, "close rows", err))
 	}
 
 	return result, nil

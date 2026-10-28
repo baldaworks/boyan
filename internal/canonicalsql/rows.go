@@ -3,6 +3,7 @@ package canonicalsql
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 
@@ -107,7 +108,7 @@ func (tx *Tx) Get(ctx context.Context, key Key) ([]byte, error) {
 	return tx.getPoint(ctx, key, def, values)
 }
 
-func (tx *Tx) getPoint(ctx context.Context, key Key, def familyDef, values [][]byte) ([]byte, error) {
+func (tx *Tx) getPoint(ctx context.Context, key Key, def familyDef, values [][]byte) (value []byte, result error) {
 	if tx.connection.pg != nil {
 		return tx.pgGet(ctx, key, def, values)
 	}
@@ -117,7 +118,11 @@ func (tx *Tx) getPoint(ctx context.Context, key Key, def familyDef, values [][]b
 	if err != nil {
 		return nil, tx.fail(databaseError(ctx, "get", err))
 	}
-	defer r.Close()
+	defer func() {
+		if err := tx.closePointRows(ctx, r, result); err != nil {
+			value, result = nil, err
+		}
+	}()
 
 	if !r.Next() {
 		if err := r.Err(); err != nil {
@@ -136,11 +141,18 @@ func (tx *Tx) getPoint(ctx context.Context, key Key, def familyDef, values [][]b
 		return nil, tx.fail(databaseError(ctx, "get", err))
 	}
 
+	return encoded, nil
+}
+
+func (tx *Tx) closePointRows(ctx context.Context, r rows, result error) error {
 	if err := r.Close(); err != nil {
-		return nil, tx.fail(databaseError(ctx, "close rows", err))
+		closeErr := databaseError(ctx, "close rows", err)
+		tx.failed = errors.Join(closeErr, tx.failed)
+
+		return errors.Join(closeErr, result)
 	}
 
-	return encoded, nil
+	return result
 }
 
 func rowError(ctx context.Context, err error) error {
